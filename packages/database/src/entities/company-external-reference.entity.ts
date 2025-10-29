@@ -1,0 +1,41 @@
+import { Entity, PrimaryColumn, ManyToOne, JoinColumn } from 'typeorm'
+import { CompanyEntity } from './company.entity.js'
+import { ExternalReferenceEntity } from './external-reference.entity.js'
+
+/**
+ * TypeORM entity for CompanyExternalReference junction table.
+ * Links Company entities with ExternalReference entities (many-to-many).
+ * @public
+ */
+@Entity('company_external_references')
+export class CompanyExternalReferenceEntity {
+	/**
+	 * Foreign key to Company (composite PK).
+	 * @public
+	 */
+	@PrimaryColumn({ name: 'company_id', type: 'uuid' })
+	companyId!: string
+
+	/**
+	 * Foreign key to ExternalReference (composite PK).
+	 * @public
+	 */
+	@PrimaryColumn({ name: 'external_reference_id', type: 'uuid' })
+	externalReferenceId!: string
+
+	/**
+	 * Many-to-One relationship with Company.
+	 * @public
+	 */
+	@ManyToOne(() => CompanyEntity, (company) => company.externalReferences)
+	@JoinColumn({ name: 'company_id' })
+	company?: CompanyEntity
+
+	/**
+	 * Many-to-One relationship with ExternalReference.
+	 * @public
+	 */
+	@ManyToOne(() => ExternalReferenceEntity, (ref) => ref.companies)
+	@JoinColumn({ name: 'external_reference_id' })
+	externalReference?: ExternalReferenceEntity
+}

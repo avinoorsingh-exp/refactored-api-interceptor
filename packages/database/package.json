@@ -1,0 +1,55 @@
+{
+	"name": "@exprealty/database",
+	"version": "0.1.0",
+	"type": "module",
+	"private": true,
+	"description": "TypeORM entities, migrations, and database configuration for eXpRealty platform",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		},
+		"./data-source": {
+			"types": "./dist/data-source.d.ts",
+			"import": "./dist/data-source.js"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"dev": "tsc -p tsconfig.build.json --watch",
+		"check": "tsc -p tsconfig.json --noEmit",
+		"lint": "eslint . --max-warnings=0",
+		"lint:fix": "eslint . --max-warnings=0 --fix",
+		"test": "jest --passWithNoTests",
+		"typeorm": "tsx ./node_modules/typeorm/cli.js -d ./src/data-source.ts",
+		"migration:generate": "npm run typeorm -- migration:generate ./src/migrations/$npm_config_name",
+		"migration:create": "npm run typeorm -- migration:create ./src/migrations/$npm_config_name",
+		"migration:run": "npm run typeorm -- migration:run",
+		"migration:revert": "npm run typeorm -- migration:revert",
+		"migration:show": "npm run typeorm -- migration:show",
+		"db:reset": "../../scripts/reset-database.sh",
+		"db:fresh": "npm run db:reset && npm run migration:run",
+		"api:extract": "api-extractor run --local --verbose",
+		"api:report": "api-documenter markdown -i temp -o docs"
+	},
+	"dependencies": {
+		"@exprealty/shared-domain": "workspace:*",
+		"pg": "^8.11.3",
+		"reflect-metadata": "^0.2.1",
+		"typeorm": "^0.3.20"
+	},
+	"devDependencies": {
+		"@microsoft/api-documenter": "^7.27.1",
+		"@microsoft/api-extractor": "^7.53.1",
+		"@types/node": "^24.9.1",
+		"ts-node": "^10.9.2",
+		"tsx": "^4.20.6",
+		"typescript": "^5.8.3"
+	},
+	"repository": "https://bitbucket.org/exp-realty/agent-service/src/main/packages/database"
+}

@@ -1,0 +1,30 @@
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm'
+import { AgentEntity } from './agent.entity.js'
+import { OfficeEntity } from './office.entity.js'
+
+/**
+ * TypeORM entity for AgentOffice junction table.
+ * @public
+ */
+@Entity('agent_offices')
+export class AgentOfficeEntity {
+	@PrimaryGeneratedColumn('uuid')
+	id!: string
+
+	@Column({ name: 'is_primary', type: 'boolean' })
+	isPrimary!: boolean
+
+	@Column({ name: 'agent_id', type: 'uuid' })
+	agentId!: string
+
+	@Column({ name: 'office_id', type: 'uuid' })
+	officeId!: string
+
+	@ManyToOne(() => AgentEntity)
+	@JoinColumn({ name: 'agent_id' })
+	agent?: AgentEntity
+
+	@ManyToOne(() => OfficeEntity)
+	@JoinColumn({ name: 'office_id' })
+	office?: OfficeEntity
+}
