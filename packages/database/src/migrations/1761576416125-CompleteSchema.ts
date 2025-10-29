@@ -1,4 +1,9 @@
 import { MigrationInterface, QueryRunner } from 'typeorm'
+import {
+	ISO_3166_COUNTRIES,
+	MINIMAL_COUNTRIES,
+	ISO3166Country,
+} from '../data/iso-3166-countries.js'
 
 export class CompleteSchema1761576416125 implements MigrationInterface {
 	name = 'CompleteSchema1761576416125'
@@ -106,9 +111,26 @@ export class CompleteSchema1761576416125 implements MigrationInterface {
 		await queryRunner.query(
 			`CREATE TABLE "sponsor_configurations" ("agent_id" uuid NOT NULL, "uuid" uuid NOT NULL, "buffer" integer NOT NULL, "sponsor_buffer_override" boolean NOT NULL, "last_modified" TIMESTAMP WITH TIME ZONE NOT NULL, CONSTRAINT "PK_88ec11bd74b5d1cc6749cdd3cfa" PRIMARY KEY ("agent_id"))`,
 		)
-		await queryRunner.query(
-			`CREATE TABLE "countries" ("countryId" SERIAL NOT NULL, "name" text NOT NULL, "two_letter_code" character varying(2) NOT NULL, "iso_3166" text, "dialing_code" integer, "system_id" integer, CONSTRAINT "PK_c9ebef6aac022e54b1b01c8f824" PRIMARY KEY ("countryId"))`,
-		)
+
+		// Create countries table with ISO 3166-1 compliant schema
+		await queryRunner.query(`
+			CREATE TABLE "countries" (
+				"country_id" SERIAL NOT NULL,
+				"name" text NOT NULL,
+				"alpha_2" character varying(2) NOT NULL,
+				"alpha_3" character varying(3) NOT NULL,
+				"number" integer NOT NULL,
+				"dialing_code" integer NOT NULL,
+				CONSTRAINT "PK_countries_country_id" PRIMARY KEY ("country_id"),
+				CONSTRAINT "UQ_countries_alpha_2" UNIQUE ("alpha_2"),
+				CONSTRAINT "UQ_countries_alpha_3" UNIQUE ("alpha_3"),
+				CONSTRAINT "UQ_countries_number" UNIQUE ("number")
+			)
+		`)
+
+		// Seed countries table with ISO 3166-1 data
+		await this.seedCountries(queryRunner)
+
 		await queryRunner.query(
 			`CREATE TABLE "regions" ("id" BIGSERIAL NOT NULL, "name" text NOT NULL, CONSTRAINT "PK_4fcd12ed6a046276e2deb08801c" PRIMARY KEY ("id"))`,
 		)
@@ -433,5 +455,109 @@ export class CompleteSchema1761576416125 implements MigrationInterface {
 		await queryRunner.query(`DROP TABLE "agents"`)
 		await queryRunner.query(`DROP TABLE "agent_companies"`)
 		await queryRunner.query(`DROP TABLE "addresses"`)
+	}
+
+	/**
+	 * Seeds the countries table with ISO 3166-1 data.
+	 * Supports full (249 countries) or minimal (US & CA) mode via COUNTRY_SEED_MODE env variable.
+	 */
+	private async seedCountries(queryRunner: QueryRunner): Promise<void> {
+		const startTime = Date.now()
+		const seedMode = process.env.COUNTRY_SEED_MODE || 'full'
+
+		console.log(`[${new Date().toISOString()}] Starting country seeding`)
+		console.log(`[${new Date().toISOString()}] Seed mode: ${seedMode}`)
+
+		// Select the appropriate dataset based on seed mode
+		const countries = seedMode === 'minimal' ? MINIMAL_COUNTRIES : ISO_3166_COUNTRIES
+		console.log(`[${new Date().toISOString()}] Countries to seed: ${countries.length}`)
+
+		let insertedCount = 0
+		let skippedCount = 0
+
+		for (const country of countries) {
+			try {
+				// Validate the country data
+				const validationError = this.validateCountry(country)
+				if (validationError) {
+					console.error(
+						`[${new Date().toISOString()}] Validation error for country ${country.alpha2}: ${validationError}`,
+					)
+					skippedCount++
+					continue
+				}
+
+				// Insert country (ON CONFLICT for idempotency in case of re-runs)
+				await queryRunner.query(
+					`
+					INSERT INTO "countries" ("name", "alpha_2", "alpha_3", "number", "dialing_code")
+					VALUES ($1, $2, $3, $4, $5)
+					ON CONFLICT ("alpha_2") DO UPDATE SET
+						"name" = EXCLUDED."name",
+						"alpha_3" = EXCLUDED."alpha_3",
+						"number" = EXCLUDED."number",
+						"dialing_code" = EXCLUDED."dialing_code"
+					`,
+					[
+						country.name,
+						country.alpha2,
+						country.alpha3,
+						country.number,
+						country.dialingCode,
+					],
+				)
+
+				insertedCount++
+			} catch (error) {
+				console.error(
+					`[${new Date().toISOString()}] Error seeding country ${country.alpha2}:`,
+					error instanceof Error ? error.message : error,
+				)
+				skippedCount++
+			}
+		}
+
+		const duration = Date.now() - startTime
+		console.log(`[${new Date().toISOString()}] Country seeding completed`)
+		console.log(`[${new Date().toISOString()}] Total processed: ${countries.length}`)
+		console.log(
+			`[${new Date().toISOString()}] Successfully inserted/updated: ${insertedCount}`,
+		)
+		console.log(`[${new Date().toISOString()}] Skipped (errors): ${skippedCount}`)
+		console.log(`[${new Date().toISOString()}] Duration: ${duration}ms`)
+	}
+
+	/**
+	 * Validates a country record according to ISO 3166-1 requirements.
+	 * @param country - The country record to validate
+	 * @returns Error message if validation fails, null if valid
+	 */
+	private validateCountry(country: ISO3166Country): string | null {
+		// Validate name is non-empty
+		if (!country.name || country.name.trim().length === 0) {
+			return 'Name must be a non-empty string'
+		}
+
+		// Validate alpha-2 code is exactly 2 uppercase letters
+		if (!/^[A-Z]{2}$/.test(country.alpha2)) {
+			return `Alpha-2 code must be exactly 2 uppercase letters, got: ${country.alpha2}`
+		}
+
+		// Validate alpha-3 code is exactly 3 uppercase letters
+		if (!/^[A-Z]{3}$/.test(country.alpha3)) {
+			return `Alpha-3 code must be exactly 3 uppercase letters, got: ${country.alpha3}`
+		}
+
+		// Validate numeric code is between 1 and 999
+		if (!Number.isInteger(country.number) || country.number < 1 || country.number > 999) {
+			return `Numeric code must be an integer between 1 and 999, got: ${country.number}`
+		}
+
+		// Validate dialing code is a positive integer
+		if (!Number.isInteger(country.dialingCode) || country.dialingCode < 1) {
+			return `Dialing code must be a positive integer, got: ${country.dialingCode}`
+		}
+
+		return null
 	}
 }

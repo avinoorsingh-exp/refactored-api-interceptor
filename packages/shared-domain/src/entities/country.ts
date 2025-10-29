@@ -2,19 +2,26 @@ import { z } from 'zod'
 
 /**
  * Base schema for Country entity.
+ * Conforms to ISO 3166-1 international standard for country codes.
  *
  * @public
  */
 export const CountryBaseSchema = z
 	.object({
-		countryId: z.string(),
+		countryId: z.number().int().positive(),
 		name: z.string().min(1).max(255),
-		twoLetterCode: z.string().length(2),
-		iso3166: z.string().max(50).optional(),
-		dialingCode: z.number().int().optional(),
-		systemId: z.number().int().optional(),
+		alpha2: z
+			.string()
+			.length(2)
+			.regex(/^[A-Z]{2}$/, 'Must be 2 uppercase letters'),
+		alpha3: z
+			.string()
+			.length(3)
+			.regex(/^[A-Z]{3}$/, 'Must be 3 uppercase letters'),
+		number: z.number().int().min(1).max(999),
+		dialingCode: z.number().int().positive(),
 	})
-	.describe('Base Country')
+	.describe('Base Country (ISO 3166-1)')
 
 /**
  * @public
