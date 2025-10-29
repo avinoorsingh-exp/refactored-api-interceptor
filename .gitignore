@@ -39,3 +39,4 @@ coverage
 **/temp
 **/*Zone.Identifier*
 docs/ERD/**
+.kiro/settings/mcp.json
