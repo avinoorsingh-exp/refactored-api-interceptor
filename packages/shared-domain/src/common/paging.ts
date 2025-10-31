@@ -2,14 +2,37 @@ import { z } from 'zod'
 
 
 /**
-* Cursor-based paging request.
-* @public
-*/
+ * Cursor-based paging request.
+ * @public
+ */
 export const PageRequest = z.object({
-cursor: z.string().optional(),
-limit: z.number().int().min(1).max(100).default(25),
+	cursor: z.string().optional(),
+	limit: z.number().int().min(1).max(100).default(25),
 })
 export type PageRequest = z.infer<typeof PageRequest>
+
+
+/**
+ * Offset-based pagination query parameters for HTTP endpoints.
+ * Uses z.coerce for automatic string-to-number conversion from query params.
+ * 
+ * @example
+ * ```typescript
+ * // Controller
+ * @Get()
+ * @UsePipes(new ZodValidationPipe(PaginationQuerySchema))
+ * async findAll(@Query() query: PaginationQuery) {
+ *   // query.page and query.limit are already numbers
+ * }
+ * ```
+ * 
+ * @public
+ */
+export const PaginationQuerySchema = z.object({
+	page: z.coerce.number().int().positive().default(1),
+	limit: z.coerce.number().int().min(1).max(100).default(10),
+})
+export type PaginationQuery = z.infer<typeof PaginationQuerySchema>
 
 
 /**

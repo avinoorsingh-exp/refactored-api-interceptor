@@ -13,6 +13,13 @@ export const ConfigSchema = BaseConfig.extend({
 	PORT: z.coerce.number().default(8081),
 	ALLOWED_ORIGINS: z.string().optional().default('*'),
 
+	// ===== Database =====
+	DB_HOST: z.string(),
+	DB_PORT: z.coerce.number(),
+	DB_USERNAME: z.string(),
+	DB_PASSWORD: z.string(),
+	DB_NAME: z.string(),
+
 	// ===== Internal Service-to-Service Auth =====
 	S2S_INTERNAL_KEY: z.string().optional(),
 

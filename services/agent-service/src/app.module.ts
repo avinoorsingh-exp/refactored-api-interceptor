@@ -1,14 +1,20 @@
-// services/address-provider/src/app.module.ts
+// services/agent-service/src/app.module.ts
 import { Module } from '@nestjs/common'
+import { DatabaseModule } from './core/database.module.js'
 import { ConfigModule } from './core/config.module.js'
-import { AgentController } from './controllers/agent.controller.js'
-
+import { LoggerModule } from './core/logger.module.js'
+import { AgentController } from './app.controller.js'
+import { CountriesModule } from './modules/countries/countries.module.js'
 
 @Module({
-  imports: [ConfigModule],
-  controllers: [AgentController],
-  // TODO: providers: [KafkaClient],
+	imports: [
+    LoggerModule,
+    ConfigModule,
+    DatabaseModule,
+    CountriesModule,
+	],
+	controllers: [AgentController],
 })
 export class AppModule {
-  // NestJS modules must be classes, even if empty
+	// NestJS modules must be classes, even if empty
 }
