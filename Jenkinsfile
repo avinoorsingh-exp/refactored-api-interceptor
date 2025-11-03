@@ -119,7 +119,7 @@ pipeline
                   aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-dev
                   aws configure set region us-east-1 --profile exp-dev
 
-                  cd account/exp-realty-dev/us-east-1/transaction-calc/transaction-calc-user-service-dev/ecs
+                  cd account/exp-realty-dev/us-east-1/agent-service/dev/agent-service-dev/ecs
                   terragrunt init -reconfigure
                   terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
                   terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
@@ -153,7 +153,7 @@ pipeline
                   aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-dev
                   aws configure set region us-east-1 --profile exp-dev
 
-                  cd account/exp-realty-dev/us-east-1/transaction-calc/transaction-calc-user-service-test/ecs
+                  cd account/exp-realty-dev/us-east-1/agent-service/test/agent-service-test/ecs
                   terragrunt init -reconfigure
                   terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
                   terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
@@ -187,7 +187,7 @@ pipeline
                   aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-qa
                   aws configure set region us-east-1 --profile exp-qa
 
-                  cd /data/account/exp-realty-qa/us-east-1/transaction-calc/accp/transaction-calc-user-service-accp/ecs
+                  cd /data/account/exp-realty-qa/us-east-1/agent-service/accp/agent-service-accp/ecs
                   terragrunt init -reconfigure
                   terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
                   terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
@@ -221,7 +221,7 @@ pipeline
                   aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-production
                   aws configure set region us-east-1 --profile exp-production
 
-                  cd /data/account/exp-realty-prod/us-east-1/transaction-calc/transaction-calc-user-service/ecs
+                  cd /data/account/exp-realty-prod/us-east-1/agent-service/prod/agent-service/ecs
                   terragrunt init -reconfigure
                   terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
                   terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
@@ -234,8 +234,8 @@ pipeline
   }
   environment {
     VERSION = 'latest'
-    PROJECT = 'exp/transaction-calc-user-service'
-    IMAGE = 'exp/transaction-calc-user-service:latest'
+    PROJECT = 'exp/agent-service'
+    IMAGE = 'exp/agent-service:latest'
     ECRURL = ''
     TF_VAR_app_image = '99'
     ECR = '204048894727.dkr.ecr.us-east-1.amazonaws.com/'
