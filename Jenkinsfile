@@ -31,7 +31,7 @@ pipeline
     stage('Docker build') {
       steps {
         script {
-          docker.build("$IMAGE")
+          docker.build("$IMAGE", "-f services/agent-service/Dockerfile services/agent-service")
         }
       }
     }
