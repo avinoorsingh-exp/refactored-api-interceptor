@@ -1,0 +1,267 @@
+@Library('jenkins-library') _
+
+pipeline
+{
+  agent any
+  stages
+  {
+    stage('Build preparations') {
+      steps {
+        script {
+          gitCommitHash = sh(returnStdout: true, script: 'git rev-parse HEAD').trim()
+          shortCommitHash = gitCommitHash.take(7)
+          // calculate a sample version tag
+          VERSION = shortCommitHash
+          // set the build display name
+          currentBuild.displayName = "#${BUILD_ID}-${VERSION}"
+          if (env.BRANCH_NAME == 'development') {
+              IMAGE = "$PROJECT:dev-$VERSION" 
+          } else if (env.BRANCH_NAME == 'test') {
+              IMAGE = "$PROJECT:test-$VERSION" 
+          } else if (env.BRANCH_NAME == 'accp') {
+              IMAGE = "$PROJECT:accp-$VERSION"
+          } else if (env.BRANCH_NAME == 'main') {
+              IMAGE = "$PROJECT:prod-$VERSION"
+          }
+        }
+
+      }
+    }
+
+    stage('Docker build') {
+      steps {
+        script {
+          docker.build("$IMAGE")
+        }
+      }
+    }
+
+    stage('Test + Coverage') {
+      when {
+        anyOf {
+          branch 'development'
+          expression { env.BRANCH_NAME.startsWith('feature/') }
+        }
+      }
+      steps {
+        script {
+          echo "🔍 DEBUG: About to call centralized coverage job"
+          echo "🔍 DEBUG: Service: user-service"
+          echo "🔍 DEBUG: Branch: ${env.BRANCH_NAME}"
+          
+          try {
+            echo "🔍 DEBUG: Calling centralized coverage job"
+            build job: 'Transaction Calculator/centralized-coverage/main',
+              wait: false,
+              propagate: false,
+                  parameters: [
+                      string(name: 'SERVICE_NAME', value: 'user-service'),
+                      string(name: 'BRANCH_NAME', value: env.BRANCH_NAME),
+                      string(name: 'REPO_URL', value: env.GIT_URL),
+                      string(name: 'COVERAGE_DIR', value: 'coverage'),
+                      booleanParam(name: 'RUN_E2E', value: true),
+                      booleanParam(name: 'FAIL_ON_TEST_FAILURE', value: false),
+                      string(name: 'MIN_COVERAGE_PERCENTAGE', value: '0'),
+                      booleanParam(name: 'FAIL_ON_COVERAGE_THRESHOLD', value: false)
+                  ]
+            echo "✅ DEBUG: Successfully called centralized coverage job"
+          } catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException e) {
+            // FlowInterruptedException is expected when wait: false and downstream job returns UNSTABLE
+            // This is not a real error - the job was triggered successfully
+            echo "ℹ️  INFO: Centralized coverage job triggered (may return UNSTABLE, which is expected and non-blocking)"
+          } catch (Exception e) {
+            echo "❌ DEBUG: Error calling centralized coverage job: ${e.getClass().getSimpleName()}: ${e.getMessage()}"
+          }
+        }
+      }
+    }
+
+    stage('Docker push') {
+      steps {
+        script {
+          sh("aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR}")
+          ECRURL = "http://${ECR}"
+          echo ECRURL
+          // Push the Docker image to ECR
+          docker.withRegistry(ECRURL)
+          {
+            docker.image(IMAGE).push()
+          }
+          echo TF_VAR_app_image
+          TF_VAR_app_image = "${ECR}${IMAGE}"
+          echo TF_VAR_app_image
+        }
+
+      }
+    }
+
+    stage('Deploy - Development') {
+      when {
+        branch 'development'
+      }
+
+      steps
+      {
+        git(url: 'https://bitbucket.org/exp-realty/exp-tf-dev.git', branch: 'master', credentialsId: 'exp-jenkins')
+            withCredentials([[
+              $class: 'AmazonWebServicesCredentialsBinding',
+              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+              credentialsId: 'Jenkins-Dev'
+            ]]) {
+            script
+            {
+              docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
+                .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
+                {
+                  sh """
+                  aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-dev
+                  aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-dev
+                  aws configure set region us-east-1 --profile exp-dev
+
+                  cd account/exp-realty-dev/us-east-1/transaction-calc/transaction-calc-user-service-dev/ecs
+                  terragrunt init -reconfigure
+                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
+                  terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
+                  """
+                }
+            }
+          }
+        }
+    }
+    stage('Deploy - Test') {
+      when {
+        branch 'test'
+      }
+
+      steps
+      {
+        git(url: 'https://bitbucket.org/exp-realty/exp-tf-dev.git', branch: 'master', credentialsId: 'exp-jenkins')
+            withCredentials([[
+              $class: 'AmazonWebServicesCredentialsBinding',
+              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+              credentialsId: 'Jenkins-Dev'
+            ]]) {
+            script
+            {
+              docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
+                .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
+                {
+                  sh """
+                  aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-dev
+                  aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-dev
+                  aws configure set region us-east-1 --profile exp-dev
+
+                  cd account/exp-realty-dev/us-east-1/transaction-calc/transaction-calc-user-service-test/ecs
+                  terragrunt init -reconfigure
+                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
+                  terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
+                  """
+                }
+            }
+          }
+        }
+    }
+    stage('Deploy - Acceptance') {
+      when {
+        branch 'accp'
+      }
+
+      steps
+      {
+        git(url: 'https://bitbucket.org/exp-realty/exp-tf-qa.git', branch: 'master', credentialsId: 'exp-jenkins')
+            withCredentials([[
+              $class: 'AmazonWebServicesCredentialsBinding',
+              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+              credentialsId: 'jenkins-qa-user'
+            ]]) {
+            script
+            {
+              docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
+                .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
+                {
+                  sh """
+                  aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-qa
+                  aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-qa
+                  aws configure set region us-east-1 --profile exp-qa
+
+                  cd /data/account/exp-realty-qa/us-east-1/transaction-calc/accp/transaction-calc-user-service-accp/ecs
+                  terragrunt init -reconfigure
+                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
+                  terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
+                  """
+                }
+              }
+            }
+        }
+      }
+    stage('Deploy - Prod') {
+      when {
+        branch 'main'
+      }
+
+      steps
+      {
+        git(url: 'https://bitbucket.org/exp-realty/exp-tf-prod.git', branch: 'master', credentialsId: 'exp-jenkins')
+            withCredentials([[
+              $class: 'AmazonWebServicesCredentialsBinding',
+              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+              credentialsId: '88caba18-4691-47c5-92a9-e66ee83da4e4'
+            ]]) {
+            script
+            {
+              docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
+                .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
+                {
+                  sh """
+                  aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-production
+                  aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-production
+                  aws configure set region us-east-1 --profile exp-production
+
+                  cd /data/account/exp-realty-prod/us-east-1/transaction-calc/transaction-calc-user-service/ecs
+                  terragrunt init -reconfigure
+                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
+                  terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
+                  """
+                }
+          }
+      }
+    }
+  }
+  }
+  environment {
+    VERSION = 'latest'
+    PROJECT = 'exp/transaction-calc-user-service'
+    IMAGE = 'exp/transaction-calc-user-service:latest'
+    ECRURL = ''
+    TF_VAR_app_image = '99'
+    ECR = '204048894727.dkr.ecr.us-east-1.amazonaws.com/'
+    TF_LOG = 'ERROR'
+    // Job pass/fail email addresses
+    RECIPIENT_LIST='''
+    david.hull@exprealty.net
+    '''
+  }
+  post {
+    always {
+      cleanWs()
+      sh "docker rmi $TF_VAR_app_image | true"
+    }
+    success {
+      script {
+        CommonPostStepSuccess()
+      }
+    }
+    failure {
+      script {
+        CommonPostStepFailure()
+      }
+    }
+  }
+  options {
+    buildDiscarder(logRotator(numToKeepStr: '3'))
+  }
+}
