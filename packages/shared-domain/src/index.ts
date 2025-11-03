@@ -682,6 +682,8 @@ export {
 	type CreateCountryInput,
 	UpdateCountryInputSchema,
 	type UpdateCountryInput,
+	CountryCodeParamSchema,
+	type CountryCodeParam,
 } from './entities/country.js'
 
 // ============================================================================

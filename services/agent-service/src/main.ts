@@ -1,8 +1,10 @@
 import { NestFactory } from '@nestjs/core'
 import { AppModule } from './app.module.js'
 import { ConfigService } from './core/config.service.js'
+import { LoggerService } from './core/logger.service.js'
 import helmet from 'helmet';
 import compression from 'compression';
+import { ProblemDetailsFilter } from './common/problem-details.filter.js';
 
 async function bootstrap() {
 	const app = await NestFactory.create(AppModule)
@@ -10,6 +12,9 @@ async function bootstrap() {
 	// Get services
 	const configService = app.get(ConfigService)
 	const config = configService.getAll()
+
+	// Get LoggerService from DI container
+	const logger = app.get(LoggerService)
 
 	//Global middleware and settings
 	app.use(
@@ -25,6 +30,8 @@ async function bootstrap() {
 		credentials: true,
 	})
 
+	app.useGlobalFilters(new ProblemDetailsFilter(logger))
+	
 	// NOTE: Global ValidationPipe removed in favor of Zod-first architecture
 	// 
 	// Previously used: app.useGlobalPipes(new ValidationPipe({ whitelist: true, ... }))

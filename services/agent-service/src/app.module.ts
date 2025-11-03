@@ -14,6 +14,7 @@ import { CountriesModule } from './modules/countries/countries.module.js'
     CountriesModule,
 	],
 	controllers: [AgentController],
+	providers: [],
 })
 export class AppModule {
 	// NestJS modules must be classes, even if empty

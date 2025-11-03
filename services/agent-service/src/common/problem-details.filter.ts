@@ -50,7 +50,13 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 						: (exceptionResponse as { message?: string } | undefined)?.message ||
 							exception.message
 
-				problem = this.createProblemFromStatus(status, message, instance, traceId)
+				// Extract custom i18n type if provided
+				const i18nType =
+					typeof exceptionResponse === 'object' && exceptionResponse !== null
+						? (exceptionResponse as { i18nType?: string }).i18nType
+						: undefined
+
+				problem = this.createProblemFromStatus(status, message, instance, traceId, i18nType)
 			}
 		}
 		// 3. Handle ZodError directly (shouldn't happen if validation pipe works, but just in case)
@@ -90,7 +96,7 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 
 	/**
 	 * Handle validation errors from ZodValidationPipe.
-	 * The pipe returns Zod's formatted error object.
+	 * The pipe returns Zod's formatted error object with optional _i18nType.
 	 */
 	private handleValidationError(
 		exceptionResponse: Record<string, unknown>,
@@ -98,6 +104,9 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 		traceId?: string,
 	): ProblemDetails {
 		const invalidParams: InvalidParam[] = []
+		
+		// Extract custom i18n type if provided (e.g., 'agent.country.validation')
+		const i18nType = exceptionResponse._i18nType as string | undefined
 
 		// Zod's format() returns nested objects with _errors arrays
 		const extractErrors = (obj: Record<string, unknown>, path: string[] = []): void => {
@@ -115,15 +124,28 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 				}
 			}
 
-			// Recursively check nested properties
+			// Recursively check nested properties (skip internal _i18nType)
 			for (const [key, value] of Object.entries(obj)) {
-				if (key !== '_errors' && typeof value === 'object' && value !== null) {
+				if (key !== '_errors' && key !== '_i18nType' && typeof value === 'object' && value !== null) {
 					extractErrors(value as Record<string, unknown>, [...path, key])
 				}
 			}
 		}
 
 		extractErrors(exceptionResponse)
+
+		// If i18nType is provided, use it; otherwise use default validation type
+		if (i18nType) {
+			return {
+				type: i18nType,
+				title: 'Validation Failed',
+				status: 400,
+				detail: 'The request body failed schema validation',
+				instance,
+				traceId,
+				invalidParams: invalidParams.length > 0 ? invalidParams : undefined,
+			}
+		}
 
 		return Problems.validation(
 			'The request body failed schema validation',
@@ -163,7 +185,20 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 		detail: string,
 		instance: string,
 		traceId?: string,
+		i18nType?: string,
 	): ProblemDetails {
+		// If custom i18n type is provided, use it
+		if (i18nType) {
+			return {
+				type: i18nType,
+				title: this.getTitleForStatus(status),
+				status,
+				detail,
+				instance,
+				traceId,
+			}
+		}
+
 		// Use explicit if-else instead of switch to avoid enum comparison issues
 		if (status === 400) {
 			return Problems.validation(detail, undefined, instance, traceId)
@@ -173,6 +208,8 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 			return Problems.forbidden(detail, instance, traceId)
 		} else if (status === 404) {
 			return Problems.notFound(detail, instance, traceId)
+		} else if (status === 409) {
+			return Problems.conflict(detail, instance, traceId)
 		} else if (status === 429) {
 			return Problems.rateLimited(detail, instance, traceId)
 		} else if (status === 502) {
@@ -181,6 +218,32 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 			return Problems.timeout(detail, instance, traceId)
 		} else {
 			return Problems.internal(detail, instance, traceId)
+		}
+	}
+
+	/**
+	 * Get human-readable title for HTTP status code
+	 */
+	private getTitleForStatus(status: number): string {
+		switch (status) {
+			case 400:
+				return 'Bad Request'
+			case 401:
+				return 'Unauthorized'
+			case 403:
+				return 'Forbidden'
+			case 404:
+				return 'Not Found'
+			case 409:
+				return 'Conflict'
+			case 429:
+				return 'Too Many Requests'
+			case 502:
+				return 'Bad Gateway'
+			case 504:
+				return 'Gateway Timeout'
+			default:
+				return 'Internal Server Error'
 		}
 	}
 }

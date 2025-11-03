@@ -72,3 +72,20 @@ export const UpdateCountryInputSchema = CountryBaseSchema.omit({
  * @public
  */
 export type UpdateCountryInput = z.infer<typeof UpdateCountryInputSchema>
+
+/**
+ * Schema for validating country code path parameter.
+ * Accepts only alpha-2 code (2 uppercase letters).
+ *
+ * @public
+ */
+export const CountryCodeParamSchema = z
+	.object({
+		code: CountryBaseSchema.shape.alpha2,
+	})
+	.describe('Country code path parameter')
+
+/**
+ * @public
+ */
+export type CountryCodeParam = z.infer<typeof CountryCodeParamSchema>

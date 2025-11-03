@@ -74,6 +74,7 @@ export const ProblemKeys = {
 	NotFound: 'not-found',
 	Unauthorized: 'unauthorized',
 	Forbidden: 'forbidden',
+	Conflict: 'conflict',
 	RateLimited: 'rate-limited',
 	BadGateway: 'bad-gateway',
 	Upstream: 'upstream-error',
@@ -90,6 +91,7 @@ export const ProblemTypes = {
 	NotFound: makeProblemType(ProblemKeys.NotFound),
 	Unauthorized: makeProblemType(ProblemKeys.Unauthorized),
 	Forbidden: makeProblemType(ProblemKeys.Forbidden),
+	Conflict: makeProblemType(ProblemKeys.Conflict),
 	RateLimited: makeProblemType(ProblemKeys.RateLimited),
 	BadGateway: makeProblemType(ProblemKeys.BadGateway),
 	Upstream: makeProblemType(ProblemKeys.Upstream),
@@ -107,6 +109,7 @@ export const ProblemTitles: Record<string, string> = {
 	[ProblemTypes.NotFound]: 'Not Found',
 	[ProblemTypes.Unauthorized]: 'Unauthorized',
 	[ProblemTypes.Forbidden]: 'Forbidden',
+	[ProblemTypes.Conflict]: 'Conflict',
 	[ProblemTypes.RateLimited]: 'Too Many Requests',
 	[ProblemTypes.BadGateway]: 'Bad Gateway',
 	[ProblemTypes.Upstream]: 'Upstream Error',
@@ -199,6 +202,19 @@ export const Problems = {
 		return createProblem({
 			type: ProblemTypes.Forbidden,
 			status: 403,
+			detail,
+			instance,
+			traceId,
+		})
+	},
+	conflict(
+		detail = 'The request conflicts with the current state of the resource.',
+		instance?: string,
+		traceId?: string,
+	): ProblemDetails {
+		return createProblem({
+			type: ProblemTypes.Conflict,
+			status: 409,
 			detail,
 			instance,
 			traceId,
