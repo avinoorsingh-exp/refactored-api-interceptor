@@ -13,7 +13,7 @@ pipeline
           // calculate a sample version tag
           VERSION = shortCommitHash
           // set the build display name
-          currentBuild.displayName = "#${BUILD_ID}-${VERSION}"
+          currentBuild.displayName = "#${BUILD_ID}-orchestrator-${VERSION}"
           if (env.BRANCH_NAME == 'development') {
               IMAGE = "$PROJECT:dev-$VERSION" 
           } else if (env.BRANCH_NAME == 'test') {
@@ -31,7 +31,7 @@ pipeline
     stage('Docker build') {
       steps {
         script {
-          docker.build("$IMAGE", "-f services/agent-service/Dockerfile .")
+          docker.build("$IMAGE", "-f services/orchestrator/Dockerfile .")
         }
       }
     }
@@ -46,7 +46,7 @@ pipeline
       steps {
         script {
           echo "🔍 DEBUG: About to call centralized coverage job"
-          echo "🔍 DEBUG: Service: agent-service"
+          echo "🔍 DEBUG: Service: orchestrator"
           echo "🔍 DEBUG: Branch: ${env.BRANCH_NAME}"
           
           try {
@@ -55,7 +55,7 @@ pipeline
               wait: false,
               propagate: false,
                   parameters: [
-                      string(name: 'SERVICE_NAME', value: 'agent-service'),
+                      string(name: 'SERVICE_NAME', value: 'orchestrator'),
                       string(name: 'BRANCH_NAME', value: env.BRANCH_NAME),
                       string(name: 'REPO_URL', value: env.GIT_URL),
                       string(name: 'COVERAGE_DIR', value: 'coverage'),
@@ -102,7 +102,7 @@ pipeline
 
       steps
       {
-        git(url: 'https://bitbucket.org/exp-realty/exp-tf-dev.git', branch: 'master', credentialsId: 'exp-jenkins')
+        git(url: 'https://bitbucket.org/exp-realty/exp-tf-dev.git', branch: 'agent-service-orch-dev', credentialsId: 'exp-jenkins')
             withCredentials([[
               $class: 'AmazonWebServicesCredentialsBinding',
               accessKeyVariable: 'AWS_ACCESS_KEY_ID',
@@ -119,7 +119,7 @@ pipeline
                   aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-dev
                   aws configure set region us-east-1 --profile exp-dev
 
-                  cd account/exp-realty-dev/us-east-1/agent-service/dev/agent-service-dev/ecs
+                  cd account/exp-realty-dev/us-east-1/agent-service/dev/agent-service-orchestrator-dev/ecs
                   terragrunt init -reconfigure
                   terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
                   terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
@@ -153,7 +153,7 @@ pipeline
                   aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-dev
                   aws configure set region us-east-1 --profile exp-dev
 
-                  cd account/exp-realty-dev/us-east-1/agent-service/test/agent-service-test/ecs
+                  cd account/exp-realty-dev/us-east-1/agent-service/test/agent-service-orchestrator-test/ecs
                   terragrunt init -reconfigure
                   terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
                   terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
@@ -187,7 +187,7 @@ pipeline
                   aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-qa
                   aws configure set region us-east-1 --profile exp-qa
 
-                  cd /data/account/exp-realty-qa/us-east-1/agent-service/accp/agent-service-accp/ecs
+                  cd /data/account/exp-realty-qa/us-east-1/agent-service/accp/agent-service-orchestrator-accp/ecs
                   terragrunt init -reconfigure
                   terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
                   terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
@@ -221,7 +221,7 @@ pipeline
                   aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-production
                   aws configure set region us-east-1 --profile exp-production
 
-                  cd /data/account/exp-realty-prod/us-east-1/agent-service/prod/agent-service/ecs
+                  cd /data/account/exp-realty-prod/us-east-1/agent-service/orchestrator/ecs
                   terragrunt init -reconfigure
                   terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
                   terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
@@ -234,8 +234,8 @@ pipeline
   }
   environment {
     VERSION = 'latest'
-    PROJECT = 'exp/agent-service'
-    IMAGE = 'exp/agent-service:latest'
+    PROJECT = 'exp/agent-service-orchestrator'
+    IMAGE = 'exp/agent-service-orchestrator:latest'
     ECRURL = ''
     TF_VAR_app_image = '99'
     ECR = '204048894727.dkr.ecr.us-east-1.amazonaws.com/'
@@ -265,3 +265,4 @@ pipeline
     buildDiscarder(logRotator(numToKeepStr: '3'))
   }
 }
+
