@@ -169,10 +169,12 @@ export {
 	type CompanyBase,
 	type CompanyExpanded,
 	type Company,
-	CreateCompanyInput,
-	type CreateCompanyInput as CreateCompanyInputType,
-	UpdateCompanyInput,
-	type UpdateCompanyInput as UpdateCompanyInputType,
+	CreateCompanyInputSchema,
+	type CreateCompanyInput,
+	UpdateCompanyInputSchema,
+	type UpdateCompanyInput,
+	CompanyIdParamSchema,
+	type CompanyIdParam,
 } from './entities/company.js'
 
 // ============================================================================

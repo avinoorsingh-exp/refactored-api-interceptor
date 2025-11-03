@@ -5,6 +5,7 @@ import { ConfigModule } from './core/config.module.js'
 import { LoggerModule } from './core/logger.module.js'
 import { AgentController } from './app.controller.js'
 import { CountriesModule } from './modules/countries/countries.module.js'
+import { CompaniesModule } from './modules/companies/companies.module.js'
 
 @Module({
 	imports: [
@@ -12,6 +13,7 @@ import { CountriesModule } from './modules/countries/countries.module.js'
     ConfigModule,
     DatabaseModule,
     CountriesModule,
+    CompaniesModule,
 	],
 	controllers: [AgentController],
 	providers: [],

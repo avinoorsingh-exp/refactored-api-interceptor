@@ -4,7 +4,6 @@ import {
 	PrimaryGeneratedColumn,
 	CreateDateColumn,
 	UpdateDateColumn,
-	OneToMany,
 } from 'typeorm'
 
 /**
@@ -48,12 +47,4 @@ export class CompanyEntity {
 	 */
 	@UpdateDateColumn({ name: 'updated_at', type: 'timestamp with time zone' })
 	updatedAt!: Date
-
-	/**
-	 * One-to-Many relationship with CompanyExternalReference.
-	 * Uses string name to avoid circular dependency at module load time.
-	 * @public
-	 */
-	@OneToMany('CompanyExternalReferenceEntity', 'company')
-	externalReferences?: unknown[]
 }

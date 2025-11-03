@@ -27,7 +27,7 @@ export class CompanyExternalReferenceEntity {
 	 * Many-to-One relationship with Company.
 	 * @public
 	 */
-	@ManyToOne(() => CompanyEntity, (company) => company.externalReferences)
+	@ManyToOne(() => CompanyEntity, { cascade: true, eager: false, nullable: true })
 	@JoinColumn({ name: 'company_id' })
 	company?: CompanyEntity
 
@@ -35,7 +35,7 @@ export class CompanyExternalReferenceEntity {
 	 * Many-to-One relationship with ExternalReference.
 	 * @public
 	 */
-	@ManyToOne(() => ExternalReferenceEntity, (ref) => ref.companies)
+	@ManyToOne(() => ExternalReferenceEntity, (ref) => ref.companies, { cascade: true , eager: false})
 	@JoinColumn({ name: 'external_reference_id' })
 	externalReference?: ExternalReferenceEntity
 }
