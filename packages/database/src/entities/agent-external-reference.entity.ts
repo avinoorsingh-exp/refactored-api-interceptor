@@ -3,10 +3,11 @@ import { AgentEntity } from './agent.entity.js'
 import { ExternalReferenceEntity } from './external-reference.entity.js'
 
 /**
- * TypeORM entity for AgentExternalReference junction table.
+ * TypeORM entity for AgentExternalReference join table.
+ * Many-to-many relationship between Agent and ExternalReference.
  * @public
  */
-@Entity('agent_external_references')
+@Entity({ name: 'agent_external_reference', schema: 'core' })
 export class AgentExternalReferenceEntity {
 	@PrimaryColumn({ name: 'agent_id', type: 'uuid' })
 	agentId!: string

@@ -6,7 +6,7 @@ import { AddressEntity } from './address.entity.js'
  * TypeORM entity for W9Address junction table.
  * @public
  */
-@Entity('w9_addresses')
+@Entity({ name: 'w9_address', schema: 'core' })
 export class W9AddressEntity {
 	@PrimaryColumn({ name: 'w9_id', type: 'uuid' })
 	w9Id!: string

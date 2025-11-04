@@ -4,7 +4,7 @@ import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm'
  * TypeORM entity for OrganizationContact table.
  * @public
  */
-@Entity('organization_contacts')
+@Entity({ name: 'organization_contact', schema: 'core' })
 export class OrganizationContactEntity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string

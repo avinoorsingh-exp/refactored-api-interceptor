@@ -3,10 +3,11 @@ import { AgentEntity } from './agent.entity.js'
 import { LanguageEntity } from './language.entity.js'
 
 /**
- * TypeORM entity for AgentLanguage junction table.
+ * TypeORM entity for AgentLanguage join table.
+ * Many-to-many relationship between Agent and Language.
  * @public
  */
-@Entity('agent_languages')
+@Entity({ name: 'agent_language', schema: 'core' })
 export class AgentLanguageEntity {
 	@PrimaryColumn({ name: 'agent_id', type: 'uuid' })
 	agentId!: string

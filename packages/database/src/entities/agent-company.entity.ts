@@ -11,7 +11,7 @@ import {
  * Database representation of the domain AgentCompany type.
  * @public
  */
-@Entity('agent_companies')
+@Entity({ name: 'agent_company', schema: 'core' })
 export class AgentCompanyEntity {
 	/**
 	 * Primary key (UUID).

@@ -2,10 +2,10 @@ import { Entity, Column, PrimaryColumn, ManyToOne, JoinColumn } from 'typeorm'
 import { PayPlanEntity } from './pay-plan.entity.js'
 
 /**
- * TypeORM entity for PayPlanVariant junction table.
+ * TypeORM entity for PayPlanVariant table.
  * @public
  */
-@Entity('pay_plan_variants')
+@Entity({ name: 'pay_plan_variant', schema: 'core' })
 export class PayPlanVariantEntity {
 	@PrimaryColumn({ name: 'variant_id', type: 'varchar' })
 	variantId!: string

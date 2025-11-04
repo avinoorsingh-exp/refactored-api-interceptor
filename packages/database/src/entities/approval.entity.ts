@@ -4,7 +4,7 @@ import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm'
  * TypeORM entity for Approval table.
  * @beta
  */
-@Entity('approvals')
+@Entity({ name: 'approval', schema: 'core' })
 export class ApprovalEntity {
 	@PrimaryGeneratedColumn('increment', { type: 'bigint' })
 	approvalId!: string

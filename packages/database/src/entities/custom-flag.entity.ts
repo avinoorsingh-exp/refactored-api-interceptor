@@ -2,9 +2,9 @@ import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm'
 
 /**
  * TypeORM entity for CustomFlag table.
- * @beta
+ * @public
  */
-@Entity('custom_flags')
+@Entity({ name: 'custom_flag', schema: 'core' })
 export class CustomFlagEntity {
 	@PrimaryGeneratedColumn('increment', { type: 'bigint' })
 	flagId!: string

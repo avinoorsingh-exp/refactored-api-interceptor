@@ -5,7 +5,7 @@ import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm'
  * Database representation of email forwarding configuration.
  * @public
  */
-@Entity('email_forwards')
+@Entity({ name: 'email_forward', schema: 'core' })
 export class EmailForwardEntity {
 	/**
 	 * Auto-incrementing primary key.

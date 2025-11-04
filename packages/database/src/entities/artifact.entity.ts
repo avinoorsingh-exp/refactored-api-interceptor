@@ -10,7 +10,7 @@ import {
  * TypeORM entity for Artifact table.
  * @public
  */
-@Entity('artifacts')
+@Entity({ name: 'artifact', schema: 'core' })
 export class ArtifactEntity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string

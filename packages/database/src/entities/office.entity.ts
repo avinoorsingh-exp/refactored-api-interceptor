@@ -4,7 +4,7 @@ import { Entity, Column, PrimaryGeneratedColumn, OneToMany } from 'typeorm'
  * TypeORM entity for Office table.
  * @public
  */
-@Entity('offices')
+@Entity({ name: 'office', schema: 'core' })
 export class OfficeEntity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string

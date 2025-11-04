@@ -5,7 +5,7 @@ import { AgentEntity } from './agent.entity.js'
  * TypeORM entity for ActiveLocation table.
  * @public
  */
-@Entity('active_locations')
+@Entity({ name: 'active_location', schema: 'core' })
 export class ActiveLocationEntity {
 	@PrimaryColumn({ name: 'name', type: 'text' })
 	name!: string

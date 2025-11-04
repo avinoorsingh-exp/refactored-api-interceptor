@@ -169,10 +169,12 @@ export {
 	type CompanyBase,
 	type CompanyExpanded,
 	type Company,
-	CreateCompanyInput,
-	type CreateCompanyInput as CreateCompanyInputType,
-	UpdateCompanyInput,
-	type UpdateCompanyInput as UpdateCompanyInputType,
+	CreateCompanyInputSchema,
+	type CreateCompanyInput,
+	UpdateCompanyInputSchema,
+	type UpdateCompanyInput,
+	CompanyIdParamSchema,
+	type CompanyIdParam,
 } from './entities/company.js'
 
 // ============================================================================
@@ -682,6 +684,8 @@ export {
 	type CreateCountryInput,
 	UpdateCountryInputSchema,
 	type UpdateCountryInput,
+	CountryCodeParamSchema,
+	type CountryCodeParam,
 } from './entities/country.js'
 
 // ============================================================================
@@ -702,6 +706,8 @@ export {
 	type CreateRegionInput,
 	UpdateRegionInputSchema,
 	type UpdateRegionInput,
+	RegionIdParamSchema,
+	type RegionIdParam,
 } from './entities/region.js'
 
 // ============================================================================

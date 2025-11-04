@@ -5,7 +5,7 @@ import { AgentEntity } from './agent.entity.js'
  * TypeORM entity for Relationship table.
  * @public
  */
-@Entity('relationships')
+@Entity({ name: 'relationship', schema: 'core' })
 export class RelationshipEntity {
 	@PrimaryColumn({ name: 'subject_agent_id', type: 'uuid' })
 	subjectAgentId!: string

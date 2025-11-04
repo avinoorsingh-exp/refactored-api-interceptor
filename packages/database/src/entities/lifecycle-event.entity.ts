@@ -5,7 +5,7 @@ import { NoteEntity } from './note.entity.js'
  * TypeORM entity for LifecycleEvent table.
  * @public
  */
-@Entity('lifecycle_events')
+@Entity({ name: 'lifecycle_event', schema: 'core' })
 export class LifecycleEventEntity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string
