@@ -1,5 +1,6 @@
 import {
 	Controller,
+	Get,
 	Post,
 	Put,
 	Body,
@@ -16,11 +17,12 @@ import {
 	ApiBody,
 	ApiParam,
 } from '@nestjs/swagger'
-import { CreateRegionInputSchema, UpdateRegionInputSchema } from '@exprealty/shared-domain'
+import { CreateRegionInputSchema, UpdateRegionInputSchema, RegionIdParamSchema } from '@exprealty/shared-domain'
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js'
 import { RegionsService } from './regions.service.js'
 import { CreateRegionDto } from './dto/create-region.dto.js'
 import { UpdateRegionDto } from './dto/update-region.dto.js'
+import { RegionIdParamDto } from './dto/region-id-param.dto.js'
 import { RegionResponseDto } from './dto/region-response.dto.js'
 
 /**
@@ -85,6 +87,45 @@ export class RegionsController {
 		res.setHeader('Location', `/v1/regions/${region.id}`)
 
 		return region as any
+	}
+
+	/**
+	 * Retrieves a region by its UUID.
+	 * GET /v1/regions/{id}
+	 *
+	 * @param params - Path parameters containing region ID
+	 * @returns The region resource
+	 */
+	@Get(':id')
+	@HttpCode(HttpStatus.OK)
+	@ApiOperation({
+		summary: 'Get a region by ID',
+		description: 'Retrieves a region by its UUID.',
+	})
+	@ApiParam({
+		name: 'id',
+		description: 'Region UUID',
+		type: String,
+		format: 'uuid',
+	})
+	@ApiResponse({
+		status: 200,
+		description: 'Region retrieved successfully',
+		type: RegionResponseDto,
+	})
+	@ApiResponse({
+		status: 400,
+		description: 'Validation error - invalid UUID format',
+	})
+	@ApiResponse({
+		status: 404,
+		description: 'Region not found',
+	})
+	async findById(
+		@Param(new ZodValidationPipe(RegionIdParamSchema, 'agent.region.validation'))
+		params: RegionIdParamDto,
+	): Promise<RegionResponseDto> {
+		return this.regionsService.findById(params.id) as any
 	}
 
 	/**

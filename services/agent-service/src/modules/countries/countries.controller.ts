@@ -21,11 +21,13 @@ import { CountriesService } from './countries.service.js'
 import { CreateCountryDto } from './dto/create-country.dto.js'
 import { CountryCodeParamDto } from './dto/country-code-param.dto.js'
 import { CountryResponseDto } from './dto/country-response.dto.js'
+import { ApiTags } from '@nestjs/swagger'
 
 /**
  * Controller for Country resource endpoints.
  * Handles HTTP requests for country operations.
  */
+@ApiTags('countries')
 @Controller('/v1/countries')
 export class CountriesController {
 	private readonly logger = new Logger(CountriesController.name)

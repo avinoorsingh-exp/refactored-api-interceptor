@@ -7,7 +7,10 @@ import { z } from 'zod'
  */
 export const RegionBaseSchema = z
 	.object({
-		id: z.string(),
+		id: z
+			.string()
+			.regex(/^\d+$/, { message: 'errors.region.id.invalid' })
+			.describe('Primary key (bigint as string)'),
 		name: z.string().min(1).max(255),
 	})
 	.describe('Base Region')
@@ -65,3 +68,20 @@ export const UpdateRegionInputSchema = RegionBaseSchema.omit({ id: true }).exten
  * @public
  */
 export type UpdateRegionInput = z.infer<typeof UpdateRegionInputSchema>
+
+/**
+ * Zod schema for validating region id path parameter.
+ * Reuses validation from RegionBaseSchema.shape.id.
+ *
+ * @public
+ */
+export const RegionIdParamSchema = z.object({
+	id: RegionBaseSchema.shape.id,
+})
+
+/**
+ * TypeScript type for region id path parameter.
+ *
+ * @public
+ */
+export type RegionIdParam = z.infer<typeof RegionIdParamSchema>

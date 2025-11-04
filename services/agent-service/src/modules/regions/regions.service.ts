@@ -98,6 +98,55 @@ export class RegionsService {
 	}
 
 	/**
+	 * Retrieves a region by its UUID.
+	 *
+	 * @param id - Region UUID
+	 * @returns The region entity
+	 * @throws NotFoundException if region with the given id does not exist
+	 */
+	async findById(id: string): Promise<Region> {
+		const startTime = Date.now()
+
+		try {
+			const region = await this.regionRepository.findOne({
+				where: { id },
+			})
+
+			if (!region) {
+				throw new NotFoundException({
+					message: `Region with id '${id}' not found`,
+					i18nType: 'agent.region.not_found',
+				})
+			}
+
+			const duration = Date.now() - startTime
+			// TODO: Remove debug logging before PR
+			this.logger.debug(
+				`Region retrieved: ${region.id} (${region.name}) in ${duration}ms`,
+			)
+
+			return this.mapToResponse(region)
+		} catch (error) {
+			const duration = Date.now() - startTime
+
+			// Re-throw known exceptions
+			if (error instanceof NotFoundException) {
+				throw error
+			}
+
+			// TODO: Remove debug logging before PR
+			// Log unexpected errors
+			this.logger.error(
+				`Failed to retrieve region ${id}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
+				error instanceof Error ? error.stack : undefined,
+			)
+
+			// Re-throw for controller to handle
+			throw error
+		}
+	}
+
+	/**
 	 * Updates an existing region record by ID.
 	 *
 	 * @param id - The region ID to update

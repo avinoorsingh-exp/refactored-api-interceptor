@@ -706,6 +706,8 @@ export {
 	type CreateRegionInput,
 	UpdateRegionInputSchema,
 	type UpdateRegionInput,
+	RegionIdParamSchema,
+	type RegionIdParam,
 } from './entities/region.js'
 
 // ============================================================================
