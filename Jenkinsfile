@@ -5,7 +5,64 @@ pipeline
   agent any
   stages
   {
+    stage('Check if agent-service changed') {
+      when {
+        not { triggeredBy 'Timer' }
+        not { triggeredBy 'BuildCause' } // Allow manual triggers
+      }
+      steps {
+        script {
+          // Check if any files in agent-service or shared packages changed
+          def changedFiles = sh(
+            script: 'git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only origin/${GIT_BRANCH} 2>/dev/null || echo ""',
+            returnStdout: true
+          ).trim()
+          
+          if (!changedFiles) {
+            // Try using changeset if available (webhook triggers)
+            if (currentBuild.changeSets) {
+              changedFiles = currentBuild.changeSets.collect { cs ->
+                cs.items.collect { item ->
+                  item.affectedFiles.collect { file -> file.path }
+                }.flatten()
+              }.flatten().join('\n')
+            }
+          }
+          
+          def relevantPaths = [
+            'services/agent-service/',
+            'packages/',  // Shared packages affect both services
+            'package.json',
+            'pnpm-lock.yaml',
+            'Jenkinsfile'  // Pipeline changes
+          ]
+          
+          def hasRelevantChanges = false
+          if (changedFiles) {
+            def files = changedFiles.split('\n')
+            hasRelevantChanges = files.any { file ->
+              relevantPaths.any { path -> file.startsWith(path) } &&
+              !file.startsWith('services/orchestrator/')
+            }
+          }
+          
+          if (!hasRelevantChanges && changedFiles) {
+            echo "⚠️  No agent-service changes detected. Changed files:"
+            changedFiles.split('\n').each { echo "  - ${it}" }
+            echo "⏭️  Skipping agent-service build (only orchestrator or unrelated files changed)"
+            env.SKIP_BUILD = 'true'
+            currentBuild.description = 'Skipped - no agent-service changes'
+          } else {
+            echo "✅ Agent-service or shared code changed. Proceeding with build."
+            env.SKIP_BUILD = 'false'
+          }
+        }
+      }
+    }
     stage('Build preparations') {
+      when {
+        expression { env.SKIP_BUILD != 'true' }
+      }
       steps {
         script {
           gitCommitHash = sh(returnStdout: true, script: 'git rev-parse HEAD').trim()
@@ -18,8 +75,8 @@ pipeline
               IMAGE = "$PROJECT:dev-$VERSION" 
           } else if (env.BRANCH_NAME == 'test') {
               IMAGE = "$PROJECT:test-$VERSION" 
-          } else if (env.BRANCH_NAME == 'accp') {
-              IMAGE = "$PROJECT:accp-$VERSION"
+          } else if (env.BRANCH_NAME == 'qa') {
+              IMAGE = "$PROJECT:qa-$VERSION"
           } else if (env.BRANCH_NAME == 'main') {
               IMAGE = "$PROJECT:prod-$VERSION"
           }
@@ -29,6 +86,9 @@ pipeline
     }
 
     stage('Docker build') {
+      when {
+        expression { env.SKIP_BUILD != 'true' }
+      }
       steps {
         script {
           docker.build("$IMAGE", "-f services/agent-service/Dockerfile .")
@@ -38,9 +98,12 @@ pipeline
 
     stage('Test + Coverage') {
       when {
-        anyOf {
-          branch 'development'
-          expression { env.BRANCH_NAME.startsWith('feature/') }
+        allOf {
+          anyOf {
+            branch 'development'
+            expression { env.BRANCH_NAME.startsWith('feature/') }
+          }
+          expression { env.SKIP_BUILD != 'true' }
         }
       }
       steps {
@@ -77,6 +140,9 @@ pipeline
     }
 
     stage('Docker push') {
+      when {
+        expression { env.SKIP_BUILD != 'true' }
+      }
       steps {
         script {
           sh("aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR}")
@@ -97,7 +163,10 @@ pipeline
 
     stage('Deploy - Development') {
       when {
-        branch 'development'
+        allOf {
+          branch 'development'
+          expression { env.SKIP_BUILD != 'true' }
+        }
       }
 
       steps
@@ -131,7 +200,10 @@ pipeline
     }
     stage('Deploy - Test') {
       when {
-        branch 'test'
+        allOf {
+          branch 'test'
+          expression { env.SKIP_BUILD != 'true' }
+        }
       }
 
       steps
@@ -163,9 +235,12 @@ pipeline
           }
         }
     }
-    stage('Deploy - Acceptance') {
+    stage('Deploy - QA/Acceptance') {
       when {
-        branch 'accp'
+        allOf {
+          branch 'qa'
+          expression { env.SKIP_BUILD != 'true' }
+        }
       }
 
       steps
@@ -199,7 +274,10 @@ pipeline
       }
     stage('Deploy - Prod') {
       when {
-        branch 'main'
+        allOf {
+          branch 'main'
+          expression { env.SKIP_BUILD != 'true' }
+        }
       }
 
       steps
@@ -240,6 +318,7 @@ pipeline
     TF_VAR_app_image = '99'
     ECR = '204048894727.dkr.ecr.us-east-1.amazonaws.com/'
     TF_LOG = 'ERROR'
+    SKIP_BUILD = 'false'  // Default to false (build by default)
     // Job pass/fail email addresses
     RECIPIENT_LIST='''
     david.hull@exprealty.net
