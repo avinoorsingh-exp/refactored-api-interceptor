@@ -235,10 +235,10 @@ pipeline
           }
         }
     }
-    stage('Deploy - Acceptance') {
+    stage('Deploy - QA/Acceptance') {
       when {
         allOf {
-          branch 'accp'
+          branch 'qa'
           expression { env.SKIP_BUILD != 'true' }
         }
       }
