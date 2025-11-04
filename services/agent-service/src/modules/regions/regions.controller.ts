@@ -1,7 +1,9 @@
 import {
 	Controller,
 	Post,
+	Put,
 	Body,
+	Param,
 	HttpCode,
 	HttpStatus,
 	Res,
@@ -12,11 +14,13 @@ import {
 	ApiOperation,
 	ApiResponse,
 	ApiBody,
+	ApiParam,
 } from '@nestjs/swagger'
-import { CreateRegionInputSchema } from '@exprealty/shared-domain'
+import { CreateRegionInputSchema, UpdateRegionInputSchema } from '@exprealty/shared-domain'
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js'
 import { RegionsService } from './regions.service.js'
 import { CreateRegionDto } from './dto/create-region.dto.js'
+import { UpdateRegionDto } from './dto/update-region.dto.js'
 import { RegionResponseDto } from './dto/region-response.dto.js'
 
 /**
@@ -80,6 +84,60 @@ export class RegionsController {
 		// Set Location header
 		res.setHeader('Location', `/v1/regions/${region.id}`)
 
+		return region as any
+	}
+
+	/**
+	 * Updates an existing region by ID.
+	 * PUT /v1/regions/:id
+	 *
+	 * @param id - Region ID to update
+	 * @param body - Region data to update
+	 * @returns The updated region with 200 status
+	 */
+	@Put(':id')
+	@HttpCode(HttpStatus.OK)
+	@ApiOperation({
+		summary: 'Update a region by ID',
+		description: 'Updates an existing region. Returns 404 if not found, 409 if name conflicts.',
+	})
+	@ApiParam({
+		name: 'id',
+		description: 'Region ID',
+		type: 'string',
+	})
+	@ApiBody({
+		type: UpdateRegionDto,
+		description: 'Region data to update',
+	})
+	@ApiResponse({
+		status: 200,
+		description: 'Region updated successfully',
+		type: RegionResponseDto,
+	})
+	@ApiResponse({
+		status: 400,
+		description: 'Validation error - malformed or invalid data',
+	})
+	@ApiResponse({
+		status: 404,
+		description: 'Not found - region with given ID does not exist',
+	})
+	@ApiResponse({
+		status: 409,
+		description: 'Conflict - duplicate normalized name',
+	})
+	async update(
+		@Param('id') id: string,
+		@Body(
+			new ZodValidationPipe(
+				UpdateRegionInputSchema,
+				'agent.region.validation',
+			),
+		)
+		body: UpdateRegionDto,
+	): Promise<RegionResponseDto> {
+		const region = await this.regionsService.update(id, body as any)
 		return region as any
 	}
 }

@@ -2,9 +2,10 @@ import { NestFactory } from '@nestjs/core'
 import { AppModule } from './app.module.js'
 import { ConfigService } from './core/config.service.js'
 import { LoggerService } from './core/logger.service.js'
-import helmet from 'helmet';
-import compression from 'compression';
-import { ProblemDetailsFilter } from './common/problem-details.filter.js';
+import helmet from 'helmet'
+import compression from 'compression'
+import { ProblemDetailsFilter } from './common/problem-details.filter.js'
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
 
 async function bootstrap() {
 	const app = await NestFactory.create(AppModule)
@@ -31,6 +32,19 @@ async function bootstrap() {
 	})
 
 	app.useGlobalFilters(new ProblemDetailsFilter(logger))
+
+	// Setup Swagger/OpenAPI documentation
+	const swaggerConfig = new DocumentBuilder()
+		.setTitle('Agent Service API')
+		.setDescription('REST API for managing agents, companies, regions, and related entities')
+		.setVersion('1.0')
+		.addTag('countries', 'Country management endpoints')
+		.addTag('companies', 'Company management endpoints')
+		.addTag('regions', 'Region management endpoints')
+		.build()
+
+	const document = SwaggerModule.createDocument(app, swaggerConfig)
+	SwaggerModule.setup('api', app, document)
 	
 	// NOTE: Global ValidationPipe removed in favor of Zod-first architecture
 	// 

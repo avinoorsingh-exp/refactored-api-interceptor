@@ -1,8 +1,8 @@
-import { Injectable, ConflictException, Logger } from '@nestjs/common'
+import { Injectable, ConflictException, Logger, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, QueryFailedError } from 'typeorm'
 import { RegionEntity } from '@exprealty/database'
-import type { CreateRegionInput, Region } from '@exprealty/shared-domain'
+import type { CreateRegionInput, UpdateRegionInput, Region } from '@exprealty/shared-domain'
 
 /**
  * Service for managing Region entities.
@@ -89,6 +89,108 @@ export class RegionsService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to create region ${dto.name}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
+				error instanceof Error ? error.stack : undefined,
+			)
+
+			// Re-throw for controller to handle
+			throw error
+		}
+	}
+
+	/**
+	 * Updates an existing region record by ID.
+	 *
+	 * @param id - The region ID to update
+	 * @param dto - Region data to update (validated by Zod)
+	 * @returns The updated region entity
+	 * @throws NotFoundException if the region with the given ID does not exist
+	 * @throws ConflictException if the update would violate unique name constraint
+	 */
+	async update(id: string, dto: UpdateRegionInput): Promise<Region> {
+		const startTime = Date.now()
+
+		try {
+			// Check if region exists
+			const existingRegion = await this.regionRepository.findOne({
+				where: { id },
+			})
+
+			if (!existingRegion) {
+				throw new NotFoundException({
+					message: `Region with id '${id}' not found`,
+					i18nType: 'agent.region.not_found',
+				})
+			}
+
+			// Normalize name for duplicate check and storage
+			const normalizedName = dto.name.toLowerCase().trim()
+
+			// Check if another region already has this name (excluding current region)
+			const duplicateRegion = await this.regionRepository.findOne({
+				where: { name: normalizedName },
+			})
+
+			if (duplicateRegion && duplicateRegion.id !== id) {
+				throw new ConflictException({
+					message: `A region with name '${dto.name}' already exists`,
+					i18nType: 'agent.region.duplicate_name',
+				})
+			}
+
+			// TODO: Remove debug logging before PR
+			this.logger.debug(
+				`Updating region: ${id} (${existingRegion.name})`,
+			)
+
+			// Update entity
+			existingRegion.name = normalizedName
+
+			// Save changes
+			const updatedRegion = await this.regionRepository.save(
+				existingRegion,
+			)
+
+			const duration = Date.now() - startTime
+			// TODO: Remove debug logging before PR
+			this.logger.log(
+				`Region updated successfully: ${updatedRegion.id} in ${duration}ms`,
+			)
+
+			return this.mapToResponse(updatedRegion)
+		} catch (error) {
+			const duration = Date.now() - startTime
+
+			// Re-throw known exceptions
+			if (
+				error instanceof NotFoundException ||
+				error instanceof ConflictException
+			) {
+				throw error
+			}
+
+			// Handle unique constraint violation (if exists at DB level)
+			if (error instanceof QueryFailedError) {
+				const pgError = error as QueryFailedError & {
+					code?: string
+					detail?: string
+				}
+
+				if (pgError.code === '23505') {
+					// TODO: Remove debug logging before PR
+					this.logger.warn(
+						`Duplicate region name attempted during update: ${dto.name} (${duration}ms)`,
+					)
+					throw new ConflictException({
+						message: `A region with name '${dto.name}' already exists`,
+						i18nType: 'agent.region.duplicate_name',
+					})
+				}
+			}
+
+			// TODO: Remove debug logging before PR
+			// Log unexpected errors
+			this.logger.error(
+				`Failed to update region ${id}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
 				error instanceof Error ? error.stack : undefined,
 			)
 

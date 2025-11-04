@@ -53,10 +53,13 @@ export type CreateRegionInput = z.infer<typeof CreateRegionInputSchema>
 
 /**
  * Schema for updating a Region.
+ * Adds trimming and length validation.
  *
  * @public
  */
-export const UpdateRegionInputSchema = RegionBaseSchema.omit({ id: true }).partial()
+export const UpdateRegionInputSchema = RegionBaseSchema.omit({ id: true }).extend({
+	name: z.string().trim().min(1, 'Name is required').max(255),
+})
 
 /**
  * @public

@@ -79,10 +79,10 @@ export class AgentServiceController {
         query,
         headers: {
           // Forward important headers
-          'content-type': headers['content-type'],
-          'accept': headers['accept'],
-          'user-agent': headers['user-agent'],
-          'authorization': headers['authorization'],  // Forward auth if present
+          ...(headers['content-type'] && { 'content-type': headers['content-type'] }),
+          ...(headers['accept'] && { 'accept': headers['accept'] }),
+          ...(headers['user-agent'] && { 'user-agent': headers['user-agent'] }),
+          ...(headers['authorization'] && { 'authorization': headers['authorization'] }),  // Forward auth if present
         },
       })
 
