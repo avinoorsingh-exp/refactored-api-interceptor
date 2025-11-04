@@ -5,7 +5,7 @@ import { AgentEntity } from './agent.entity.js'
  * TypeORM entity for SponsorConfiguration table.
  * @public
  */
-@Entity('sponsor_configurations')
+@Entity({ name: 'sponsor_configuration', schema: 'core' })
 export class SponsorConfigurationEntity {
 	@PrimaryColumn({ name: 'agent_id', type: 'bigint' })
 	agentId!: string

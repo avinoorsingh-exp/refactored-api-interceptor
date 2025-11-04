@@ -4,10 +4,11 @@ import { PublicProfileEntity } from './public-profile.entity.js'
 import { SpecialtyEntity } from './specialty.entity.js'
 
 /**
- * TypeORM entity for AgentSpecialty junction table.
+ * TypeORM entity for AgentSpecialty join table.
+ * Many-to-many relationship between Agent and Specialty.
  * @public
  */
-@Entity('agent_specialties')
+@Entity({ name: 'agent_specialty', schema: 'core' })
 export class AgentSpecialtyEntity {
 	@PrimaryColumn({ name: 'agent_uuid', type: 'uuid' })
 	agentUuid!: string

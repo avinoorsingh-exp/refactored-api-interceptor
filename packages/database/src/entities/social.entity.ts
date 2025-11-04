@@ -5,7 +5,7 @@ import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm'
  * Database representation of agent social media links.
  * @public
  */
-@Entity('socials')
+@Entity({ name: 'social', schema: 'core' })
 export class SocialEntity {
 	/**
 	 * Primary key (BigInt).

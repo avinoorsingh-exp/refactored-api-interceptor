@@ -4,7 +4,7 @@ import { Entity, Column, PrimaryGeneratedColumn } from 'typeorm'
  * TypeORM entity for PlanVariant table.
  * @public
  */
-@Entity('plan_variants')
+@Entity({ name: 'plan_variant', schema: 'core' })
 export class PlanVariantEntity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string

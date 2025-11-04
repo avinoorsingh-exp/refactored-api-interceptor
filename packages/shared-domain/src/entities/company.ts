@@ -67,10 +67,11 @@ export const CompanySchema = CompanyExpandedSchema
 /**
  * Zod schema for creating a new company.
  * Omits system-generated fields (id, timestamps).
+ * Extends base validation with trimming and length constraints.
  *
  * @public
  */
-export const CreateCompanyInput = CompanyBaseSchema.omit({
+export const CreateCompanyInputSchema = CompanyBaseSchema.omit({
 	id: true,
 	createdAt: true,
 	updatedAt: true,
@@ -86,16 +87,17 @@ export const CreateCompanyInput = CompanyBaseSchema.omit({
  *
  * @public
  */
-export type CreateCompanyInput = z.infer<typeof CreateCompanyInput>
+export type CreateCompanyInput = z.infer<typeof CreateCompanyInputSchema>
 
 /**
  * Zod schema for updating an existing company.
- * All fields are optional for partial updates.
+ * Requires all fields for full resource replacement (PUT semantics).
+ * Reuses CreateCompanyInputSchema validation.
  *
  * @public
  */
-export const UpdateCompanyInput = CreateCompanyInput.partial().describe(
-	'Payload to update a company (partial)',
+export const UpdateCompanyInputSchema = CreateCompanyInputSchema.describe(
+	'Payload to update a company (full replacement)',
 )
 
 /**
@@ -103,4 +105,21 @@ export const UpdateCompanyInput = CreateCompanyInput.partial().describe(
  *
  * @public
  */
-export type UpdateCompanyInput = z.infer<typeof UpdateCompanyInput>
+export type UpdateCompanyInput = z.infer<typeof UpdateCompanyInputSchema>
+
+/**
+ * Zod schema for validating company id path parameter.
+ * Reuses validation from CompanyBaseSchema.shape.id.
+ *
+ * @public
+ */
+export const CompanyIdParamSchema = z.object({
+	id: CompanyBaseSchema.shape.id,
+})
+
+/**
+ * TypeScript type for company id path parameter.
+ *
+ * @public
+ */
+export type CompanyIdParam = z.infer<typeof CompanyIdParamSchema>

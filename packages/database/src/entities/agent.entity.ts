@@ -6,7 +6,7 @@ import { AgentCompanyEntity } from './agent-company.entity.js'
  * Database representation of the domain Agent type.
  * @public
  */
-@Entity('agents')
+@Entity({ name: 'agent', schema: 'core' })
 export class AgentEntity {
 	/**
 	 * Primary key (UUID).

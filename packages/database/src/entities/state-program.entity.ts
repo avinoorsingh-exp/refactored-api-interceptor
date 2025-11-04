@@ -3,10 +3,10 @@ import { StateEntity } from './state.entity.js'
 import { ProgramEntity } from './program.entity.js'
 
 /**
- * TypeORM entity for StateProgram junction table.
+ * TypeORM entity for StateProgram table.
  * @public
  */
-@Entity('state_programs')
+@Entity({ name: 'state_program', schema: 'core' })
 export class StateProgramEntity {
 	@PrimaryColumn({ name: 'state_id', type: 'uuid' })
 	stateId!: string

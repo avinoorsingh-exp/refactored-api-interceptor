@@ -4,7 +4,7 @@ import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm'
  * TypeORM entity for Specialty table.
  * @public
  */
-@Entity('specialties')
+@Entity({ name: 'specialty', schema: 'core' })
 export class SpecialtyEntity {
 	@PrimaryGeneratedColumn('increment', { type: 'bigint' })
 	id!: string

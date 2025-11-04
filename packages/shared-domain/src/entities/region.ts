@@ -38,10 +38,13 @@ export type Region = RegionExpanded
 
 /**
  * Schema for creating a new Region.
+ * Adds trimming and length validation.
  *
  * @public
  */
-export const CreateRegionInputSchema = RegionBaseSchema.omit({ id: true })
+export const CreateRegionInputSchema = RegionBaseSchema.omit({ id: true }).extend({
+	name: z.string().trim().min(1, 'Name is required').max(255),
+})
 
 /**
  * @public

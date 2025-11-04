@@ -5,7 +5,7 @@ import { PaymentSettingsEntity } from './payment-settings.entity.js'
  * TypeORM entity for PaymentSettingsVariant table.
  * @public
  */
-@Entity('payment_settings_variants')
+@Entity({ name: 'payment_settings_variant', schema: 'core' })
 export class PaymentSettingsVariantEntity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string

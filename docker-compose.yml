@@ -42,6 +42,9 @@ services:
     env_file:
       - ./.env
       - ./services/agent-service/.env.agentservice    
+    environment:
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
     ports:
       - "3000:3000"
     depends_on:
@@ -63,6 +66,9 @@ services:
     env_file:
       - ./.env
       - ./services/orchestrator/.env.orchestrator
+    environment:
+      - DB_HOST=postgres
+      - REDIS_HOST=redis
     depends_on:
       - agent-service
     volumes:

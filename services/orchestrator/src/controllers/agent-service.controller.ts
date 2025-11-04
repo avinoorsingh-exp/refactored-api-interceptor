@@ -15,16 +15,16 @@ import { ProblemTypes, ProblemTitles } from '@exprealty/shared-domain'
 /**
  * Agent Service Controller
  * 
- * Catch-all proxy that forwards ALL requests under /v1/agent/* 
+ * Catch-all proxy that forwards ALL requests under /v1/* 
  * to the agent-service microservice.
  * 
  * This is a pure pass-through proxy:
- * 1. Receive request at /v1/agent/*
+ * 1. Receive request at /v1/*
  * 2. Get client from factory (no tenant ID needed)
  * 3. Proxy request to agent-service
  * 4. Return response
  */
-@Controller('/v1/agent')
+@Controller('/v1')
 export class AgentServiceController {
   constructor(
     private readonly agentFactory: AgentServiceClientFactory,
@@ -34,13 +34,13 @@ export class AgentServiceController {
   /**
    * Catch-all route handler
    * 
-   * Matches ANY HTTP method and ANY path under /v1/agent/*
+   * Matches ANY HTTP method and ANY path under /v1/*
    * 
    * Examples:
-   * - POST /v1/agent/chat → agent-service:8090/v1/agent/chat
-   * - GET /v1/agent/sessions → agent-service:8090/v1/agent/sessions
-   * - PUT /v1/agent/sessions/123 → agent-service:8090/v1/agent/sessions/123
-   * - DELETE /v1/agent/messages/456 → agent-service:8090/v1/agent/messages/456
+   * - POST /v1/countries → agent-service:3000/v1/countries
+   * - GET /v1/agent/health → agent-service:3000/v1/agent/health
+   * - PUT /v1/countries/US → agent-service:3000/v1/countries/US
+   * - DELETE /v1/countries/CA → agent-service:3000/v1/countries/CA
    */
   @All('*')
   async proxyToAgentService(
@@ -149,11 +149,14 @@ export class AgentServiceController {
   }
 
   /**
-   * Health check endpoint
-   * GET /v1/agent/health
+   * Agent service health check endpoint
+   * GET /v1/agent/health → forwards to agent-service
+   * 
+   * Note: /v1/health is handled by OrchestratorController and returns orchestrator health.
+   * This route specifically checks agent-service health by proxying the request.
    */
-  @All('health')
-  async health(): Promise<{ status: string; service: string }> {
+  @All('agent/health')
+  async agentHealth(): Promise<{ status: string; service: string }> {
     return {
       status: 'ok',
       service: 'agent-service-proxy',

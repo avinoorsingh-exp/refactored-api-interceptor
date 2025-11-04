@@ -4,7 +4,7 @@ import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm'
  * TypeORM entity for Language table.
  * @public
  */
-@Entity('languages')
+@Entity({ name: 'language', schema: 'core' })
 export class LanguageEntity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string

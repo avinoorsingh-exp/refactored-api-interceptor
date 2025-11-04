@@ -12,7 +12,7 @@ import { RegionEntity } from './region.entity.js'
  * TypeORM entity for State table.
  * @public
  */
-@Entity('states')
+@Entity({ name: 'state', schema: 'core' })
 export class StateEntity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string
@@ -43,9 +43,9 @@ export class StateEntity {
 	modifiedBy!: string
 
 	@Column({ name: 'region_id', type: 'bigint' })
-	regionId!: string
+	regionId!: bigint
 
-	@ManyToOne(() => RegionEntity)
+	@ManyToOne(() => RegionEntity, (region) => region.id, { cascade: true, eager: false })
 	@JoinColumn({ name: 'region_id' })
 	region?: RegionEntity
 
@@ -53,6 +53,6 @@ export class StateEntity {
 	 * One-to-many relationship with StateProgram.
 	 * Uses string name to avoid circular dependency at module load time.
 	 */
-	@OneToMany('StateProgramEntity', 'state')
+	@OneToMany('StateProgramEntity', 'statePrograms')
 	statePrograms?: unknown[]
 }

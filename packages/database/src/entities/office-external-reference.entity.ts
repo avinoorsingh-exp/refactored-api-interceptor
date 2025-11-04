@@ -6,7 +6,7 @@ import { ExternalReferenceEntity } from './external-reference.entity.js'
  * TypeORM entity for OfficeExternalReference junction table.
  * @public
  */
-@Entity('office_external_references')
+@Entity({ name: 'office_external_reference', schema: 'core' })
 export class OfficeExternalReferenceEntity {
 	@PrimaryColumn({ name: 'office_id', type: 'uuid' })
 	officeId!: string

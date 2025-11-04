@@ -33,7 +33,9 @@
     "reflect-metadata": "^0.2.1",
     "rxjs": "^7.8.1",
     "uuid": "^13.0.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "helmet": "^8.1.0",
+    "compression": "^1.8.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.3.0",

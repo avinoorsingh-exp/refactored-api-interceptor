@@ -3,10 +3,11 @@ import { AgentEntity } from './agent.entity.js'
 import { MLSEntity } from './mls.entity.js'
 
 /**
- * TypeORM entity for AgentMLS junction table.
+ * TypeORM entity for AgentMLS join table.
+ * Many-to-many relationship between Agent and MLS.
  * @public
  */
-@Entity('agent_mls')
+@Entity({ name: 'agent_mls', schema: 'core' })
 export class AgentMLSEntity {
 	@PrimaryColumn({ name: 'agent_id', type: 'bigint' })
 	agentId!: string

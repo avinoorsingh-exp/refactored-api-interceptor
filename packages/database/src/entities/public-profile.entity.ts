@@ -11,10 +11,10 @@ import { AgentEntity } from './agent.entity.js'
 
 /**
  * TypeORM entity for PublicProfile table.
- * Database representation of an agent's public-facing profile.
+ * Stores publicly visible information for agent profiles.
  * @public
  */
-@Entity('public_profiles')
+@Entity({ name: 'public_profile', schema: 'core' })
 export class PublicProfileEntity {
 	/**
 	 * Primary key (UUID).

@@ -4,7 +4,7 @@ import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm'
  * TypeORM entity for Tax table.
  * @public
  */
-@Entity('taxes')
+@Entity({ name: 'tax', schema: 'core' })
 export class TaxEntity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string
