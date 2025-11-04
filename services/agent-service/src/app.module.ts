@@ -6,6 +6,7 @@ import { LoggerModule } from './core/logger.module.js'
 import { AgentController } from './app.controller.js'
 import { CountriesModule } from './modules/countries/countries.module.js'
 import { CompaniesModule } from './modules/companies/companies.module.js'
+import { RegionsModule } from './modules/regions/regions.module.js'
 
 @Module({
 	imports: [
@@ -14,6 +15,7 @@ import { CompaniesModule } from './modules/companies/companies.module.js'
     DatabaseModule,
     CountriesModule,
     CompaniesModule,
+    RegionsModule,
 	],
 	controllers: [AgentController],
 	providers: [],

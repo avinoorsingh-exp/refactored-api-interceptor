@@ -9,10 +9,10 @@ import {
 
 /**
  * TypeORM entity for ExternalReference table.
- * Database representation of external system identifiers and mappings.
+ * Stores references to external systems (e.g., legacy IDs).
  * @public
  */
-@Entity('external_references')
+@Entity({ name: 'external_reference', schema: 'core' })
 export class ExternalReferenceEntity {
 	/**
 	 * Primary key (UUID).

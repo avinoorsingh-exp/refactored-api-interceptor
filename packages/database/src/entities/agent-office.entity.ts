@@ -3,10 +3,11 @@ import { AgentEntity } from './agent.entity.js'
 import { OfficeEntity } from './office.entity.js'
 
 /**
- * TypeORM entity for AgentOffice junction table.
+ * TypeORM entity for AgentOffice join table.
+ * Many-to-many relationship between Agent and Office.
  * @public
  */
-@Entity('agent_offices')
+@Entity({ name: 'agent_office', schema: 'core' })
 export class AgentOfficeEntity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string

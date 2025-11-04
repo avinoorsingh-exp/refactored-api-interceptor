@@ -4,7 +4,7 @@ import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm'
  * TypeORM entity for LineOfBusiness table.
  * @public
  */
-@Entity('line_of_business')
+@Entity({ name: 'line_of_business', schema: 'core' })
 export class LineOfBusinessEntity {
 	@PrimaryGeneratedColumn('increment', { type: 'bigint' })
 	id!: string

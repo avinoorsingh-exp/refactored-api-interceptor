@@ -12,11 +12,12 @@ import { AddressEntity } from './address.entity.js'
 
 /**
  * TypeORM entity for AgentAddress join table.
- * Database representation of the domain AgentAddress type.
- * Represents the many-to-many relationship between agents and addresses.
+ * Many-to-many relationship between Agent and Address.
+ * Manages connection between agents and their addresses.
+ * Supports address history tracking.
  * @public
  */
-@Entity('agent_addresses')
+@Entity({ name: 'agent_address', schema: 'core' })
 export class AgentAddressEntity {
 	/**
 	 * Primary key (UUID).

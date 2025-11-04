@@ -8,10 +8,11 @@ import {
 
 /**
  * TypeORM entity for Address table.
- * Database representation of the domain Address type.
+ * Database representation of domain Address type from @exprealty/shared-domain.
+ * Persists ISO 3166 country codes and regional data.
  * @public
  */
-@Entity('addresses')
+@Entity({ name: 'address', schema: 'core' })
 export class AddressEntity {
 	/**
 	 * Primary key (UUID).

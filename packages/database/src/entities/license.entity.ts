@@ -10,9 +10,10 @@ import { LineOfBusinessEntity } from './line-of-business.entity.js'
 
 /**
  * TypeORM entity for License table.
+ * Stores professional licensing information for agents.
  * @public
  */
-@Entity('licenses')
+@Entity({ name: 'license', schema: 'core' })
 export class LicenseEntity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string

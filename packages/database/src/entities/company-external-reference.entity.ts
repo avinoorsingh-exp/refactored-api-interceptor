@@ -7,7 +7,7 @@ import { ExternalReferenceEntity } from './external-reference.entity.js'
  * Links Company entities with ExternalReference entities (many-to-many).
  * @public
  */
-@Entity('company_external_references')
+@Entity({ name: 'company_external_reference', schema: 'core' })
 export class CompanyExternalReferenceEntity {
 	/**
 	 * Foreign key to Company (composite PK).

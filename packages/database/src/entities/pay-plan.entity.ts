@@ -4,7 +4,7 @@ import { Entity, Column, PrimaryGeneratedColumn, OneToMany } from 'typeorm'
  * TypeORM entity for PayPlan table.
  * @public
  */
-@Entity('pay_plans')
+@Entity({ name: 'pay_plan', schema: 'core' })
 export class PayPlanEntity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string

@@ -5,7 +5,7 @@ import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm'
  * Stores ISO 3166-1 country reference data.
  * @public
  */
-@Entity('countries')
+@Entity({ name: 'country', schema: 'core' })
 export class CountryEntity {
 	/**
 	 * Primary key with auto-increment integer.

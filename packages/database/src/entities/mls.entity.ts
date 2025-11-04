@@ -10,9 +10,10 @@ import { AddressEntity } from './address.entity.js'
 
 /**
  * TypeORM entity for MLS table.
+ * Stores Multiple Listing Service information for real estate agents.
  * @public
  */
-@Entity('mls')
+@Entity({ name: 'mls', schema: 'core' })
 export class MLSEntity {
 	@PrimaryGeneratedColumn('increment', { type: 'bigint' })
 	mlsId!: string

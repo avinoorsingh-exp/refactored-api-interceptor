@@ -16,6 +16,8 @@
 		"lint:fix": "pnpm -r lint --fix && prettier --write .",
 		"manifests-lint": "pnpm manypkg check",
 		"manifests-fix": "pnpm manypkg fix",
+		"migration:generate": "pnpm -r --filter='./packages/database' migration:generate",
+		"migration:run": "pnpm -r --filter='./packages/database' migration:run",
 		"prepare": "husky",
 		"test:unit": "pnpm -r --parallel --filter ./services/** jest -c jest.config.cjs || pnpm -r --filter ./services/** jest -c jest.config.cjs",
 		"test:unit:watch": "pnpm -r --filter ./services/** jest -c jest.config.cjs --watch",

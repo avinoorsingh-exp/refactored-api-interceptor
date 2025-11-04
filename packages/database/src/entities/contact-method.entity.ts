@@ -11,10 +11,10 @@ import { AgentEntity } from './agent.entity.js'
 
 /**
  * TypeORM entity for ContactMethod table.
- * Database representation of agent contact methods (email, phone, etc.).
+ * Stores phone, email, and other contact methods for agents.
  * @public
  */
-@Entity('contact_methods')
+@Entity({ name: 'contact_method', schema: 'core' })
 export class ContactMethodEntity {
 	/**
 	 * Primary key (BigInt as string for large ID values).

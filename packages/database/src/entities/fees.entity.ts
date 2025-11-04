@@ -4,7 +4,7 @@ import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm'
  * TypeORM entity for Fees table.
  * @beta
  */
-@Entity('fees')
+@Entity({ name: 'fee', schema: 'core' })
 export class FeesEntity {
 	@PrimaryGeneratedColumn('increment', { type: 'bigint' })
 	id!: string

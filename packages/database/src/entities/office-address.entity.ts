@@ -6,7 +6,7 @@ import { AddressEntity } from './address.entity.js'
  * TypeORM entity for OfficeAddress junction table.
  * @public
  */
-@Entity('office_addresses')
+@Entity({ name: 'office_address', schema: 'core' })
 export class OfficeAddressEntity {
 	@PrimaryColumn({ name: 'office_id', type: 'bigint' })
 	officeId!: string

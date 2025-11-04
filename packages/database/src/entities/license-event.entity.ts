@@ -5,7 +5,7 @@ import { LicenseEntity } from './license.entity.js'
  * TypeORM entity for LicenseEvent table.
  * @public
  */
-@Entity('license_events')
+@Entity({ name: 'license_event', schema: 'core' })
 export class LicenseEventEntity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string

@@ -11,7 +11,7 @@ import {
  * Database representation of the domain Company type.
  * @public
  */
-@Entity('companies')
+@Entity({ name: 'company', schema: 'core' })
 export class CompanyEntity {
 	/**
 	 * Primary key (UUID).

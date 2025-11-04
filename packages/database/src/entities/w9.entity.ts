@@ -9,9 +9,10 @@ import {
 
 /**
  * TypeORM entity for W9 table.
+ * Stores IRS Form W-9 information for tax reporting.
  * @public
  */
-@Entity('w9')
+@Entity({ name: 'w9', schema: 'core' })
 export class W9Entity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string

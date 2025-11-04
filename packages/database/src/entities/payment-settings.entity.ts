@@ -11,9 +11,10 @@ import { PayPlanEntity } from './pay-plan.entity.js'
 
 /**
  * TypeORM entity for PaymentSettings table.
+ * Stores payment settings for agents, including bank and broker details.
  * @public
  */
-@Entity('payment_settings')
+@Entity({ name: 'payment_settings', schema: 'core' })
 export class PaymentSettingsEntity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string

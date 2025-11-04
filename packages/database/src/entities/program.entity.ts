@@ -4,7 +4,7 @@ import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm'
  * TypeORM entity for Program table.
  * @public
  */
-@Entity('programs')
+@Entity({ name: 'program', schema: 'core' })
 export class ProgramEntity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string
