@@ -163,9 +163,9 @@ pipeline
           }
         }
     }
-    stage('Deploy - Acceptance') {
+    stage('Deploy - QA/Acceptance') {
       when {
-        branch 'accp'
+        branch 'qa'
       }
 
       steps
