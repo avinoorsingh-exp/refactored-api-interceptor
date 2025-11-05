@@ -5,6 +5,7 @@ import {
 	CreateDateColumn,
 	UpdateDateColumn,
 } from 'typeorm'
+import type { Company, Name, InstantUTC, Email } from '@exprealty/shared-domain'
 
 /**
  * TypeORM entity for Company table.
@@ -12,7 +13,7 @@ import {
  * @public
  */
 @Entity({ name: 'company', schema: 'core' })
-export class CompanyEntity {
+export class CompanyEntity implements Company {
 	/**
 	 * Primary key (UUID).
 	 * @public
@@ -25,26 +26,26 @@ export class CompanyEntity {
 	 * @public
 	 */
 	@Column({ type: 'text' })
-	name!: string
+	name!: Name
 
 	/**
 	 * Company email address.
 	 * @public
 	 */
 	@Column({ type: 'text', unique: true })
-	email!: string
+	email!: Email
 
 	/**
 	 * Creation timestamp.
 	 * @public
 	 */
 	@CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
-	createdAt!: Date
+	createdAt!: InstantUTC
 
 	/**
 	 * Last update timestamp.
 	 * @public
 	 */
 	@UpdateDateColumn({ name: 'updated_at', type: 'timestamp with time zone' })
-	updatedAt!: Date
+	updatedAt!: InstantUTC
 }

@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, QueryFailedError } from 'typeorm'
 import { CompanyEntity } from '@exprealty/database'
-import type { CreateCompanyInput, UpdateCompanyInput, Company } from '@exprealty/shared-domain'
+import type { CreateCompanyInput, UpdateCompanyInput, Company, Name } from '@exprealty/shared-domain'
 
 /**
  * Service for managing Company entities.
@@ -38,7 +38,7 @@ export class CompaniesService {
 
 			// Check for existing company with same normalized name
 			const existing = await this.companyRepository.findOne({
-				where: { name: normalizedName },
+				where: { name: normalizedName as Name },
 			})
 
 			if (existing) {

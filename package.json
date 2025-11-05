@@ -11,6 +11,8 @@
 		"build:packages": "pnpm -r --filter='./packages/*' build",
 		"build:services": "pnpm -r --filter='./services/*' build",
 		"check": "pnpm -r check",
+		"db:create": "./scripts/database/create-database.sh",
+		"db:reset": "./scripts/reset-database.sh",
 		"dev": "./scripts/dev.sh",
 		"lint": "pnpm -r lint --no-warn-ignored && pnpm manifests-lint",
 		"lint:fix": "pnpm -r lint --fix && prettier --write .",
