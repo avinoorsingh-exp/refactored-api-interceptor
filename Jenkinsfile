@@ -154,7 +154,7 @@ pipeline
           docker.image('node:20-alpine')
             .inside("-u 0 -v $WORKSPACE:/app -w /app") {
               sh """
-              apk add --no-cache jq python3 make g++
+              apk add --no-cache jq python3 make g++ curl
               npm install -g pnpm
 
               # Debug: Show available keys in secrets JSON
@@ -200,6 +200,21 @@ pipeline
               echo "DB_USERNAME: \$DB_USERNAME"
               echo "DB_PASSWORD: [REDACTED]"
               echo "DB_NAME: \$DB_NAME"
+              echo ""
+
+              # Download AWS RDS CA certificate bundle for SSL connections
+              echo "=== Downloading AWS RDS CA certificate ==="
+              curl -o /tmp/rds-ca-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem || {
+                echo "Failed to download RDS CA certificate, trying regional bundle..."
+                curl -o /tmp/rds-ca-bundle.pem https://truststore.pki.rds.amazonaws.com/us-east-1/us-east-1-bundle.pem || {
+                  echo "ERROR: Failed to download RDS CA certificate"
+                  exit 1
+                }
+              }
+              chmod 644 /tmp/rds-ca-bundle.pem
+              export DB_SSL=true
+              export DB_SSL_CA_PATH=/tmp/rds-ca-bundle.pem
+              echo "RDS CA certificate downloaded to /tmp/rds-ca-bundle.pem"
               echo ""
 
               pnpm install --frozen-lockfile
@@ -255,7 +270,7 @@ pipeline
           docker.image('node:20-alpine')
             .inside("-u 0 -v $WORKSPACE:/app -w /app") {
               sh """
-              apk add --no-cache jq python3 make g++
+              apk add --no-cache jq python3 make g++ curl
               npm install -g pnpm
 
               # Debug: Show available keys in secrets JSON
@@ -301,6 +316,21 @@ pipeline
               echo "DB_USERNAME: \$DB_USERNAME"
               echo "DB_PASSWORD: [REDACTED]"
               echo "DB_NAME: \$DB_NAME"
+              echo ""
+
+              # Download AWS RDS CA certificate bundle for SSL connections
+              echo "=== Downloading AWS RDS CA certificate ==="
+              curl -o /tmp/rds-ca-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem || {
+                echo "Failed to download RDS CA certificate, trying regional bundle..."
+                curl -o /tmp/rds-ca-bundle.pem https://truststore.pki.rds.amazonaws.com/us-east-1/us-east-1-bundle.pem || {
+                  echo "ERROR: Failed to download RDS CA certificate"
+                  exit 1
+                }
+              }
+              chmod 644 /tmp/rds-ca-bundle.pem
+              export DB_SSL=true
+              export DB_SSL_CA_PATH=/tmp/rds-ca-bundle.pem
+              echo "RDS CA certificate downloaded to /tmp/rds-ca-bundle.pem"
               echo ""
 
               pnpm install --frozen-lockfile
@@ -359,7 +389,7 @@ pipeline
           docker.image('node:20-alpine')
             .inside("-u 0 -v $WORKSPACE:/app -w /app") {
               sh """
-              apk add --no-cache jq python3 make g++
+              apk add --no-cache jq python3 make g++ curl
               npm install -g pnpm
 
               # Debug: Show available keys in secrets JSON
@@ -405,6 +435,21 @@ pipeline
               echo "DB_USERNAME: \$DB_USERNAME"
               echo "DB_PASSWORD: [REDACTED]"
               echo "DB_NAME: \$DB_NAME"
+              echo ""
+
+              # Download AWS RDS CA certificate bundle for SSL connections
+              echo "=== Downloading AWS RDS CA certificate ==="
+              curl -o /tmp/rds-ca-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem || {
+                echo "Failed to download RDS CA certificate, trying regional bundle..."
+                curl -o /tmp/rds-ca-bundle.pem https://truststore.pki.rds.amazonaws.com/us-east-1/us-east-1-bundle.pem || {
+                  echo "ERROR: Failed to download RDS CA certificate"
+                  exit 1
+                }
+              }
+              chmod 644 /tmp/rds-ca-bundle.pem
+              export DB_SSL=true
+              export DB_SSL_CA_PATH=/tmp/rds-ca-bundle.pem
+              echo "RDS CA certificate downloaded to /tmp/rds-ca-bundle.pem"
               echo ""
 
               pnpm install --frozen-lockfile
@@ -463,7 +508,7 @@ pipeline
           docker.image('node:20-alpine')
             .inside("-u 0 -v $WORKSPACE:/app -w /app") {
               sh """
-              apk add --no-cache jq python3 make g++
+              apk add --no-cache jq python3 make g++ curl
               npm install -g pnpm
 
               # Debug: Show available keys in secrets JSON
@@ -509,6 +554,21 @@ pipeline
               echo "DB_USERNAME: \$DB_USERNAME"
               echo "DB_PASSWORD: [REDACTED]"
               echo "DB_NAME: \$DB_NAME"
+              echo ""
+
+              # Download AWS RDS CA certificate bundle for SSL connections
+              echo "=== Downloading AWS RDS CA certificate ==="
+              curl -o /tmp/rds-ca-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem || {
+                echo "Failed to download RDS CA certificate, trying regional bundle..."
+                curl -o /tmp/rds-ca-bundle.pem https://truststore.pki.rds.amazonaws.com/us-east-1/us-east-1-bundle.pem || {
+                  echo "ERROR: Failed to download RDS CA certificate"
+                  exit 1
+                }
+              }
+              chmod 644 /tmp/rds-ca-bundle.pem
+              export DB_SSL=true
+              export DB_SSL_CA_PATH=/tmp/rds-ca-bundle.pem
+              echo "RDS CA certificate downloaded to /tmp/rds-ca-bundle.pem"
               echo ""
 
               pnpm install --frozen-lockfile

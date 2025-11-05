@@ -1,5 +1,6 @@
 import 'reflect-metadata'
 import { DataSource } from 'typeorm'
+import * as fs from 'fs'
 import { AddressEntity } from './entities/core/address.entity.js'
 import { AgentCompanyEntity } from './entities/core/agent-company.entity.js'
 import { AgentEntity } from './entities/core/agent.entity.js'
@@ -52,6 +53,37 @@ import { FeesEntity } from './entities/core/fees.entity.js'
 import { ApprovalEntity } from './entities/core/approval.entity.js'
 
 /**
+ * Get SSL configuration for RDS connections
+ * @internal
+ */
+function getSSLConfig() {
+	const useSSL = process.env.DB_SSL === 'true' || process.env.DB_SSL_CA_PATH
+	if (!useSSL) {
+		return false
+	}
+
+	if (process.env.DB_SSL_CA_PATH) {
+		try {
+			const ca = fs.readFileSync(process.env.DB_SSL_CA_PATH, 'utf8')
+			return {
+				ca,
+				rejectUnauthorized: true,
+			}
+		} catch (error) {
+			console.warn(`Failed to read SSL CA certificate from ${process.env.DB_SSL_CA_PATH}:`, error)
+			return {
+				rejectUnauthorized: false,
+			}
+		}
+	}
+
+	// Fallback: SSL without certificate verification (less secure but works)
+	return {
+		rejectUnauthorized: false,
+	}
+}
+
+/**
  * TypeORM DataSource configuration for eXpRealty platform.
  *
  * Environment Variables:
@@ -60,6 +92,8 @@ import { ApprovalEntity } from './entities/core/approval.entity.js'
  * - DB_USERNAME: Database user (default: postgres)
  * - DB_PASSWORD: Database password (default: postgres)
  * - DB_NAME: Database name (default: transaction_calculator)
+ * - DB_SSL: Enable SSL (default: false, set to 'true' for RDS)
+ * - DB_SSL_CA_PATH: Path to RDS CA certificate bundle (optional)
  * - NODE_ENV: Environment (development|production|test)
  *
  * @public
@@ -71,6 +105,7 @@ export const AppDataSource = new DataSource({
 	username: process.env.DB_USERNAME || 'postgres',
 	password: process.env.DB_PASSWORD || 'postgres',
 	database: process.env.DB_NAME || 'agent_database',
+	ssl: getSSLConfig(),
 
 	// Entities
 	entities: [
