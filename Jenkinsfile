@@ -14,12 +14,14 @@ pipeline
           VERSION = shortCommitHash
           // set the build display name
           currentBuild.displayName = "#${BUILD_ID}-${VERSION}"
-          if (env.BRANCH_NAME == 'development') {
+          if (env.BRANCH_NAME == 'dev') {
               IMAGE = "$PROJECT:dev-$VERSION" 
           } else if (env.BRANCH_NAME == 'test') {
               IMAGE = "$PROJECT:test-$VERSION" 
           } else if (env.BRANCH_NAME == 'accp') {
               IMAGE = "$PROJECT:accp-$VERSION"
+          } else if (env.BRANCH_NAME == 'qa') {
+              IMAGE = "$PROJECT:qa-$VERSION"
           } else if (env.BRANCH_NAME == 'main') {
               IMAGE = "$PROJECT:prod-$VERSION"
           }
@@ -39,7 +41,7 @@ pipeline
     stage('Test + Coverage') {
       when {
         anyOf {
-          branch 'development'
+          branch 'dev'
           expression { env.BRANCH_NAME.startsWith('feature/') }
         }
       }
@@ -95,9 +97,83 @@ pipeline
       }
     }
 
+    stage('Fetch Database Secrets') {
+      when {
+        anyOf {
+          branch 'dev'
+          branch 'test'
+          branch 'qa'
+          branch 'accp'
+          branch 'main'
+        }
+      }
+
+      steps {
+        script {
+          def secretName = ''
+          def credentialsId = ''
+          
+          if (env.BRANCH_NAME == 'dev') {
+            secretName = 'dev/agent-service-dev'
+            credentialsId = 'Jenkins-Dev'
+          } else if (env.BRANCH_NAME == 'test') {
+            secretName = 'dev/agent-service-test'
+            credentialsId = 'Jenkins-Dev'
+          } else if (env.BRANCH_NAME == 'qa') {
+            secretName = 'qa/agent-service-accp'
+            credentialsId = 'jenkins-qa-user'
+          } else if (env.BRANCH_NAME == 'accp') {
+            secretName = 'qa/agent-service-accp'
+            credentialsId = 'jenkins-qa-user'
+          } else if (env.BRANCH_NAME == 'main') {
+            secretName = 'prod/agent-service-prod'
+            credentialsId = '88caba18-4691-47c5-92a9-e66ee83da4e4'
+          }
+
+          withCredentials([[
+            $class: 'AmazonWebServicesCredentialsBinding',
+            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+            credentialsId: credentialsId
+          ]]) {
+            sh """
+            aws secretsmanager get-secret-value --secret-id "${secretName}" --region us-east-1 --query 'SecretString' --output text > db-secrets.json
+            """
+          }
+        }
+      }
+    }
+
+    stage('Run Migrations - Development') {
+      when {
+        branch 'dev'
+      }
+
+      steps {
+        script {
+          docker.image('node:20-alpine')
+            .inside("-u 0 -v $WORKSPACE:/app -w /app") {
+              sh """
+              apk add --no-cache jq python3 make g++
+              npm install -g pnpm
+
+              export DB_HOST=\$(cat db-secrets.json | jq -r '.DB_HOST')
+              export DB_PORT=\$(cat db-secrets.json | jq -r '.DB_PORT')
+              export DB_USERNAME=\$(cat db-secrets.json | jq -r '.DB_USERNAME')
+              export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD')
+              export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME')
+
+              pnpm install --frozen-lockfile
+              pnpm migration:run
+              """
+            }
+        }
+      }
+    }
+
     stage('Deploy - Development') {
       when {
-        branch 'development'
+        branch 'dev'
       }
 
       steps
@@ -129,6 +205,34 @@ pipeline
           }
         }
     }
+
+    stage('Run Migrations - Test') {
+      when {
+        branch 'test'
+      }
+
+      steps {
+        script {
+          docker.image('node:20-alpine')
+            .inside("-u 0 -v $WORKSPACE:/app -w /app") {
+              sh """
+              apk add --no-cache jq python3 make g++
+              npm install -g pnpm
+
+              export DB_HOST=\$(cat db-secrets.json | jq -r '.DB_HOST')
+              export DB_PORT=\$(cat db-secrets.json | jq -r '.DB_PORT')
+              export DB_USERNAME=\$(cat db-secrets.json | jq -r '.DB_USERNAME')
+              export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD')
+              export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME')
+
+              pnpm install --frozen-lockfile
+              pnpm migration:run
+              """
+            }
+        }
+      }
+    }
+
     stage('Deploy - Test') {
       when {
         branch 'test'
@@ -163,40 +267,102 @@ pipeline
           }
         }
     }
+
+    stage('Run Migrations - QA/Acceptance') {
+      when {
+        anyOf {
+          branch 'qa'
+          branch 'accp'
+        }
+      }
+
+      steps {
+        script {
+          docker.image('node:20-alpine')
+            .inside("-u 0 -v $WORKSPACE:/app -w /app") {
+              sh """
+              apk add --no-cache jq python3 make g++
+              npm install -g pnpm
+
+              export DB_HOST=\$(cat db-secrets.json | jq -r '.DB_HOST')
+              export DB_PORT=\$(cat db-secrets.json | jq -r '.DB_PORT')
+              export DB_USERNAME=\$(cat db-secrets.json | jq -r '.DB_USERNAME')
+              export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD')
+              export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME')
+
+              pnpm install --frozen-lockfile
+              pnpm migration:run
+              """
+            }
+        }
+      }
+    }
+
     stage('Deploy - QA/Acceptance') {
       when {
-        branch 'qa'
+        anyOf {
+          branch 'qa'
+          branch 'accp'
+        }
       }
 
       steps
       {
         git(url: 'https://bitbucket.org/exp-realty/exp-tf-qa.git', branch: 'master', credentialsId: 'exp-jenkins')
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-              credentialsId: 'jenkins-qa-user'
-            ]]) {
-            script
-            {
-              docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
-                .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
-                {
-                  sh """
-                  aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-qa
-                  aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-qa
-                  aws configure set region us-east-1 --profile exp-qa
+        withCredentials([[
+          $class: 'AmazonWebServicesCredentialsBinding',
+          accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+          secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+          credentialsId: 'jenkins-qa-user'
+        ]]) {
+          script
+          {
+            docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
+              .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
+              {
+                sh """
+                aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-qa
+                aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-qa
+                aws configure set region us-east-1 --profile exp-qa
 
-                  cd /data/account/exp-realty-qa/us-east-1/agent-service/accp/agent-service-accp/ecs
-                  terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
-                  terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
-                  """
-                }
+                cd /data/account/exp-realty-qa/us-east-1/agent-service/accp/agent-service-accp/ecs
+                terragrunt init -reconfigure
+                terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
+                terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
+                """
               }
+          }
+        }
+      }
+    }
+
+    stage('Run Migrations - Prod') {
+      when {
+        branch 'main'
+      }
+
+      steps {
+        script {
+          docker.image('node:20-alpine')
+            .inside("-u 0 -v $WORKSPACE:/app -w /app") {
+              sh """
+              apk add --no-cache jq python3 make g++
+              npm install -g pnpm
+
+              export DB_HOST=\$(cat db-secrets.json | jq -r '.DB_HOST')
+              export DB_PORT=\$(cat db-secrets.json | jq -r '.DB_PORT')
+              export DB_USERNAME=\$(cat db-secrets.json | jq -r '.DB_USERNAME')
+              export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD')
+              export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME')
+
+              pnpm install --frozen-lockfile
+              pnpm migration:run
+              """
             }
         }
       }
+    }
+
     stage('Deploy - Prod') {
       when {
         branch 'main'
@@ -205,32 +371,32 @@ pipeline
       steps
       {
         git(url: 'https://bitbucket.org/exp-realty/exp-tf-prod.git', branch: 'master', credentialsId: 'exp-jenkins')
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-              credentialsId: '88caba18-4691-47c5-92a9-e66ee83da4e4'
-            ]]) {
-            script
-            {
-              docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
-                .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
-                {
-                  sh """
-                  aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-production
-                  aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-production
-                  aws configure set region us-east-1 --profile exp-production
+        withCredentials([[
+          $class: 'AmazonWebServicesCredentialsBinding',
+          accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+          secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
+          credentialsId: '88caba18-4691-47c5-92a9-e66ee83da4e4'
+        ]]) {
+          script
+          {
+            docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
+              .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
+              {
+                sh """
+                aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-production
+                aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-production
+                aws configure set region us-east-1 --profile exp-production
 
-                  cd /data/account/exp-realty-prod/us-east-1/agent-service/prod/agent-service/ecs
-                  terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
-                  terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
-                  """
-                }
+                cd /data/account/exp-realty-prod/us-east-1/agent-service/prod/agent-service/ecs
+                terragrunt init -reconfigure
+                terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
+                terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
+                """
+              }
           }
+        }
       }
     }
-  }
   }
   environment {
     VERSION = 'latest'
