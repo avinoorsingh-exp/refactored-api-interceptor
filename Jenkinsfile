@@ -157,11 +157,50 @@ pipeline
               apk add --no-cache jq python3 make g++
               npm install -g pnpm
 
-              export DB_HOST=\$(cat db-secrets.json | jq -r '.DB_HOST')
-              export DB_PORT=\$(cat db-secrets.json | jq -r '.DB_PORT')
-              export DB_USERNAME=\$(cat db-secrets.json | jq -r '.DB_USERNAME')
-              export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD')
-              export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME')
+              # Debug: Show available keys in secrets JSON
+              echo "=== Available keys in db-secrets.json ==="
+              cat db-secrets.json | jq -r 'keys[]' || echo "Failed to parse JSON"
+              echo ""
+
+              # Extract database credentials with fallback to alternative field names
+              export DB_HOST=\$(cat db-secrets.json | jq -r '.DB_HOST // .host // .database_host // .DATABASE_HOST // empty')
+              export DB_PORT=\$(cat db-secrets.json | jq -r '.DB_PORT // .port // .database_port // .DATABASE_PORT // "5432"')
+              export DB_USERNAME=\$(cat db-secrets.json | jq -r '.DB_USERNAME // .username // .database_username // .DATABASE_USERNAME // .user // .USER // empty')
+              export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD // .password // .database_password // .DATABASE_PASSWORD // empty')
+              export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME // .database_name // .DATABASE_NAME // .database // .DATABASE // empty')
+
+              # Validate required fields (fail if null or empty)
+              if [ -z "\$DB_HOST" ] || [ "\$DB_HOST" == "null" ]; then
+                echo "ERROR: DB_HOST is missing or null"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                echo "Full secrets (masked):"
+                cat db-secrets.json | jq 'with_entries(if .key | contains("PASS") or contains("SECRET") then .value = "***REDACTED***" else . end)'
+                exit 1
+              fi
+              if [ -z "\$DB_USERNAME" ] || [ "\$DB_USERNAME" == "null" ]; then
+                echo "ERROR: DB_USERNAME is missing or null"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                exit 1
+              fi
+              if [ -z "\$DB_PASSWORD" ] || [ "\$DB_PASSWORD" == "null" ]; then
+                echo "ERROR: DB_PASSWORD is missing or null"
+                exit 1
+              fi
+              if [ -z "\$DB_NAME" ] || [ "\$DB_NAME" == "null" ]; then
+                echo "ERROR: DB_NAME is missing or null"
+                exit 1
+              fi
+
+              # Debug: Show extracted values (mask password)
+              echo "=== Database configuration ==="
+              echo "DB_HOST: \$DB_HOST"
+              echo "DB_PORT: \$DB_PORT"
+              echo "DB_USERNAME: \$DB_USERNAME"
+              echo "DB_PASSWORD: [REDACTED]"
+              echo "DB_NAME: \$DB_NAME"
+              echo ""
 
               pnpm install --frozen-lockfile
               pnpm migration:run
@@ -219,11 +258,50 @@ pipeline
               apk add --no-cache jq python3 make g++
               npm install -g pnpm
 
-              export DB_HOST=\$(cat db-secrets.json | jq -r '.DB_HOST')
-              export DB_PORT=\$(cat db-secrets.json | jq -r '.DB_PORT')
-              export DB_USERNAME=\$(cat db-secrets.json | jq -r '.DB_USERNAME')
-              export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD')
-              export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME')
+              # Debug: Show available keys in secrets JSON
+              echo "=== Available keys in db-secrets.json ==="
+              cat db-secrets.json | jq -r 'keys[]' || echo "Failed to parse JSON"
+              echo ""
+
+              # Extract database credentials with fallback to alternative field names
+              export DB_HOST=\$(cat db-secrets.json | jq -r '.DB_HOST // .host // .database_host // .DATABASE_HOST // empty')
+              export DB_PORT=\$(cat db-secrets.json | jq -r '.DB_PORT // .port // .database_port // .DATABASE_PORT // "5432"')
+              export DB_USERNAME=\$(cat db-secrets.json | jq -r '.DB_USERNAME // .username // .database_username // .DATABASE_USERNAME // .user // .USER // empty')
+              export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD // .password // .database_password // .DATABASE_PASSWORD // empty')
+              export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME // .database_name // .DATABASE_NAME // .database // .DATABASE // empty')
+
+              # Validate required fields (fail if null or empty)
+              if [ -z "\$DB_HOST" ] || [ "\$DB_HOST" == "null" ]; then
+                echo "ERROR: DB_HOST is missing or null"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                echo "Full secrets (masked):"
+                cat db-secrets.json | jq 'with_entries(if .key | contains("PASS") or contains("SECRET") then .value = "***REDACTED***" else . end)'
+                exit 1
+              fi
+              if [ -z "\$DB_USERNAME" ] || [ "\$DB_USERNAME" == "null" ]; then
+                echo "ERROR: DB_USERNAME is missing or null"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                exit 1
+              fi
+              if [ -z "\$DB_PASSWORD" ] || [ "\$DB_PASSWORD" == "null" ]; then
+                echo "ERROR: DB_PASSWORD is missing or null"
+                exit 1
+              fi
+              if [ -z "\$DB_NAME" ] || [ "\$DB_NAME" == "null" ]; then
+                echo "ERROR: DB_NAME is missing or null"
+                exit 1
+              fi
+
+              # Debug: Show extracted values (mask password)
+              echo "=== Database configuration ==="
+              echo "DB_HOST: \$DB_HOST"
+              echo "DB_PORT: \$DB_PORT"
+              echo "DB_USERNAME: \$DB_USERNAME"
+              echo "DB_PASSWORD: [REDACTED]"
+              echo "DB_NAME: \$DB_NAME"
+              echo ""
 
               pnpm install --frozen-lockfile
               pnpm migration:run
@@ -284,11 +362,50 @@ pipeline
               apk add --no-cache jq python3 make g++
               npm install -g pnpm
 
-              export DB_HOST=\$(cat db-secrets.json | jq -r '.DB_HOST')
-              export DB_PORT=\$(cat db-secrets.json | jq -r '.DB_PORT')
-              export DB_USERNAME=\$(cat db-secrets.json | jq -r '.DB_USERNAME')
-              export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD')
-              export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME')
+              # Debug: Show available keys in secrets JSON
+              echo "=== Available keys in db-secrets.json ==="
+              cat db-secrets.json | jq -r 'keys[]' || echo "Failed to parse JSON"
+              echo ""
+
+              # Extract database credentials with fallback to alternative field names
+              export DB_HOST=\$(cat db-secrets.json | jq -r '.DB_HOST // .host // .database_host // .DATABASE_HOST // empty')
+              export DB_PORT=\$(cat db-secrets.json | jq -r '.DB_PORT // .port // .database_port // .DATABASE_PORT // "5432"')
+              export DB_USERNAME=\$(cat db-secrets.json | jq -r '.DB_USERNAME // .username // .database_username // .DATABASE_USERNAME // .user // .USER // empty')
+              export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD // .password // .database_password // .DATABASE_PASSWORD // empty')
+              export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME // .database_name // .DATABASE_NAME // .database // .DATABASE // empty')
+
+              # Validate required fields (fail if null or empty)
+              if [ -z "\$DB_HOST" ] || [ "\$DB_HOST" == "null" ]; then
+                echo "ERROR: DB_HOST is missing or null"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                echo "Full secrets (masked):"
+                cat db-secrets.json | jq 'with_entries(if .key | contains("PASS") or contains("SECRET") then .value = "***REDACTED***" else . end)'
+                exit 1
+              fi
+              if [ -z "\$DB_USERNAME" ] || [ "\$DB_USERNAME" == "null" ]; then
+                echo "ERROR: DB_USERNAME is missing or null"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                exit 1
+              fi
+              if [ -z "\$DB_PASSWORD" ] || [ "\$DB_PASSWORD" == "null" ]; then
+                echo "ERROR: DB_PASSWORD is missing or null"
+                exit 1
+              fi
+              if [ -z "\$DB_NAME" ] || [ "\$DB_NAME" == "null" ]; then
+                echo "ERROR: DB_NAME is missing or null"
+                exit 1
+              fi
+
+              # Debug: Show extracted values (mask password)
+              echo "=== Database configuration ==="
+              echo "DB_HOST: \$DB_HOST"
+              echo "DB_PORT: \$DB_PORT"
+              echo "DB_USERNAME: \$DB_USERNAME"
+              echo "DB_PASSWORD: [REDACTED]"
+              echo "DB_NAME: \$DB_NAME"
+              echo ""
 
               pnpm install --frozen-lockfile
               pnpm migration:run
@@ -349,11 +466,50 @@ pipeline
               apk add --no-cache jq python3 make g++
               npm install -g pnpm
 
-              export DB_HOST=\$(cat db-secrets.json | jq -r '.DB_HOST')
-              export DB_PORT=\$(cat db-secrets.json | jq -r '.DB_PORT')
-              export DB_USERNAME=\$(cat db-secrets.json | jq -r '.DB_USERNAME')
-              export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD')
-              export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME')
+              # Debug: Show available keys in secrets JSON
+              echo "=== Available keys in db-secrets.json ==="
+              cat db-secrets.json | jq -r 'keys[]' || echo "Failed to parse JSON"
+              echo ""
+
+              # Extract database credentials with fallback to alternative field names
+              export DB_HOST=\$(cat db-secrets.json | jq -r '.DB_HOST // .host // .database_host // .DATABASE_HOST // empty')
+              export DB_PORT=\$(cat db-secrets.json | jq -r '.DB_PORT // .port // .database_port // .DATABASE_PORT // "5432"')
+              export DB_USERNAME=\$(cat db-secrets.json | jq -r '.DB_USERNAME // .username // .database_username // .DATABASE_USERNAME // .user // .USER // empty')
+              export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD // .password // .database_password // .DATABASE_PASSWORD // empty')
+              export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME // .database_name // .DATABASE_NAME // .database // .DATABASE // empty')
+
+              # Validate required fields (fail if null or empty)
+              if [ -z "\$DB_HOST" ] || [ "\$DB_HOST" == "null" ]; then
+                echo "ERROR: DB_HOST is missing or null"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                echo "Full secrets (masked):"
+                cat db-secrets.json | jq 'with_entries(if .key | contains("PASS") or contains("SECRET") then .value = "***REDACTED***" else . end)'
+                exit 1
+              fi
+              if [ -z "\$DB_USERNAME" ] || [ "\$DB_USERNAME" == "null" ]; then
+                echo "ERROR: DB_USERNAME is missing or null"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                exit 1
+              fi
+              if [ -z "\$DB_PASSWORD" ] || [ "\$DB_PASSWORD" == "null" ]; then
+                echo "ERROR: DB_PASSWORD is missing or null"
+                exit 1
+              fi
+              if [ -z "\$DB_NAME" ] || [ "\$DB_NAME" == "null" ]; then
+                echo "ERROR: DB_NAME is missing or null"
+                exit 1
+              fi
+
+              # Debug: Show extracted values (mask password)
+              echo "=== Database configuration ==="
+              echo "DB_HOST: \$DB_HOST"
+              echo "DB_PORT: \$DB_PORT"
+              echo "DB_USERNAME: \$DB_USERNAME"
+              echo "DB_PASSWORD: [REDACTED]"
+              echo "DB_NAME: \$DB_NAME"
+              echo ""
 
               pnpm install --frozen-lockfile
               pnpm migration:run
