@@ -2,7 +2,7 @@ const unitPreset = require('../../jest.preset.unit.cjs');
 
 module.exports = {
   ...unitPreset,
-  displayName: 'orchestrator-unit',
+  displayName: 'agent-service-unit',
   rootDir: '.',
   testMatch: ['<rootDir>/src/**/*.spec.ts'],
   collectCoverageFrom: [
@@ -14,8 +14,9 @@ module.exports = {
   moduleNameMapper: {
     ...unitPreset.moduleNameMapper,
     '^@exprealty/shared-domain$': '<rootDir>/../../packages/shared-domain/src/index.ts',
+    '^@exprealty/database$': '<rootDir>/../../packages/database/src/index.ts',
     '^@exprealty/logger$': '<rootDir>/../../packages/logger/src/index.ts',
-    '^@exprealty/logger/metrics$': '<rootDir>/../../packages/logger/src/metrics.ts',
     '^@exprealty/config$': '<rootDir>/../../packages/config/src/index.ts',
+    '^@exprealty/cache$': '<rootDir>/../../packages/cache/src/index.ts',
   },
 };

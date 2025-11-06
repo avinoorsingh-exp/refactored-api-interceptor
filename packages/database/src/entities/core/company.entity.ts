@@ -15,10 +15,10 @@ import type { Company, Name, InstantUTC, Email } from '@exprealty/shared-domain'
 @Entity({ name: 'company', schema: 'core' })
 export class CompanyEntity implements Company {
 	/**
-	 * Primary key (UUID).
+	 * Primary key (bigint).
 	 * @public
 	 */
-	@PrimaryGeneratedColumn('uuid')
+	@PrimaryGeneratedColumn('increment', { type: 'bigint' })
 	id!: string
 
 	/**

@@ -13,7 +13,7 @@ export class CompanyExternalReferenceEntity {
 	 * Foreign key to Company (composite PK).
 	 * @public
 	 */
-	@PrimaryColumn({ name: 'company_id', type: 'uuid' })
+	@PrimaryColumn({ name: 'company_id', type: 'bigint' })
 	companyId!: string
 
 	/**

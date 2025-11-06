@@ -1,57 +1,31 @@
+import { off } from 'process';
 import { z } from 'zod'
 
+export const LIMIT_DEFAULT = 25 as const;
+export const LIMIT_MAX = 50 as const;
 
-/**
- * Cursor-based paging request.
- * @public
- */
-export const PageRequest = z.object({
-	cursor: z.string().optional(),
-	limit: z.number().int().min(1).max(100).default(25),
-})
-export type PageRequest = z.infer<typeof PageRequest>
-
-
-/**
- * Offset-based pagination query parameters for HTTP endpoints.
- * Uses z.coerce for automatic string-to-number conversion from query params.
- * 
- * @example
- * ```typescript
- * // Controller
- * @Get()
- * @UsePipes(new ZodValidationPipe(PaginationQuerySchema))
- * async findAll(@Query() query: PaginationQuery) {
- *   // query.page and query.limit are already numbers
- * }
- * ```
- * 
- * @public
- */
 export const PaginationQuerySchema = z.object({
-	page: z.coerce.number().int().positive().default(1),
-	limit: z.coerce.number().int().min(1).max(100).default(10),
+    offset: z.coerce.number().int().min(0).optional().default(0),
+    limit: z.coerce.number().int().min(1).max(LIMIT_MAX).optional().default(LIMIT_DEFAULT),
 })
+
+export const NormalizedPaginationSchema = z.object({
+	offset: z.number().int().min(0),
+	limit: z.number().int().min(1).max(LIMIT_MAX),
+})
+
+export type NormalizedPagination = z.infer<typeof NormalizedPaginationSchema>
+
+export const PaginationMetaSchema = z.object({
+	total: z.number().int().min(0),
+	totalPages: z.number().int().min(0),
+	currentPage: z.number().int().min(1),
+	limit: z.number().int().min(1).max(LIMIT_MAX),
+	offset: z.number().int().min(0),
+	hasNext: z.boolean(),
+	hasPrev: z.boolean(),
+})
+
+export type PaginationMeta = z.infer<typeof PaginationMetaSchema>
+
 export type PaginationQuery = z.infer<typeof PaginationQuerySchema>
-
-
-/**
-* Paging metadata returned with list/search responses.
-* @public
-*/
-export const PageMeta = z.object({
-nextCursor: z.string().optional(),
-/** Number of items returned in this page. */
-count: z.number().int().nonnegative(),
-})
-export type PageMeta = z.infer<typeof PageMeta>
-
-
-/**
-* Factory to build a page response schema for an array of T.
-* @internal
-*/
-export const pageOf = <T extends z.ZodTypeAny>(item: T) => z.object({
-items: z.array(item),
-meta: PageMeta,
-})

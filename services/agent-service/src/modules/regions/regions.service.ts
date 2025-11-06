@@ -1,20 +1,24 @@
-import { Injectable, ConflictException, Logger, NotFoundException } from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
-import { Repository, QueryFailedError } from 'typeorm'
-import { RegionEntity } from '@exprealty/database'
-import type { CreateRegionInput, UpdateRegionInput, Region } from '@exprealty/shared-domain'
+import { Injectable, ConflictException, Logger, NotFoundException, Inject } from '@nestjs/common'
+import type { IRegionsRepository } from './ports/regions.repository.port.js'
+import type { CreateRegionInput, UpdateRegionInput, Region, NormalizedPagination } from '@exprealty/shared-domain'
 
 /**
- * Service for managing Region entities.
- * Handles business logic for region operations.
+ * Application service for managing Region aggregate.
+ * Handles business logic and orchestrates domain operations.
+ * 
+ * Depends on IRegionsRepository PORT (not concrete implementation).
+ * This follows Dependency Inversion Principle and enables:
+ * - Easy unit testing with mocked repository
+ * - Swapping persistence layer without changing business logic
+ * - Clean separation of concerns (Hexagonal Architecture)
  */
 @Injectable()
 export class RegionsService {
 	private readonly logger = new Logger(RegionsService.name)
 
 	constructor(
-		@InjectRepository(RegionEntity)
-		private readonly regionRepository: Repository<RegionEntity>,
+		@Inject('IRegionsRepository')
+		private readonly repository: IRegionsRepository,
 	) {}
 
 	/**
@@ -32,9 +36,7 @@ export class RegionsService {
 			const normalizedName = dto.name.toLowerCase().trim()
 
 			// Check for existing region with same normalized name
-			const existing = await this.regionRepository.findOne({
-				where: { name: normalizedName },
-			})
+			const existing = await this.repository.findByNormalizedName(normalizedName)
 
 			if (existing) {
 				throw new ConflictException({
@@ -43,21 +45,17 @@ export class RegionsService {
 				})
 			}
 
-			// Create entity instance with normalized name
-			const region = this.regionRepository.create({
+			// Create region via repository
+			const savedRegion = await this.repository.create({
 				name: normalizedName,
 			})
 
-			// Persist to database
-			const savedRegion = await this.regionRepository.save(region)
-
 			const duration = Date.now() - startTime
-			// TODO: Remove debug logging before PR
 			this.logger.log(
 				`Region created successfully: ${savedRegion.id} (${savedRegion.name}) in ${duration}ms`,
 			)
 
-			return this.mapToResponse(savedRegion)
+			return savedRegion
 		} catch (error) {
 			const duration = Date.now() - startTime
 
@@ -66,26 +64,6 @@ export class RegionsService {
 				throw error
 			}
 
-			// Handle unique constraint violation (if exists at DB level)
-			if (error instanceof QueryFailedError) {
-				const pgError = error as QueryFailedError & {
-					code?: string
-					detail?: string
-				}
-
-				if (pgError.code === '23505') {
-					// TODO: Remove debug logging before PR
-					this.logger.warn(
-						`Duplicate region name attempted: ${dto.name} (${duration}ms)`,
-					)
-					throw new ConflictException({
-						message: `A region with name '${dto.name}' already exists`,
-						i18nType: 'agent.region.duplicate_name',
-					})
-				}
-			}
-
-			// TODO: Remove debug logging before PR
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to create region ${dto.name}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
@@ -108,9 +86,7 @@ export class RegionsService {
 		const startTime = Date.now()
 
 		try {
-			const region = await this.regionRepository.findOne({
-				where: { id },
-			})
+			const region = await this.repository.findById(id)
 
 			if (!region) {
 				throw new NotFoundException({
@@ -120,12 +96,11 @@ export class RegionsService {
 			}
 
 			const duration = Date.now() - startTime
-			// TODO: Remove debug logging before PR
 			this.logger.debug(
 				`Region retrieved: ${region.id} (${region.name}) in ${duration}ms`,
 			)
 
-			return this.mapToResponse(region)
+			return region
 		} catch (error) {
 			const duration = Date.now() - startTime
 
@@ -134,7 +109,6 @@ export class RegionsService {
 				throw error
 			}
 
-			// TODO: Remove debug logging before PR
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to retrieve region ${id}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
@@ -160,9 +134,7 @@ export class RegionsService {
 
 		try {
 			// Check if region exists
-			const existingRegion = await this.regionRepository.findOne({
-				where: { id },
-			})
+			const existingRegion = await this.repository.findById(id)
 
 			if (!existingRegion) {
 				throw new NotFoundException({
@@ -175,9 +147,7 @@ export class RegionsService {
 			const normalizedName = dto.name.toLowerCase().trim()
 
 			// Check if another region already has this name (excluding current region)
-			const duplicateRegion = await this.regionRepository.findOne({
-				where: { name: normalizedName },
-			})
+			const duplicateRegion = await this.repository.findByNormalizedName(normalizedName)
 
 			if (duplicateRegion && duplicateRegion.id !== id) {
 				throw new ConflictException({
@@ -186,26 +156,21 @@ export class RegionsService {
 				})
 			}
 
-			// TODO: Remove debug logging before PR
 			this.logger.debug(
 				`Updating region: ${id} (${existingRegion.name})`,
 			)
 
-			// Update entity
-			existingRegion.name = normalizedName
-
-			// Save changes
-			const updatedRegion = await this.regionRepository.save(
-				existingRegion,
-			)
+			// Update via repository
+			const updatedRegion = await this.repository.update(id, {
+				name: normalizedName,
+			})
 
 			const duration = Date.now() - startTime
-			// TODO: Remove debug logging before PR
 			this.logger.log(
 				`Region updated successfully: ${updatedRegion.id} in ${duration}ms`,
 			)
 
-			return this.mapToResponse(updatedRegion)
+			return updatedRegion
 		} catch (error) {
 			const duration = Date.now() - startTime
 
@@ -217,26 +182,6 @@ export class RegionsService {
 				throw error
 			}
 
-			// Handle unique constraint violation (if exists at DB level)
-			if (error instanceof QueryFailedError) {
-				const pgError = error as QueryFailedError & {
-					code?: string
-					detail?: string
-				}
-
-				if (pgError.code === '23505') {
-					// TODO: Remove debug logging before PR
-					this.logger.warn(
-						`Duplicate region name attempted during update: ${dto.name} (${duration}ms)`,
-					)
-					throw new ConflictException({
-						message: `A region with name '${dto.name}' already exists`,
-						i18nType: 'agent.region.duplicate_name',
-					})
-				}
-			}
-
-			// TODO: Remove debug logging before PR
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to update region ${id}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
@@ -249,15 +194,34 @@ export class RegionsService {
 	}
 
 	/**
-	 * Maps a RegionEntity to a Region domain type.
+	 * Retrieves a paginated list of regions.
 	 *
-	 * @param entity - The region entity from the database
-	 * @returns The region domain object
+	 * @param p - Normalized pagination parameters (offset and limit)
+	 * @returns Object containing regions array and total count
 	 */
-	private mapToResponse(entity: RegionEntity): Region {
-		return {
-			id: entity.id,
-			name: entity.name,
+	async findPage(p: NormalizedPagination): Promise<{ regions: Region[]; total: number }> {
+		const startTime = Date.now()
+
+		try {
+			// Execute count and data queries in parallel for performance
+			const result = await this.repository.findPage({ offset: p.offset, limit: p.limit })
+
+			const duration = Date.now() - startTime
+			this.logger.log(
+				`Retrieved ${result.items.length} regions (offset: ${p.offset}, limit: ${p.limit}, total: ${result.total}) in ${duration}ms`,
+			)
+
+			return {
+				regions: result.items,
+				total: result.total,
+			}
+		} catch (error) {
+			const duration = Date.now() - startTime
+			this.logger.error(
+				`Failed to retrieve regions page: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
+				error instanceof Error ? error.stack : undefined,
+			)
+			throw error
 		}
 	}
 }

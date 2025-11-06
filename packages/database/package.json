@@ -20,7 +20,8 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "tsc -p tsconfig.build.json",
+		"clean": "rm -rf dist",
+		"build": "npm run clean && tsc -p tsconfig.build.json",
 		"dev": "tsc -p tsconfig.build.json --watch",
 		"check": "tsc -p tsconfig.json --noEmit",
 		"lint": "eslint . --max-warnings=0",

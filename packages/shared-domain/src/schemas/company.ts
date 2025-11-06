@@ -12,8 +12,8 @@ export const CompanyBaseSchema = z
 	.object({
 		id: z
 			.string()
-			.uuid({ message: 'errors.company.id.invalid' })
-			.describe('Primary key (UUID)'),
+			.regex(/^\d+$/, { message: 'errors.company.id.invalid' })
+			.describe('Primary key (bigint as string)'),
 		name: NameBranded.describe('Company name'),
 		email: EmailBranded.describe('Company email address'),
 		createdAt: InstantUTC.describe('Creation timestamp'),

@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany, JoinColumn } from 'typeorm'
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm'
 import { StateEntity } from './state.entity.js'
 
 /**
@@ -12,4 +12,10 @@ export class RegionEntity {
 
 	@Column({ type: 'text' })
 	name!: string
+
+	@CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
+	createdAt!: Date
+
+	@UpdateDateColumn({ name: 'updated_at', type: 'timestamp with time zone' })
+	updatedAt!: Date
 }
