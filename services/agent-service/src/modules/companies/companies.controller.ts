@@ -5,11 +5,15 @@ import {
 	Put,
 	Param,
 	Body,
+	Query,
 	HttpCode,
 	HttpStatus,
 	Res,
+	Req,
+	UseInterceptors,
+	HttpException,
 } from '@nestjs/common'
-import { Response } from 'express'
+import { Request, Response } from 'express'
 import {
 	ApiTags,
 	ApiOperation,
@@ -28,6 +32,9 @@ import { CompanyIdParamDto } from './dto/company-id-param.dto.js'
 import { CreateCompanyDto } from './dto/create-company.dto.js'
 import { UpdateCompanyInputDto } from './dto/update-company-input.dto.js'
 import { CompanyResponseDto } from './dto/company-response.dto.js'
+import { PaginationQueryDto } from '../../common/pagination/pagination.dto.js'
+import { PaginationInterceptor } from '../../common/pagination/pagination.interceptor.js'
+import { LoggerService } from '../../core/logger.service.js'
 
 /**
  * Controller for Company entity endpoints.
@@ -36,7 +43,10 @@ import { CompanyResponseDto } from './dto/company-response.dto.js'
 @ApiTags('companies')
 @Controller('v1/companies')
 export class CompaniesController {
-	constructor(private readonly companiesService: CompaniesService) {}
+	constructor(
+		private readonly companiesService: CompaniesService,
+		private readonly logger: LoggerService,
+	) {}
 
 	/**
 	 * Creates a new company.
@@ -94,23 +104,119 @@ export class CompaniesController {
 	}
 
 	/**
+	 * Retrieves a paginated list of companies.
+	 * GET /v1/companies
+	 *
+	 * @param query - Pagination query parameters (offset, limit)
+	 * @param req - Express request object for correlation ID
+	 * @returns Paginated list of companies with metadata
+	 */
+	@Get()
+	@ApiOperation({
+		summary: 'List companies with pagination',
+		description: 'Returns a paginated list of companies sorted by name ascending. Supports offset-based pagination with X-Total-Count and Link headers.',
+	})
+	@ApiResponse({
+		status: 200,
+		description: 'Companies retrieved successfully',
+		type: [CompanyResponseDto],
+		headers: {
+			'X-Total-Count': {
+				description: 'Total number of companies',
+				schema: { type: 'string' },
+			},
+			'Link': {
+				description: 'RFC 8288 pagination links (rel=next, rel=prev, rel=first, rel=last)',
+				schema: { type: 'string' },
+			},
+		},
+	})
+	@ApiResponse({
+		status: 400,
+		description: 'Validation error - invalid offset or limit',
+	})
+	@UseInterceptors(PaginationInterceptor)
+	async findAll(
+		@Query() query: PaginationQueryDto,
+		@Req() req: Request,
+	): Promise<{ items: CompanyResponseDto[]; total: number }> {
+		const startTime = Date.now()
+		const correlationId = this.getCorrelationId(req)
+
+		this.logger.info('GET /v1/companies - List companies with pagination', {
+			correlationId,
+			offset: query.offset,
+			limit: query.limit,
+		})
+
+		try {
+			// The interceptor will handle pagination normalization and header setting
+			// Just return the data in the expected format
+			const { companies, total } = await this.companiesService.findPage(query as any)
+
+			// Map domain Company to CompanyResponseDto with snake_case timestamps
+			const items = companies.map(c => ({
+				id: c.id,
+				name: c.name as string,
+				email: c.email as string,
+				created_at: c.createdAt.toISOString(),
+				updated_at: c.updatedAt.toISOString(),
+			}))
+
+			const duration = Date.now() - startTime
+			this.logger.info('GET /v1/companies - Success', {
+				correlationId,
+				status: 200,
+				duration_ms: duration,
+				count: items.length,
+				total,
+				offset: query.offset,
+				limit: query.limit,
+			})
+
+			return { items, total }
+		} catch (error) {
+			const duration = Date.now() - startTime
+
+			if (error instanceof HttpException) {
+				const status = error.getStatus()
+				this.logger.warn('GET /v1/companies - Error', {
+					correlationId,
+					status,
+					duration_ms: duration,
+					error: error.message,
+				})
+			} else {
+				this.logger.error('GET /v1/companies - Unexpected error', {
+					correlationId,
+					status: 500,
+					duration_ms: duration,
+					error: error instanceof Error ? error.message : 'Unknown error',
+					stack: error instanceof Error ? error.stack : undefined,
+				})
+			}
+
+			throw error
+		}
+	}
+
+	/**
 	 * Retrieves a company by its UUID.
 	 * GET /v1/companies/{id}
 	 *
 	 * @param params - Path parameters containing company ID
-	 * @returns The company resource
+	 * @returns The company entity
+	 * @throws NotFoundException if company does not exist
 	 */
 	@Get(':id')
-	@HttpCode(HttpStatus.OK)
 	@ApiOperation({
-		summary: 'Get a company by ID',
-		description: 'Retrieves a company by its UUID.',
+		summary: 'Get company by ID',
+		description: 'Retrieves a single company by its unique identifier.',
 	})
 	@ApiParam({
 		name: 'id',
 		description: 'Company UUID',
 		type: String,
-		format: 'uuid',
 	})
 	@ApiResponse({
 		status: 200,
@@ -118,18 +224,25 @@ export class CompaniesController {
 		type: CompanyResponseDto,
 	})
 	@ApiResponse({
-		status: 400,
-		description: 'Validation error - invalid UUID format',
-	})
-	@ApiResponse({
 		status: 404,
-		description: 'Company not found',
+		description: 'Not found - company does not exist',
 	})
-	async findById(
-		@Param(new ZodValidationPipe(CompanyIdParamSchema, 'agent.company.validation'))
+	async findOne(
+		@Param(
+			new ZodValidationPipe(CompanyIdParamSchema, 'agent.company.validation'),
+		)
 		params: CompanyIdParamDto,
 	): Promise<CompanyResponseDto> {
-		return this.companiesService.findById(params.id) as any
+		const company = await this.companiesService.findById(params.id)
+		
+		// Map to response DTO with snake_case timestamps
+		return {
+			id: company.id,
+			name: company.name as string,
+			email: company.email as string,
+			created_at: company.createdAt.toISOString(),
+			updated_at: company.updatedAt.toISOString(),
+		}
 	}
 
 	/**
@@ -179,6 +292,41 @@ export class CompaniesController {
 		@Body(new ZodValidationPipe(UpdateCompanyInputSchema, 'agent.company.validation'))
 		body: UpdateCompanyInputDto,
 	): Promise<CompanyResponseDto> {
-		return this.companiesService.update(params.id, body as any)
+		const company = await this.companiesService.update(params.id, body as any)
+		
+		// Map to response DTO with snake_case timestamps
+		return {
+			id: company.id,
+			name: company.name as string,
+			email: company.email as string,
+			created_at: company.createdAt.toISOString(),
+			updated_at: company.updatedAt.toISOString(),
+		}
+	}
+
+	/**
+	 * Extracts or generates a correlation ID for request tracing.
+	 * 
+	 * @param req - Express request object
+	 * @returns Correlation ID from header or newly generated UUID
+	 */
+	private getCorrelationId(req: Request): string {
+		// Check for common correlation ID headers
+		const correlationId =
+			(req.headers['x-correlation-id'] as string) ||
+			(req.headers['x-request-id'] as string) ||
+			this.generateCorrelationId()
+
+		return correlationId
+	}
+
+	/**
+	 * Generates a simple correlation ID.
+	 * In production, use a proper UUID library.
+	 * 
+	 * @returns A simple correlation ID
+	 */
+	private generateCorrelationId(): string {
+		return `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`
 	}
 }

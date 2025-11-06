@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, QueryFailedError } from 'typeorm'
 import { CompanyEntity } from '@exprealty/database'
-import type { CreateCompanyInput, UpdateCompanyInput, Company, Name } from '@exprealty/shared-domain'
+import type { CreateCompanyInput, UpdateCompanyInput, Company, Name, NormalizedPagination } from '@exprealty/shared-domain'
 
 /**
  * Service for managing Company entities.
@@ -115,6 +115,32 @@ export class CompaniesService {
 
 			// Re-throw for controller to handle
 			throw error
+		}
+	}
+
+	/**
+	 * Retrieves a paginated list of companies.
+	 *
+	 * @param pagination - Normalized pagination parameters (offset, limit)
+	 * @returns Object containing array of companies and total count
+	 */
+	async findPage(pagination: NormalizedPagination): Promise<{ companies: Company[]; total: number }> {
+		const startTime = Date.now()
+
+		const [companies, total] = await this.companyRepository.findAndCount({
+			order: { name: 'ASC' }, // Sort by name ascending per AC1
+			skip: pagination.offset,
+			take: pagination.limit,
+		})
+
+		const duration = Date.now() - startTime
+		this.logger.log(
+			`Retrieved ${companies.length} companies (offset: ${pagination.offset}, limit: ${pagination.limit}, total: ${total}) in ${duration}ms`,
+		)
+
+		return {
+			companies: companies.map((c) => this.mapToResponse(c)),
+			total,
 		}
 	}
 
