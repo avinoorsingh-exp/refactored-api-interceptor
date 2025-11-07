@@ -8,10 +8,10 @@
 	"keywords": [],
 	"scripts": {
 		"build": "pnpm build:packages && pnpm build:services",
-		"build:packages": "pnpm -r --filter='./packages/*' build",
-		"build:services": "pnpm -r --filter='./services/*' build",
+		"build:packages": "pnpm -r --filter ./packages/* build",
+		"build:services": "pnpm -r --filter ./services/* build",
 		"check": "pnpm -r check",
-		"db:create": "./scripts/database/create-database.sh",
+		"db:create": "powershell -ExecutionPolicy Bypass -File ./scripts/database/create-database.ps1",
 		"db:reset": "./scripts/reset-database.sh",
 		"dev": "./scripts/dev.sh",
 		"lint": "pnpm -r lint --no-warn-ignored && pnpm manifests-lint",

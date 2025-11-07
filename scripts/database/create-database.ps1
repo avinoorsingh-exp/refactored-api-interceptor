@@ -49,11 +49,11 @@ if ($psqlExists) {
     $dbExists = & psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'"
     
     if ($dbExists -eq "1") {
-        Write-Host "✓ Database '$DB_NAME' already exists" -ForegroundColor Green
+        Write-Host "[OK] Database '$DB_NAME' already exists" -ForegroundColor Green
     } else {
         Write-Host "Creating database '$DB_NAME'..." -ForegroundColor Yellow
         & psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d postgres -c "CREATE DATABASE $DB_NAME;"
-        Write-Host "✓ Database '$DB_NAME' created successfully" -ForegroundColor Green
+        Write-Host "[OK] Database '$DB_NAME' created successfully" -ForegroundColor Green
     }
 } else {
     # Use Docker
@@ -63,11 +63,11 @@ if ($psqlExists) {
     $dbExists = docker-compose exec -T postgres psql -U $DB_USER -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'"
     
     if ($dbExists -eq "1") {
-        Write-Host "✓ Database '$DB_NAME' already exists" -ForegroundColor Green
+        Write-Host "[OK] Database '$DB_NAME' already exists" -ForegroundColor Green
     } else {
         Write-Host "Creating database '$DB_NAME'..." -ForegroundColor Yellow
         docker-compose exec -T postgres psql -U $DB_USER -d postgres -c "CREATE DATABASE $DB_NAME;"
-        Write-Host "✓ Database '$DB_NAME' created successfully" -ForegroundColor Green
+        Write-Host "[OK] Database '$DB_NAME' created successfully" -ForegroundColor Green
     }
 }
 

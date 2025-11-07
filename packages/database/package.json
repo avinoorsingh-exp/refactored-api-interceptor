@@ -20,7 +20,7 @@
 		"dist"
 	],
 	"scripts": {
-		"clean": "rm -rf dist",
+		"clean": "rimraf dist",
 		"build": "npm run clean && tsc -p tsconfig.build.json",
 		"dev": "tsc -p tsconfig.build.json --watch",
 		"check": "tsc -p tsconfig.json --noEmit",
@@ -48,6 +48,7 @@
 		"@microsoft/api-documenter": "^7.27.1",
 		"@microsoft/api-extractor": "^7.53.1",
 		"@types/node": "^24.9.1",
+		"rimraf": "^4.4.1",
 		"ts-node": "^10.9.2",
 		"tsx": "^4.20.6",
 		"typescript": "^5.8.3"

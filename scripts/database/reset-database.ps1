@@ -52,12 +52,12 @@ if ($psqlExists) {
     # Drop database if it exists
     Write-Host "Dropping database '$DB_NAME'..." -ForegroundColor Yellow
     & psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;"
-    Write-Host "✓ Database '$DB_NAME' dropped" -ForegroundColor Green
+    Write-Host "[OK] Database '$DB_NAME' dropped" -ForegroundColor Green
     
     # Create database
     Write-Host "Creating database '$DB_NAME'..." -ForegroundColor Yellow
     & psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d postgres -c "CREATE DATABASE $DB_NAME;"
-    Write-Host "✓ Database '$DB_NAME' created successfully" -ForegroundColor Green
+    Write-Host "[OK] Database '$DB_NAME' created successfully" -ForegroundColor Green
 } else {
     # Use Docker
     Write-Host "Using Docker to access PostgreSQL..." -ForegroundColor Cyan
@@ -69,12 +69,12 @@ if ($psqlExists) {
     # Drop database if it exists
     Write-Host "Dropping database '$DB_NAME'..." -ForegroundColor Yellow
     docker-compose exec -T postgres psql -U $DB_USER -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;"
-    Write-Host "✓ Database '$DB_NAME' dropped" -ForegroundColor Green
+    Write-Host "[OK] Database '$DB_NAME' dropped" -ForegroundColor Green
     
     # Create database
     Write-Host "Creating database '$DB_NAME'..." -ForegroundColor Yellow
     docker-compose exec -T postgres psql -U $DB_USER -d postgres -c "CREATE DATABASE $DB_NAME;"
-    Write-Host "✓ Database '$DB_NAME' created successfully" -ForegroundColor Green
+    Write-Host "[OK] Database '$DB_NAME' created successfully" -ForegroundColor Green
 }
 
 Write-Host ""
@@ -82,13 +82,28 @@ Write-Host "Running migrations..." -ForegroundColor Yellow
 Write-Host ""
 
 # Change to database package directory and run migrations
-Push-Location "..\..\packages\database"
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$projectRoot = Split-Path -Parent (Split-Path -Parent $scriptDir)
+$databasePackagePath = Join-Path $projectRoot "packages\database"
+
+# Set environment variables for migrations
+$env:DB_HOST = $DB_HOST
+$env:DB_PORT = $DB_PORT
+$env:DB_USERNAME = $DB_USER
+$env:DB_PASSWORD = $DB_PASSWORD
+$env:DB_NAME = $DB_NAME
+
+Push-Location $databasePackagePath
 try {
-    pnpm run migration:run
+    # Run migration with environment variables explicitly set
+    $env:DB_HOST = $DB_HOST; $env:DB_PORT = $DB_PORT; $env:DB_USERNAME = $DB_USER; $env:DB_PASSWORD = $DB_PASSWORD; $env:DB_NAME = $DB_NAME; pnpm run migration:run
+    if ($LASTEXITCODE -ne 0) {
+        throw "Migration command failed with exit code $LASTEXITCODE"
+    }
     Write-Host ""
-    Write-Host "✓ Migrations completed successfully" -ForegroundColor Green
+    Write-Host "[OK] Migrations completed successfully" -ForegroundColor Green
 } catch {
-    Write-Host "✗ Migration failed: $_" -ForegroundColor Red
+    Write-Host "[ERROR] Migration failed: $_" -ForegroundColor Red
     Pop-Location
     exit 1
 } finally {
