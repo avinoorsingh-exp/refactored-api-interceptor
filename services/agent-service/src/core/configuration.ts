@@ -10,7 +10,7 @@ import { BaseConfig, loadConfig } from '@exprealty/config'
  */
 export const ConfigSchema = BaseConfig.extend({
 	// ===== Application =====
-	PORT: z.coerce.number().default(8081),
+	PORT: z.coerce.number().default(3000),
 	ALLOWED_ORIGINS: z.string().optional().default('*'),
 
 	// ===== Database =====
@@ -32,9 +32,6 @@ export const ConfigSchema = BaseConfig.extend({
 	
 	// For authentication to backends (e.g., Datadog API key)
 	METRICS_EXPORTER_HEADERS: z.string().optional(), // JSON string of headers
-
-	AGENT_SERVICE_URL: z.string().url().default('http://localhost:4001'),
-	AGENT_SERVICE_TRANSPORT: z.string().default('http'),
 })
 
 export type Config = z.infer<typeof ConfigSchema>
