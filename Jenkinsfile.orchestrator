@@ -97,7 +97,7 @@ pipeline
 
     stage('Deploy - Development') {
       when {
-        branch 'development'
+        branch 'dev'
       }
 
       steps
