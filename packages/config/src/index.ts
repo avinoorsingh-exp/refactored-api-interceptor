@@ -57,6 +57,12 @@ function detectRepoRoot(startDir: string) {
 
 /** Load env files with sensible defaults */
 export function loadEnv(options: EnvLoadOptions = {}) {
+	// Only load .env files in local development
+	// AWS Secrets Manager will provide environment variables in dev/test/prod
+	if (process.env.NODE_ENV !== 'local') {
+		return
+	}
+
 	const serviceDir = path.resolve(options.serviceDir ?? process.cwd())
 	const repoRoot = options.repoRoot ?? detectRepoRoot(serviceDir)
 
@@ -81,7 +87,7 @@ export function loadEnv(options: EnvLoadOptions = {}) {
 
 /** Base schema shared by all services */
 export const BaseConfig = z.object({
-	NODE_ENV: z.enum(['dev', 'test', 'prod']).default('dev'),
+	NODE_ENV: z.enum(['local', 'dev', 'test', 'prod']).default('local'),
 	LOG_LEVEL: z.string().default('info'),
 	LOG_DIR: z.string().default('./logs'),
 })

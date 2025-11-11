@@ -11,7 +11,7 @@ export type ExporterProtocol = 'http' | 'grpc'
 export interface MetricsOptions {
   service: string
   version?: string
-  env?: 'dev' | 'test' | 'prod'
+  env?: 'local' | 'dev' | 'test' | 'prod'
   
   // Generic exporter configuration
   exporterEndpoint?: string          // e.g., 'http://localhost:4318' or 'grpc://localhost:4317'
