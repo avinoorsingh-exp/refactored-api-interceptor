@@ -1,6 +1,8 @@
 import 'reflect-metadata'
 import { DataSource } from 'typeorm'
 import * as fs from 'fs'
+import { loadEnv, BaseConfig } from '@exprealty/config'
+import { z } from 'zod'
 import { AddressEntity } from './entities/core/address.entity.js'
 import { AgentCompanyEntity } from './entities/core/agent-company.entity.js'
 import { AgentEntity } from './entities/core/agent.entity.js'
@@ -83,28 +85,52 @@ function getSSLConfig() {
 	}
 }
 
+// Load environment variables from .env files
+loadEnv()
+
+// Database-specific config schema
+const DatabaseConfigSchema = BaseConfig.extend({
+	DB_HOST: z.string().default('localhost'),
+	DB_PORT: z.coerce.number().default(5433),
+	DB_USERNAME: z.string().default('postgres'),
+	DB_PASSWORD: z.string().default('postgres'),
+	DB_NAME: z.string().default('agent_database'),
+	DB_SSL: z.string().optional(),
+	DB_SSL_CA_PATH: z.string().optional(),
+})
+
+const dbConfig = DatabaseConfigSchema.parse(process.env)
+
+// Log database connection info (mask password)
+console.log('🔌 Database Configuration:')
+console.log(`   Host: ${dbConfig.DB_HOST}`)
+console.log(`   Port: ${dbConfig.DB_PORT}`)
+console.log(`   Database: ${dbConfig.DB_NAME}`)
+console.log(`   User: ${dbConfig.DB_USERNAME}`)
+console.log(`   SSL: ${dbConfig.DB_SSL || 'false'}`)
+
 /**
  * TypeORM DataSource configuration for eXpRealty platform.
  *
  * Environment Variables:
  * - DB_HOST: Database host (default: localhost)
- * - DB_PORT: Database port (default: 5432)
+ * - DB_PORT: Database port (default: 5433)
  * - DB_USERNAME: Database user (default: postgres)
  * - DB_PASSWORD: Database password (default: postgres)
- * - DB_NAME: Database name (default: transaction_calculator)
+ * - DB_NAME: Database name (default: agent_database)
  * - DB_SSL: Enable SSL (default: false, set to 'true' for RDS)
  * - DB_SSL_CA_PATH: Path to RDS CA certificate bundle (optional)
- * - NODE_ENV: Environment (development|production|test)
+ * - NODE_ENV: Environment (dev|prod|test)
  *
  * @public
  */
 export const AppDataSource = new DataSource({
 	type: 'postgres',
-	host: process.env.DB_HOST || 'localhost',
-	port: parseInt(process.env.DB_PORT || '5432', 10),
-	username: process.env.DB_USERNAME || 'postgres',
-	password: process.env.DB_PASSWORD || 'postgres',
-	database: process.env.DB_NAME || 'agent_database',
+	host: dbConfig.DB_HOST,
+	port: dbConfig.DB_PORT,
+	username: dbConfig.DB_USERNAME,
+	password: dbConfig.DB_PASSWORD,
+	database: dbConfig.DB_NAME,
 	ssl: getSSLConfig(),
 
 	// Entities
@@ -170,7 +196,7 @@ export const AppDataSource = new DataSource({
 
 	// Schema settings
 	synchronize: false, // NEVER use synchronize in production
-	logging: process.env.NODE_ENV === 'development' ? ['query', 'error'] : ['error'],
+	logging: process.env.NODE_ENV === 'dev' ? ['query', 'error'] : ['error'],
 
 	// Connection pool settings
 	extra: {

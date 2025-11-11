@@ -44,7 +44,7 @@ describe('createLogger', () => {
 		})
 
 		it('should create logger for production environment', () => {
-			logger = createLogger({ env: 'production' })
+			logger = createLogger({ env: 'prod' })
 			expect(logger).toBeDefined()
 		})
 
@@ -56,7 +56,7 @@ describe('createLogger', () => {
 		it('should create logger with logDir for file rotation', () => {
 			logger = createLogger({
 				logDir: '/tmp/test-logs',
-				env: 'production',
+				env: 'prod',
 			})
 			expect(logger).toBeDefined()
 		})
@@ -112,13 +112,13 @@ describe('createLogger', () => {
 
 	describe('environment-specific behavior', () => {
 		it('should use console transport in development', () => {
-			logger = createLogger({ env: 'development' })
+			logger = createLogger({ env: 'dev' })
 			// Logger should have console transport
 			expect(logger).toBeDefined()
 		})
 
 		it('should not use console transport in production', () => {
-			logger = createLogger({ env: 'production' })
+			logger = createLogger({ env: 'prod' })
 			// Logger should not have console transport
 			expect(logger).toBeDefined()
 		})

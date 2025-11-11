@@ -16,7 +16,7 @@ export interface LoggerOptions {
 	service?: string // e.g. "gmail-processor"
 	level?: string // typically cfg.LOG_LEVEL
 	logDir?: string // typically cfg.LOG_DIR
-	env?: 'development' | 'test' | 'production' // typically cfg.NODE_ENV
+	env?: 'dev' | 'test' | 'prod' // typically cfg.NODE_ENV
 	repurposeConsole?: boolean // auto-redirect console.* (default true)
 }
 
@@ -31,11 +31,11 @@ export function createLogger(opts: LoggerOptions = {}) {
 		service = 'app',
 		level = 'info',
 		logDir,
-		env = 'development',
+		env = 'dev',
 		repurposeConsole = true,
 	} = opts
 
-	const isLocal = env === 'development'
+	const isLocal = env === 'dev'
 	const transports: winston.transport[] = []
 
 	// Console transport only in local/dev

@@ -81,7 +81,7 @@ export function loadEnv(options: EnvLoadOptions = {}) {
 
 /** Base schema shared by all services */
 export const BaseConfig = z.object({
-	NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+	NODE_ENV: z.enum(['dev', 'test', 'prod']).default('dev'),
 	LOG_LEVEL: z.string().default('info'),
 	LOG_DIR: z.string().default('./logs'),
 })

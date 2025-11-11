@@ -48,11 +48,11 @@ export class ConfigService {
 	}
 
 	isDevelopment(): boolean {
-		return this.config.NODE_ENV === 'development'
+		return this.config.NODE_ENV === 'dev'
 	}
 
 	isProduction(): boolean {
-		return this.config.NODE_ENV === 'production'
+		return this.config.NODE_ENV === 'prod'
 	}
 
 	isTest(): boolean {

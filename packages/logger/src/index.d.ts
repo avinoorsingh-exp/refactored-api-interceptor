@@ -3,7 +3,7 @@ export interface LoggerOptions {
 	service?: string
 	level?: string
 	logDir?: string
-	env?: 'development' | 'test' | 'production'
+	env?: 'dev' | 'test' | 'prod'
 	repurposeConsole?: boolean
 }
 /**
