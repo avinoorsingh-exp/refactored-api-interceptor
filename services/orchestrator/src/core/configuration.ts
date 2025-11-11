@@ -37,16 +37,18 @@ export type Config = z.infer<typeof ConfigSchema>
  * Configuration loader function for NestJS ConfigModule
  * Uses @exprealty/config for env file loading and validation
  * 
- * File loading order:
- * 1. {repoRoot}/.env
- * 2. {repoRoot}/.env.local
- * 3. {serviceDir}/.env (serviceDir defaults to process.cwd())
- * 4. {serviceDir}/.env.local
- * 5. {repoRoot}/.env.batchdata (extraEnvFile)
+ * The config package automatically handles:
+ * - Local: Loads from .env files
+ * - AWS (dev/test/prod): Loads from AWS Secrets Manager at {NODE_ENV}/{AWS_SECRET_KEY}/config
+ * 
+ * ECS Task Definition should set:
+ * - NODE_ENV: dev|test|prod
+ * - AWS_SECRET_KEY: agent-platform (or whatever DevOps configured)
+ * - AWS_REGION: us-east-1 (optional, defaults to us-east-1)
  */
-export default () => {
+export default async () => {
 	try {
-		const config = loadConfig(ConfigSchema, {
+		const config = await loadConfig(ConfigSchema, {
 			extraEnvFile: '.env.orchestrator',
 		})
 		
