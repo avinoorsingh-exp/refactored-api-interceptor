@@ -14,7 +14,7 @@ pipeline
           VERSION = shortCommitHash
           // set the build display name
           currentBuild.displayName = "#${BUILD_ID}-orchestrator-${VERSION}"
-          if (env.BRANCH_NAME == 'development') {
+          if (env.BRANCH_NAME == 'dev') {
               IMAGE = "$PROJECT:dev-$VERSION" 
           } else if (env.BRANCH_NAME == 'test') {
               IMAGE = "$PROJECT:test-$VERSION" 
@@ -39,7 +39,7 @@ pipeline
     stage('Test + Coverage') {
       when {
         anyOf {
-          branch 'development'
+          branch 'dev'
           expression { env.BRANCH_NAME.startsWith('feature/') }
         }
       }

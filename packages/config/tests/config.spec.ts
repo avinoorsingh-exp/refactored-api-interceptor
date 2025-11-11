@@ -228,21 +228,21 @@ describe('loadConfig', () => {
 		})
 
 		it('should validate enum values', () => {
-			process.env.NODE_ENV = 'production'
+			process.env.NODE_ENV = 'prod'
 
 			const schema = z.object({
-				NODE_ENV: z.enum(['development', 'test', 'production']),
+				NODE_ENV: z.enum(['dev', 'test', 'prod']),
 			})
 
 			const config = loadConfig(schema)
-			expect(config.NODE_ENV).toBe('production')
+			expect(config.NODE_ENV).toBe('prod')
 		})
 
 		it('should throw error for invalid enum values', () => {
 			process.env.NODE_ENV = 'invalid'
 
 			const schema = z.object({
-				NODE_ENV: z.enum(['development', 'test', 'production']),
+				NODE_ENV: z.enum(['dev', 'test', 'prod']),
 			})
 
 			expect(() => {

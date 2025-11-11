@@ -43,6 +43,14 @@ RUN pnpm build
 # Production stage
 FROM node:20-alpine
 
+RUN apk add --no-cache chromium nss freetype harfbuzz ttf-freefont ca-certificates lsb-release xdg-utils wget 
+
+# Create a non-root user
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+# Copy SSL certificate for database connection
+COPY global-bundle.pem /etc/ssl/certs/global-bundle.pem
+
 # Install pnpm
 RUN npm install -g pnpm
 
@@ -70,6 +78,12 @@ COPY --from=builder /app/packages/shared-domain/dist ./packages/shared-domain/di
 COPY --from=builder /app/services/agent-service/dist ./services/agent-service/dist
 
 WORKDIR /app/services/agent-service
+
+# Create logs directory and set ownership
+RUN mkdir -p /app/logs && chown -R appuser:appgroup /app
+
+# Switch to non-root user
+USER appuser
 
 EXPOSE 3000
 

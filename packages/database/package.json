@@ -39,10 +39,12 @@
 		"api:report": "api-documenter markdown -i temp -o docs"
 	},
 	"dependencies": {
+		"@exprealty/config": "workspace:*",
 		"@exprealty/shared-domain": "workspace:*",
 		"pg": "^8.11.3",
 		"reflect-metadata": "^0.2.1",
-		"typeorm": "^0.3.20"
+		"typeorm": "^0.3.20",
+		"zod": "^3.24.1"
 	},
 	"devDependencies": {
 		"@microsoft/api-documenter": "^7.27.1",

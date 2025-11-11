@@ -22,7 +22,7 @@ export class LoggerService {
   private readonly env: z.infer<typeof EnvEnum>
 
   constructor(private readonly configService: ConfigService) {
-    this.env = this.configService.get('NODE_ENV') || 'development'
+    this.env = this.configService.get('NODE_ENV') || 'dev'
 
     this.logger = createLogger({
       service: this.service,

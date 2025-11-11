@@ -37,10 +37,10 @@ import { LoggerModule } from './logger.module.js'
           autoLoadEntities: true,
           
           // Auto-schema sync (ONLY for development)
-          synchronize: cfg.NODE_ENV === 'development',
+          synchronize: cfg.NODE_ENV === 'dev',
           
           // Logging (conditional based on environment)
-          logging: cfg.NODE_ENV === 'development' ? ['error', 'warn', 'schema'] : ['error'],
+          logging: cfg.NODE_ENV === 'dev' ? ['error', 'warn', 'schema'] : ['error'],
           
           // Connection pool settings
           extra: {
@@ -51,7 +51,7 @@ import { LoggerModule } from './logger.module.js'
           },
           
           // SSL for production
-          ssl: cfg.NODE_ENV === 'production' ? {
+          ssl: cfg.NODE_ENV === 'prod' ? {
             rejectUnauthorized: false,
           } : false,
         }

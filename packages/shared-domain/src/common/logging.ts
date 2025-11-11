@@ -1,7 +1,7 @@
 // @exprealty/shared-domain/logging.ts
 import { z } from 'zod'
 import { CapabilityEnum, ServiceIdSchema } from './capabilities.js'
-export const EnvEnum = z.enum(['development', 'test', 'production'])
+export const EnvEnum = z.enum(['local', 'dev', 'test', 'prod'])
 export const HttpMethodEnum = z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 
 /**
@@ -17,7 +17,7 @@ export const EndpointSlug = z
   export const ServiceCallEventSchema = z.object({
   event: z.literal('service_call'),
   service: z.string().min(1),               // e.g., "orchestrator"
-  env: EnvEnum,                              // "development" | "test" | "production"
+  env: EnvEnum,                              // "dev" | "test" | "prod"
 
   // Your service IDs like "agent:contries", "agent:mls", "agent:address"
   serviceCall: ServiceIdSchema,

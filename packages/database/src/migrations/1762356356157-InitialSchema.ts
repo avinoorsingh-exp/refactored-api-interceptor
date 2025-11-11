@@ -1,4 +1,5 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
+import { ISO_3166_COUNTRIES } from '../data/iso-3166-countries.js';
 
 export class InitialSchema1762356356157 implements MigrationInterface {
     name = 'InitialSchema1762356356157'
@@ -92,9 +93,22 @@ export class InitialSchema1762356356157 implements MigrationInterface {
         await queryRunner.query(`ALTER TABLE "core"."w9_address" ADD CONSTRAINT "FK_74a7167ce3bb8d99e684ba5f245" FOREIGN KEY ("address_id") REFERENCES "core"."address"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "core"."office_address" ADD CONSTRAINT "FK_f43f4200662b0ce7beddd29c3f5" FOREIGN KEY ("office_id") REFERENCES "core"."office"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "core"."office_address" ADD CONSTRAINT "FK_78be10b4116a9772d6f763c4301" FOREIGN KEY ("address_id") REFERENCES "core"."address"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        
+        // Seed ISO 3166-1 Country Data
+        console.log(`Seeding ${ISO_3166_COUNTRIES.length} countries...`);
+        for (const country of ISO_3166_COUNTRIES) {
+            await queryRunner.query(
+                `INSERT INTO "core"."country" ("name", "alpha_2", "alpha_3", "number", "dialing_code") VALUES ($1, $2, $3, $4, $5)`,
+                [country.name, country.alpha2, country.alpha3, country.number, country.dialingCode]
+            );
+        }
+        console.log('Country seed data loaded successfully');
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {
+        // Delete seed data first
+        await queryRunner.query(`DELETE FROM "core"."country"`);
+        
         await queryRunner.query(`ALTER TABLE "core"."office_address" DROP CONSTRAINT "FK_78be10b4116a9772d6f763c4301"`);
         await queryRunner.query(`ALTER TABLE "core"."office_address" DROP CONSTRAINT "FK_f43f4200662b0ce7beddd29c3f5"`);
         await queryRunner.query(`ALTER TABLE "core"."w9_address" DROP CONSTRAINT "FK_74a7167ce3bb8d99e684ba5f245"`);
