@@ -67,10 +67,10 @@ COPY --from=builder /app/packages/logger/dist ./packages/logger/dist
 COPY --from=builder /app/packages/shared-domain/dist ./packages/shared-domain/dist
 COPY --from=builder /app/services/orchestrator/dist ./services/orchestrator/dist
 
-# Create logs directory and change ownership to non-root user - only chown what needs to be writable
-RUN mkdir -p /app/logs && chown -R nodeuser:nodejs /app/logs
-
 WORKDIR /app/services/orchestrator
+
+# Create logs directory with full write permissions for the non-root user
+RUN mkdir -p ./logs && chown -R nodeuser:nodejs ./logs && chmod -R 755 ./logs
 
 # Switch to non-root user
 USER nodeuser
