@@ -217,7 +217,13 @@ pipeline
               echo "RDS CA certificate downloaded to /tmp/rds-ca-bundle.pem"
               echo ""
 
+              echo "=== Installing dependencies ==="
               pnpm install --frozen-lockfile
+              
+              echo "=== Building workspace packages ==="
+              pnpm build:packages
+              
+              echo "=== Running migrations ==="
               pnpm migration:run
               """
             }
@@ -333,7 +339,13 @@ pipeline
               echo "RDS CA certificate downloaded to /tmp/rds-ca-bundle.pem"
               echo ""
 
+              echo "=== Installing dependencies ==="
               pnpm install --frozen-lockfile
+              
+              echo "=== Building workspace packages ==="
+              pnpm build:packages
+              
+              echo "=== Running migrations ==="
               pnpm migration:run
               """
             }
@@ -452,7 +464,13 @@ pipeline
               echo "RDS CA certificate downloaded to /tmp/rds-ca-bundle.pem"
               echo ""
 
+              echo "=== Installing dependencies ==="
               pnpm install --frozen-lockfile
+              
+              echo "=== Building workspace packages ==="
+              pnpm build:packages
+              
+              echo "=== Running migrations ==="
               pnpm migration:run
               """
             }
@@ -571,7 +589,13 @@ pipeline
               echo "RDS CA certificate downloaded to /tmp/rds-ca-bundle.pem"
               echo ""
 
+              echo "=== Installing dependencies ==="
               pnpm install --frozen-lockfile
+              
+              echo "=== Building workspace packages ==="
+              pnpm build:packages
+              
+              echo "=== Running migrations ==="
               pnpm migration:run
               """
             }
