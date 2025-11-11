@@ -52,7 +52,7 @@ export type Config = z.infer<typeof ConfigSchema>
 export default async () => {
 	try {
 		const config = await loadConfig(ConfigSchema, {
-			extraEnvFile: '.env.agent',
+			extraEnvFile: '.env.agentservice',
 		})
 		
 		return config
