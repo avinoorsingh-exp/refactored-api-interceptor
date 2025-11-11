@@ -90,11 +90,13 @@ loadEnv()
 
 // Database-specific config schema
 const DatabaseConfigSchema = BaseConfig.extend({
-	DB_HOST: z.string().default('localhost'),
-	DB_PORT: z.coerce.number().default(5433),
-	DB_USERNAME: z.string().default('postgres'),
-	DB_PASSWORD: z.string().default('postgres'),
-	DB_NAME: z.string().default('agent_database'),
+	// In local development, these will be loaded from .env files
+	// In AWS (dev/test/prod), these MUST come from Secrets Manager
+	DB_HOST: z.string().min(1, 'DB_HOST is required'),
+	DB_PORT: z.coerce.number().int().positive(),
+	DB_USERNAME: z.string().min(1, 'DB_USERNAME is required'),
+	DB_PASSWORD: z.string().min(1, 'DB_PASSWORD is required'),
+	DB_NAME: z.string().min(1, 'DB_NAME is required'),
 	DB_SSL: z.string().optional(),
 	DB_SSL_CA_PATH: z.string().optional(),
 })
