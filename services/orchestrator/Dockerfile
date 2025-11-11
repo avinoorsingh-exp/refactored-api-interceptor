@@ -6,6 +6,13 @@ RUN npm install -g pnpm
 
 WORKDIR /app
 
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nodeuser -u 1001
+
 # Copy all source code first
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY tsconfig.json ./
@@ -38,6 +45,9 @@ FROM node:20-alpine
 # Install pnpm
 RUN npm install -g pnpm
 
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs && adduser -S nodeuser -u 1001
+
 WORKDIR /app
 
 # Copy package files
@@ -57,7 +67,13 @@ COPY --from=builder /app/packages/logger/dist ./packages/logger/dist
 COPY --from=builder /app/packages/shared-domain/dist ./packages/shared-domain/dist
 COPY --from=builder /app/services/orchestrator/dist ./services/orchestrator/dist
 
+# Create logs directory and change ownership to non-root user
+RUN mkdir -p /app/logs && chown -R nodeuser:nodejs /app
+
 WORKDIR /app/services/orchestrator
+
+# Switch to non-root user
+USER nodeuser
 
 EXPOSE 8081
 
