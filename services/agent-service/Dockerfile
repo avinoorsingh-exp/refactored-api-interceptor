@@ -79,8 +79,8 @@ COPY --from=builder /app/services/agent-service/dist ./services/agent-service/di
 
 WORKDIR /app/services/agent-service
 
-# Create logs directory and set ownership
-RUN mkdir -p /app/logs && chown -R appuser:appgroup /app
+# Create logs directory and set ownership - only chown what needs to be writable
+RUN mkdir -p /app/logs && chown -R appuser:appgroup /app/logs
 
 # Switch to non-root user
 USER appuser
