@@ -102,7 +102,7 @@ pipeline
 
       steps
       {
-        git(url: 'https://bitbucket.org/exp-realty/exp-tf-dev.git', branch: 'agent-service-orch-dev', credentialsId: 'exp-jenkins')
+        git(url: 'https://bitbucket.org/exp-realty/exp-tf-dev.git', branch: 'master', credentialsId: 'exp-jenkins')
             withCredentials([[
               $class: 'AmazonWebServicesCredentialsBinding',
               accessKeyVariable: 'AWS_ACCESS_KEY_ID',
