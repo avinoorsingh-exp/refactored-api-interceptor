@@ -10,12 +10,14 @@ pipeline
         script {
           gitCommitHash = sh(returnStdout: true, script: 'git rev-parse HEAD').trim()
           shortCommitHash = gitCommitHash.take(7)
+          echo "DEBUG: gitCommitHash = '${gitCommitHash}'"
+          echo "DEBUG: shortCommitHash = '${shortCommitHash}'"
           // calculate a sample version tag
           env.VERSION = shortCommitHash
           // set the build display name
           currentBuild.displayName = "#${BUILD_ID}-${env.VERSION}"
           echo "DEBUG: BRANCH_NAME = '${env.BRANCH_NAME}'"
-          echo "DEBUG: VERSION = '${env.VERSION}'"
+          echo "DEBUG: env.VERSION after assignment = '${env.VERSION}'"
           echo "DEBUG: PROJECT = '${env.PROJECT}'"
           if (env.BRANCH_NAME == 'dev') {
               env.IMAGE = "${env.PROJECT}:dev-${env.VERSION}" 
@@ -667,7 +669,6 @@ pipeline
     }
   }
   environment {
-    VERSION = 'latest'
     PROJECT = 'exp/agent-service'
     IMAGE = 'exp/agent-service:latest'
     ECRURL = ''
