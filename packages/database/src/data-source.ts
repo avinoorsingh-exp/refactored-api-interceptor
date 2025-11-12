@@ -117,15 +117,6 @@ const dbConfig = {
 	LOG_DIR: process.env.LOG_DIR || './logs',
 }
 
-// Log database connection info (mask password)
-console.log('🔌 Database Configuration:')
-console.log(`   Host: ${dbConfig.DB_HOST}`)
-console.log(`   Port: ${dbConfig.DB_PORT}`)
-console.log(`   Database: ${dbConfig.DB_NAME}`)
-console.log(`   User: ${dbConfig.DB_USERNAME}`)
-console.log(`   NODE_ENV: ${dbConfig.NODE_ENV}`)
-console.log(`   SSL: ${dbConfig.NODE_ENV !== 'local' ? 'true (auto-enabled for AWS)' : dbConfig.DB_SSL || 'false'}`)
-
 /**
  * TypeORM DataSource configuration for eXpRealty platform.
  *
