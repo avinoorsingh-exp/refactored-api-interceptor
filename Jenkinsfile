@@ -15,16 +15,17 @@ pipeline
           // set the build display name
           currentBuild.displayName = "#${BUILD_ID}-${env.VERSION}"
           if (env.BRANCH_NAME == 'dev') {
-              env.IMAGE = "$PROJECT:dev-${env.VERSION}" 
+              env.IMAGE = "${env.PROJECT}:dev-${env.VERSION}" 
           } else if (env.BRANCH_NAME == 'test') {
-              env.IMAGE = "$PROJECT:test-${env.VERSION}" 
+              env.IMAGE = "${env.PROJECT}:test-${env.VERSION}" 
           } else if (env.BRANCH_NAME == 'accp') {
-              env.IMAGE = "$PROJECT:accp-${env.VERSION}"
+              env.IMAGE = "${env.PROJECT}:accp-${env.VERSION}"
           } else if (env.BRANCH_NAME == 'qa') {
-              env.IMAGE = "$PROJECT:qa-${env.VERSION}"
+              env.IMAGE = "${env.PROJECT}:qa-${env.VERSION}"
           } else if (env.BRANCH_NAME == 'main') {
-              env.IMAGE = "$PROJECT:prod-${env.VERSION}"
+              env.IMAGE = "${env.PROJECT}:prod-${env.VERSION}"
           }
+          echo "DEBUG: Set IMAGE to: ${env.IMAGE}"
         }
 
       }
@@ -33,6 +34,7 @@ pipeline
     stage('Docker build') {
       steps {
         script {
+          echo "DEBUG: Building Docker image with tag: ${env.IMAGE}"
           docker.build("${env.IMAGE}", "-f services/agent-service/Dockerfile .")
         }
       }
