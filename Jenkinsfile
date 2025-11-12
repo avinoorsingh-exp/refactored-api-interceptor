@@ -146,7 +146,7 @@ pipeline
 
     stage('Run Migrations - Development') {
       when {
-        branch 'dev'
+        branch 'dev-test'
       }
 
       steps {
@@ -255,10 +255,11 @@ pipeline
                   aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-dev
                   aws configure set region us-east-1 --profile exp-dev
 
+                  echo "DEBUG: TF_VAR_app_image value is: ${env.TF_VAR_app_image}"
                   cd account/exp-realty-dev/us-east-1/agent-service/dev/agent-service-dev/ecs
                   terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${env.TF_VAR_app_image}'
-                  terragrunt apply -auto-approve -input=false -var 'image=${env.TF_VAR_app_image}'
+                  terragrunt plan --terragrunt-log-level trace -input=false -var "image=${env.TF_VAR_app_image}"
+                  terragrunt apply -auto-approve -input=false -var "image=${env.TF_VAR_app_image}"
                   """
                 }
             }
@@ -379,8 +380,8 @@ pipeline
 
                   cd account/exp-realty-dev/us-east-1/agent-service/test/agent-service-test/ecs
                   terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${env.TF_VAR_app_image}'
-                  terragrunt apply -auto-approve -input=false -var 'image=${env.TF_VAR_app_image}'
+                  terragrunt plan --terragrunt-log-level trace -input=false -var "image=${env.TF_VAR_app_image}"
+                  terragrunt apply -auto-approve -input=false -var "image=${env.TF_VAR_app_image}"
                   """
                 }
             }
@@ -507,8 +508,8 @@ pipeline
 
                 cd /data/account/exp-realty-qa/us-east-1/agent-service/accp/agent-service-accp/ecs
                 terragrunt init -reconfigure
-                terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${env.TF_VAR_app_image}'
-                terragrunt apply -auto-approve -input=false -var 'image=${env.TF_VAR_app_image}'
+                terragrunt plan --terragrunt-log-level trace -input=false -var "image=${env.TF_VAR_app_image}"
+                terragrunt apply -auto-approve -input=false -var "image=${env.TF_VAR_app_image}"
                 """
               }
           }
@@ -629,8 +630,8 @@ pipeline
 
                 cd /data/account/exp-realty-prod/us-east-1/agent-service/prod/agent-service/ecs
                 terragrunt init -reconfigure
-                terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${env.TF_VAR_app_image}'
-                terragrunt apply -auto-approve -input=false -var 'image=${env.TF_VAR_app_image}'
+                terragrunt plan --terragrunt-log-level trace -input=false -var "image=${env.TF_VAR_app_image}"
+                terragrunt apply -auto-approve -input=false -var "image=${env.TF_VAR_app_image}"
                 """
               }
           }
