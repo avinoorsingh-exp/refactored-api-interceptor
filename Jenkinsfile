@@ -675,7 +675,6 @@ pipeline
   }
   environment {
     PROJECT = 'exp/agent-service'
-    IMAGE = 'exp/agent-service:latest'
     ECRURL = ''
     TF_VAR_app_image = '99'
     ECR = '204048894727.dkr.ecr.us-east-1.amazonaws.com/'
