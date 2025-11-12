@@ -144,17 +144,36 @@ export async function loadConfig<TOutput>(
 		// Convention: {NODE_ENV}/{secretKey}/config
 		const secretName = `${env}/${secretKey}/config`
 		
+		console.log(`[Config] Loading secrets from AWS Secrets Manager:`)
+		console.log(`[Config]   NODE_ENV: ${env}`)
+		console.log(`[Config]   AWS_SECRET_KEY: ${process.env.AWS_SECRET_KEY || '(not set)'}`)
+		console.log(`[Config]   Region: ${region}`)
+		console.log(`[Config]   Secret Name: ${secretName}`)
+		
 		try {
 			await loadSecretsFromAWS(secretName, region)
+			console.log(`[Config] Successfully loaded secrets from ${secretName}`)
 		} catch (error) {
-			console.error(`[Config] Failed to load AWS secrets from ${secretName}, falling back to environment variables`)
-			// Continue with existing process.env values (e.g., from ECS task definition)
+			// Log error but continue - services will catch validation errors and log to Datadog
+			console.error(`[Config] Failed to load AWS secrets from ${secretName}`)
+			console.error(`[Config] Error: ${error instanceof Error ? error.message : String(error)}`)
+			console.error(`[Config] Stack: ${error instanceof Error ? error.stack : 'N/A'}`)
+			console.error(`[Config] Continuing with existing environment variables (may cause validation errors if not set)`)
+			// Continue - let validation errors bubble up to service for proper Datadog logging
 		}
 	}
 
-	const cfg = schema.parse(process.env)
-	cache.set(schema, cfg)
-	return cfg
+	try {
+		const cfg = schema.parse(process.env)
+		cache.set(schema, cfg)
+		return cfg
+	} catch (error) {
+		// Log validation failure and re-throw for service to catch
+		console.error(`[Config] Configuration validation failed`)
+		console.error(`[Config] Error: ${error instanceof Error ? error.message : String(error)}`)
+		// Re-throw so service can log to Datadog and handle gracefully
+		throw error
+	}
 }
 
 /**

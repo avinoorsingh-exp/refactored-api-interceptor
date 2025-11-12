@@ -48,6 +48,10 @@ export type Config = z.infer<typeof ConfigSchema>
  * - NODE_ENV: dev|test|prod
  * - AWS_SECRET_KEY: agent-platform (or whatever DevOps configured)
  * - AWS_REGION: us-east-1 (optional, defaults to us-east-1)
+ * 
+ * CRITICAL: Configuration errors are logged to console.error here
+ * These errors will appear in CloudWatch Logs and should trigger Datadog alerts
+ * Check for [Config] prefixed error messages in CloudWatch
  */
 export default async () => {
 	try {
@@ -57,7 +61,18 @@ export default async () => {
 		
 		return config
 	} catch (error) {
-		console.error('[configuration()] FAILED to load config:', error);
-		throw error;
+		// Log structured error details for CloudWatch/Datadog alerting
+		console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+		console.error('CRITICAL: Configuration Loading Failed')
+		console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+		console.error('Service: agent-service')
+		console.error(`NODE_ENV: ${process.env.NODE_ENV || 'undefined'}`)
+		console.error(`AWS_SECRET_KEY: ${process.env.AWS_SECRET_KEY || 'undefined'}`)
+		console.error(`AWS_REGION: ${process.env.AWS_REGION || 'undefined'}`)
+		console.error('Error Details:', error)
+		console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+		
+		// Re-throw to prevent service startup with invalid configuration
+		throw error
 	}
 }
