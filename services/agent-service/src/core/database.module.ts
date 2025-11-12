@@ -50,10 +50,27 @@ import { LoggerModule } from './logger.module.js'
             connectionTimeoutMillis: 10000,
           },
           
-          // SSL required for RDS in all AWS environments (dev/test/prod)
-          ssl: cfg.NODE_ENV !== 'local' ? {
-            rejectUnauthorized: false,
-          } : false,
+          // SSL configuration
+          // Respects explicit DB_SSL env var, otherwise auto-enables for non-local environments
+          ssl: (() => {
+            // Check if DB_SSL is explicitly set
+            if (process.env.DB_SSL === 'true') {
+              return {
+                rejectUnauthorized: false,
+                checkServerIdentity: () => undefined,
+                minVersion: 'TLSv1.2' as const,
+              }
+            }
+            if (process.env.DB_SSL === 'false') {
+              return false
+            }
+            // Auto-enable SSL for non-local environments (dev/test/prod in AWS)
+            return cfg.NODE_ENV !== 'local' ? {
+              rejectUnauthorized: false,
+              checkServerIdentity: () => undefined,
+              minVersion: 'TLSv1.2' as const,
+            } : false
+          })(),
         }
       },
     }),

@@ -3,8 +3,8 @@
  *
  * Multi-domain strategy:
  * - Use a single canonical base for problem type URIs (decoupled from API host),
- *   e.g. https://problems.exprealty.ai
- * - Keep the key (slug) stable across domains (api.exprealty.ai, agents, etc.).
+ *   e.g. https://problems.exprealty.com
+ * - Keep the key (slug) stable across domains.
  * - If you ever need per-domain variants, add a domain prefix to the key
  *   (e.g., "api.validation-error" vs "agents.validation-error") – but prefer
  *   shared keys first.
@@ -47,17 +47,17 @@ export interface ProblemDetails {
  * so you can reuse the same problems across multiple domains/orchestrators.
  *
  * Example values:
- *   - 'https://problems.exprealty.ai'     (recommended)
- *   - 'https://errors.exprealty.ai'
+ *   - 'https://problems.exprealty.com'     (recommended)
+ *   - 'https://errors.exprealty.com'
  *   - 'urn:exprealty:problem'             (URNs work, but HTTP URIs are nicer)
  */
 export const DEFAULT_PROBLEM_BASE =
-	process.env.PROBLEM_BASE?.replace(/\/+$/, '') || 'https://problems.exprealty.ai'
+	process.env.PROBLEM_BASE?.replace(/\/+$/, '') || 'https://problems.exprealty.com'
 
 /**
  * Create a canonical problem type URI from a stable key.
  *   makeProblemType('validation-error')
- *   -> 'https://problems.exprealty.ai/validation-error'
+ *   -> 'https://problems.exprealty.com/validation-error'
  */
 export function makeProblemType(key: string): string {
 	const base = DEFAULT_PROBLEM_BASE
