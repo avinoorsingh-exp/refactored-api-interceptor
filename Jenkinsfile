@@ -75,6 +75,16 @@ pipeline
     }
 
     stage('Docker push') {
+      when {
+        anyOf {
+          branch 'development'
+          branch 'dev'
+          branch 'qa'
+          branch 'test'
+          branch 'accp'
+          branch 'main'
+        }
+      }
       steps {
         script {
           sh("aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR}")
