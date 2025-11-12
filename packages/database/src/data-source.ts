@@ -57,6 +57,11 @@ import { ApprovalEntity } from './entities/core/approval.entity.js'
  * @internal
  */
 function getSSLConfig() {
+	// Explicit SSL configuration takes precedence
+	if (process.env.DB_SSL === 'false') {
+		return false
+	}
+	
 	// Enable SSL for all non-local environments (dev/test/prod in AWS)
 	const nodeEnv = process.env.NODE_ENV || 'local'
 	const useSSL = process.env.DB_SSL === 'true' || process.env.DB_SSL_CA_PATH || nodeEnv !== 'local'
@@ -65,24 +70,28 @@ function getSSLConfig() {
 		return false
 	}
 
+	// If CA certificate path is provided, use it for verification
 	if (process.env.DB_SSL_CA_PATH) {
 		try {
 			const ca = fs.readFileSync(process.env.DB_SSL_CA_PATH, 'utf8')
 			return {
 				ca,
 				rejectUnauthorized: true,
+				minVersion: 'TLSv1.2' as const,
 			}
 		} catch (error) {
 			console.warn(`Failed to read SSL CA certificate from ${process.env.DB_SSL_CA_PATH}:`, error)
-			return {
-				rejectUnauthorized: false,
-			}
+			// Fall through to default SSL config
 		}
 	}
 
-	// Fallback: SSL without certificate verification (works for RDS)
+	// RDS SSL configuration - compatible with RDS requirements
+	// rejectUnauthorized: false allows connection without verifying CA cert
+	// This is acceptable within AWS VPC as traffic doesn't leave AWS network
 	return {
 		rejectUnauthorized: false,
+		checkServerIdentity: () => undefined,
+		minVersion: 'TLSv1.2' as const, // Support TLS 1.2 and 1.3
 	}
 }
 
@@ -107,15 +116,6 @@ const dbConfig = {
 	LOG_LEVEL: process.env.LOG_LEVEL || 'info',
 	LOG_DIR: process.env.LOG_DIR || './logs',
 }
-
-// Log database connection info (mask password)
-console.log('🔌 Database Configuration:')
-console.log(`   Host: ${dbConfig.DB_HOST}`)
-console.log(`   Port: ${dbConfig.DB_PORT}`)
-console.log(`   Database: ${dbConfig.DB_NAME}`)
-console.log(`   User: ${dbConfig.DB_USERNAME}`)
-console.log(`   NODE_ENV: ${dbConfig.NODE_ENV}`)
-console.log(`   SSL: ${dbConfig.NODE_ENV !== 'local' ? 'true (auto-enabled for AWS)' : dbConfig.DB_SSL || 'false'}`)
 
 /**
  * TypeORM DataSource configuration for eXpRealty platform.

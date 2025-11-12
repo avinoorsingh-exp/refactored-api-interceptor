@@ -1,21 +1,28 @@
-import { Injectable, ConflictException, Logger } from '@nestjs/common'
-import { InjectRepository } from '@nestjs/typeorm'
-import { Repository, QueryFailedError } from 'typeorm'
-import { CountryEntity } from '@exprealty/database'
+import { Injectable, ConflictException, Logger, Inject } from '@nestjs/common'
 import type { CreateCountryInput, Country } from '@exprealty/shared-domain'
+import type { ICountriesRepository } from './ports/countries.repository.port.js'
+import type { NormalizedPagination } from '../../common/ports/pagination.types.js'
 import { CountryResponseDto } from './dto/country-response.dto.js'
 
 /**
  * Service for managing Country entities.
  * Handles business logic for country operations.
+ * 
+ * This service depends on ICountriesRepository (a port/interface) rather than
+ * a concrete TypeORM repository, following the Dependency Inversion Principle.
+ * 
+ * Benefits:
+ * - Easy to unit test with mock repositories
+ * - Can swap data source without changing this code
+ * - Business logic is decoupled from infrastructure
  */
 @Injectable()
 export class CountriesService {
 	private readonly logger = new Logger(CountriesService.name)
 
 	constructor(
-		@InjectRepository(CountryEntity)
-		private readonly countryRepository: Repository<CountryEntity>,
+		@Inject('ICountriesRepository')
+		private readonly countriesRepository: ICountriesRepository,
 	) {}
 
 	/**
@@ -29,69 +36,17 @@ export class CountriesService {
 		const startTime = Date.now()
 
 		try {
-			// Create entity instance
-			const country = this.countryRepository.create({
-				name: createCountryDto.name,
-				alpha2: createCountryDto.alpha2,
-				alpha3: createCountryDto.alpha3,
-				number: createCountryDto.number,
-				dialingCode: createCountryDto.dialingCode,
-			})
-
-			// Persist to database
-			const savedCountry = await this.countryRepository.save(country)
+			// Use repository to create country
+			const country = await this.countriesRepository.create(createCountryDto)
 
 			const duration = Date.now() - startTime
-			// TODO: Remove debug logging before PR
 			this.logger.log(
-				`Country created successfully: ${savedCountry.alpha2} (${savedCountry.countryId}) in ${duration}ms`,
+				`Country created successfully: ${country.alpha2} (${country.countryId}) in ${duration}ms`,
 			)
 
-			// Map to response DTO
-			return this.mapToResponse(savedCountry)
+			return country
 		} catch (error) {
 			const duration = Date.now() - startTime
-
-			// Handle unique constraint violation
-			if (error instanceof QueryFailedError) {
-				const pgError = error as QueryFailedError & { 
-					code?: string
-					constraint?: string
-					detail?: string
-					table?: string
-				}
-
-				// TODO: REVIEW - PostgreSQL unique violation error code
-				if (pgError.code === '23505') {
-					// Determine which field caused the conflict by checking error detail
-					// PostgreSQL error detail format: "Key (column_name)=(value) already exists."
-					let conflictField = 'code'
-					let conflictValue = ''
-
-					const errorDetail = pgError.detail || ''
-					
-					if (errorDetail.includes('(alpha_2)') || errorDetail.includes('alpha_2')) {
-						conflictField = 'alpha-2'
-						conflictValue = createCountryDto.alpha2
-					} else if (errorDetail.includes('(alpha_3)') || errorDetail.includes('alpha_3')) {
-						conflictField = 'alpha-3'
-						conflictValue = createCountryDto.alpha3
-					} else if (errorDetail.includes('(number)') || errorDetail.includes('number')) {
-						conflictField = 'number'
-						conflictValue = createCountryDto.number.toString()
-					}
-
-					// TODO: Remove debug logging before PR
-					this.logger.warn(
-						`Duplicate country ${conflictField} attempted: ${conflictValue} (${duration}ms)`,
-					)
-					throw new ConflictException({
-						message: `A country with ${conflictField} code '${conflictValue}' already exists`,
-						i18nType: 'agent.country.duplicate_code',
-					})
-				}
-			}
-
 			// TODO: Remove debug logging before PR
 			// Log unexpected errors
 			this.logger.error(
@@ -101,23 +56,6 @@ export class CountriesService {
 
 			// Re-throw for controller to handle
 			throw error
-		}
-	}
-
-	/**
-	 * Maps a CountryEntity to a Country domain type.
-	 * 
-	 * @param entity - The country entity from the database
-	 * @returns The country domain object
-	 */
-	private mapToResponse(entity: CountryEntity): Country {
-		return {
-			countryId: entity.countryId,
-			name: entity.name,
-			alpha2: entity.alpha2,
-			alpha3: entity.alpha3,
-			number: entity.number,
-			dialingCode: entity.dialingCode,
 		}
 	}
 
@@ -135,50 +73,17 @@ export class CountriesService {
 		const startTime = Date.now()
 
 		try {
-			// Check if country already exists
-			const existingCountry = await this.countryRepository.findOne({
-				where: { alpha2: dto.alpha2 },
-			})
-
-			// TODO: Remove debug logging before PR
-			this.logger.debug(
-				`Upsert ${dto.alpha2}: existing=${existingCountry ? 'YES (id=' + existingCountry.countryId + ')' : 'NO'}`,
-			)
-
-			const wasCreated = !existingCountry
-
-			// Perform upsert operation
-			// TypeORM's upsert will INSERT or UPDATE based on conflict with alpha_2
-			await this.countryRepository.upsert(dto, {
-				conflictPaths: ['alpha2'],
-				skipUpdateIfNoValuesChanged: true,
-			})
-
-			// Fetch the final country state
-			const country = await this.countryRepository.findOne({
-				where: { alpha2: dto.alpha2 },
-			})
-
-			if (!country) {
-				throw new Error(
-					`Country not found after upsert: ${dto.alpha2}`,
-				)
-			}
+			const result = await this.countriesRepository.upsert(dto)
 
 			const duration = Date.now() - startTime
-			const operation = wasCreated ? 'created' : 'updated'
-			// TODO: Remove debug logging before PR
+			const operation = result.created ? 'created' : 'updated'
 			this.logger.log(
-				`Country ${operation}: ${country.alpha2} (${country.countryId}) in ${duration}ms`,
+				`Country ${operation}: ${result.country.alpha2} (${result.country.countryId}) in ${duration}ms`,
 			)
 
-			return {
-				country: this.mapToResponse(country),
-				created: wasCreated,
-			}
+			return result
 		} catch (error) {
 			const duration = Date.now() - startTime
-			// TODO: Remove debug logging before PR
 			this.logger.error(
 				`Failed to upsert country ${dto.alpha2}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
 				error instanceof Error ? error.stack : undefined,
@@ -197,30 +102,55 @@ export class CountriesService {
 		const startTime = Date.now()
 
 		try {
-			const country = await this.countryRepository.findOne({
-				where: { alpha2: code },
-			})
+			const country = await this.countriesRepository.findByCode(code)
 
 			const duration = Date.now() - startTime
 			
-			// TODO: Remove debug logging before PR
 			if (country) {
 				this.logger.log(
 					`Country found: ${country.alpha2} (${country.countryId}) in ${duration}ms`,
 				)
-				return this.mapToResponse(country)
+				return country
 			}
 
-			// TODO: Remove debug logging before PR
 			this.logger.log(
 				`Country not found: ${code} in ${duration}ms`,
 			)
 			return null
 		} catch (error) {
 			const duration = Date.now() - startTime
-			// TODO: Remove debug logging before PR
 			this.logger.error(
 				`Failed to find country ${code}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
+				error instanceof Error ? error.stack : undefined,
+			)
+			throw error
+		}
+	}
+
+	/**
+	 * Retrieves a paginated list of countries sorted by alpha-2 code ascending.
+	 * 
+	 * @param pagination - Normalized pagination parameters (offset, limit)
+	 * @returns Object containing array of countries and total count
+	 */
+	async findPage(pagination: NormalizedPagination): Promise<{ countries: Country[]; total: number }> {
+		const startTime = Date.now()
+
+		try {
+			const { offset, limit } = pagination
+
+			const result = await this.countriesRepository.findPage(pagination)
+
+			const duration = Date.now() - startTime
+			this.logger.log(
+				`Countries page retrieved: ${result.items.length} items (offset=${offset}, limit=${limit}, total=${result.total}) in ${duration}ms`,
+			)
+
+			return { countries: result.items, total: result.total }
+		} catch (error) {
+			const duration = Date.now() - startTime
+			this.logger.error(
+				`Failed to retrieve countries page: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
 				error instanceof Error ? error.stack : undefined,
 			)
 			throw error

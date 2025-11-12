@@ -132,23 +132,39 @@ export async function loadConfig<TOutput>(
 	}
 	// AWS environments: Load from Secrets Manager automatically
 	else {
-		// Determine secret key with environment-specific defaults
-		let secretKey = process.env.AWS_SECRET_KEY || opts?.secretKey
+		// Map NODE_ENV to the correct secret name
+		// This mapping is based on the AWS Secrets Manager naming convention
+		const secretNameMap: Record<string, string> = {
+			dev: 'dev/agent-service-dev',
+			test: 'qa/agent-service-accp',
+			prod: 'prod/agent-service-prod',
+		}
 		
-		// Default to environment-specific secret names if not specified
-		if (!secretKey) {
-			secretKey = env === 'dev' ? 'agent-service-dev' : 'config'
+		// Use AWS_SECRET_KEY if provided, otherwise auto-determine from NODE_ENV
+		let secretName: string
+		let isAutoMapped = false
+		
+		if (process.env.AWS_SECRET_KEY) {
+			secretName = process.env.AWS_SECRET_KEY
+		} else if (opts?.secretKey) {
+			secretName = opts.secretKey
+		} else {
+			// Auto-map based on NODE_ENV
+			secretName = secretNameMap[env] || secretNameMap.dev
+			isAutoMapped = true
 		}
 		
 		const region = process.env.AWS_REGION || opts?.awsRegion || 'us-east-1'
-		// Convention: {NODE_ENV}/{secretKey} (no /config suffix per DevOps)
-		const secretName = `${env}/${secretKey}`
 		
 		console.log(`[Config] Loading secrets from AWS Secrets Manager:`)
 		console.log(`[Config]   NODE_ENV: ${env}`)
-		console.log(`[Config]   AWS_SECRET_KEY: ${process.env.AWS_SECRET_KEY || '(not set)'}`)
+		if (isAutoMapped) {
+			console.log(`[Config]   AWS_SECRET_KEY: (not set) - auto-mapped to '${secretName}'`)
+			console.log(`[Config]   ℹ️  Secret auto-mapped based on NODE_ENV`)
+		} else {
+			console.log(`[Config]   AWS_SECRET_KEY: ${secretName}`)
+		}
 		console.log(`[Config]   Region: ${region}`)
-		console.log(`[Config]   Secret Name: ${secretName}`)
 		
 		try {
 			await loadSecretsFromAWS(secretName, region)

@@ -6,8 +6,15 @@ import helmet from 'helmet'
 import compression from 'compression'
 import { ProblemDetailsFilter } from './common/problem-details.filter.js'
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
+import configuration from './core/configuration.js'
 
 async function bootstrap() {
+	// CRITICAL: Load configuration BEFORE creating NestJS app
+	// This ensures AWS Secrets Manager secrets are loaded before any modules initialize
+	console.log('[Bootstrap] Preloading configuration...')
+	await configuration()
+	console.log('[Bootstrap] Configuration preloaded successfully')
+	
 	const app = await NestFactory.create(AppModule)
 
 	// Get services

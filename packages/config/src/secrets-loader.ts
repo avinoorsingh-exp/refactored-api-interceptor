@@ -30,7 +30,10 @@ export async function loadSecretsFromAWS(
 		for (const [key, value] of Object.entries(secrets)) {
 			// Only set if not already defined (existing env vars take precedence)
 			if (process.env[key] === undefined) {
-				process.env[key] = value
+				// Trim whitespace/newlines which commonly appear when secrets are stored
+				// as strings (e.g. "true\n"). This prevents boolean parsing issues.
+				const normalized = typeof value === 'string' ? value.trim() : String(value)
+				process.env[key] = normalized
 			}
 		}
 
