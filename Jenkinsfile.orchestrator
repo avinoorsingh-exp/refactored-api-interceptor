@@ -80,6 +80,8 @@ pipeline
       when {
         anyOf {
           branch 'development'
+          branch 'dev'
+          branch 'qa'
           branch 'test'
           branch 'accp'
           branch 'main'

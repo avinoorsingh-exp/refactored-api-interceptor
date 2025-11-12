@@ -102,9 +102,10 @@ pipeline
     stage('Fetch Database Secrets') {
       when {
         anyOf {
+          branch 'development'
           branch 'dev'
-          branch 'test'
           branch 'qa'
+          branch 'test'
           branch 'accp'
           branch 'main'
         }
