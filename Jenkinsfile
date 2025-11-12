@@ -19,22 +19,27 @@ pipeline
           echo "DEBUG: BRANCH_NAME = '${env.BRANCH_NAME}'"
           echo "DEBUG: env.VERSION after assignment = '${env.VERSION}'"
           echo "DEBUG: PROJECT = '${env.PROJECT}'"
+          
+          // Construct image tag using local variables to avoid interpolation issues
+          def imageTag = ''
           if (env.BRANCH_NAME == 'dev') {
-              env.IMAGE = "${env.PROJECT}:dev-${env.VERSION}" 
+              imageTag = "${env.PROJECT}:dev-${env.VERSION}"
           } else if (env.BRANCH_NAME == 'test') {
-              env.IMAGE = "${env.PROJECT}:test-${env.VERSION}" 
+              imageTag = "${env.PROJECT}:test-${env.VERSION}"
           } else if (env.BRANCH_NAME == 'accp') {
-              env.IMAGE = "${env.PROJECT}:accp-${env.VERSION}"
+              imageTag = "${env.PROJECT}:accp-${env.VERSION}"
           } else if (env.BRANCH_NAME == 'qa') {
-              env.IMAGE = "${env.PROJECT}:qa-${env.VERSION}"
+              imageTag = "${env.PROJECT}:qa-${env.VERSION}"
           } else if (env.BRANCH_NAME == 'main') {
-              env.IMAGE = "${env.PROJECT}:prod-${env.VERSION}"
+              imageTag = "${env.PROJECT}:prod-${env.VERSION}"
           } else {
               // Fallback: use branch name as tag prefix if it doesn't match known branches
-              env.IMAGE = "${env.PROJECT}:${env.BRANCH_NAME}-${env.VERSION}"
+              imageTag = "${env.PROJECT}:${env.BRANCH_NAME}-${env.VERSION}"
               echo "DEBUG: Branch '${env.BRANCH_NAME}' not in known list, using branch name as tag prefix"
           }
-          echo "DEBUG: Set IMAGE to: ${env.IMAGE}"
+          echo "DEBUG: Constructed imageTag = '${imageTag}'"
+          env.IMAGE = imageTag
+          echo "DEBUG: Set env.IMAGE to: ${env.IMAGE}"
         }
 
       }
