@@ -139,7 +139,7 @@ pipeline
 
     stage('Run Migrations - Development') {
       when {
-        branch 'dev-test'
+        branch 'dev'
       }
 
       steps {
