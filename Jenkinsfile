@@ -14,6 +14,9 @@ pipeline
           env.VERSION = shortCommitHash
           // set the build display name
           currentBuild.displayName = "#${BUILD_ID}-${env.VERSION}"
+          echo "DEBUG: BRANCH_NAME = '${env.BRANCH_NAME}'"
+          echo "DEBUG: VERSION = '${env.VERSION}'"
+          echo "DEBUG: PROJECT = '${env.PROJECT}'"
           if (env.BRANCH_NAME == 'dev') {
               env.IMAGE = "${env.PROJECT}:dev-${env.VERSION}" 
           } else if (env.BRANCH_NAME == 'test') {
@@ -24,6 +27,10 @@ pipeline
               env.IMAGE = "${env.PROJECT}:qa-${env.VERSION}"
           } else if (env.BRANCH_NAME == 'main') {
               env.IMAGE = "${env.PROJECT}:prod-${env.VERSION}"
+          } else {
+              // Fallback: use branch name as tag prefix if it doesn't match known branches
+              env.IMAGE = "${env.PROJECT}:${env.BRANCH_NAME}-${env.VERSION}"
+              echo "DEBUG: Branch '${env.BRANCH_NAME}' not in known list, using branch name as tag prefix"
           }
           echo "DEBUG: Set IMAGE to: ${env.IMAGE}"
         }
