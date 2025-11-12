@@ -5,23 +5,27 @@ import {
 	Get,
 	Body,
 	Param,
+	Query,
 	HttpCode,
 	HttpStatus,
 	Logger,
 	UsePipes,
+	UseInterceptors,
 	HttpException,
 	NotFoundException,
 	Res,
 	Req,
 } from '@nestjs/common'
 import { Response, Request } from 'express'
+import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger'
 import { CreateCountryInputSchema, CountryCodeParamSchema } from '@exprealty/shared-domain'
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js'
+import { PaginationQueryDto } from '../../common/pagination/pagination.dto.js'
+import { PaginationInterceptor } from '../../common/pagination/pagination.interceptor.js'
 import { CountriesService } from './countries.service.js'
 import { CreateCountryDto } from './dto/create-country.dto.js'
 import { CountryCodeParamDto } from './dto/country-code-param.dto.js'
 import { CountryResponseDto } from './dto/country-response.dto.js'
-import { ApiTags } from '@nestjs/swagger'
 
 /**
  * Controller for Country resource endpoints.
@@ -82,6 +86,82 @@ export class CountriesController {
 			} else {
 				this.logger.error(
 					`[${correlationId}] POST /v1/countries - 500 Internal Server Error (${duration}ms)`,
+					error instanceof Error ? error.stack : undefined,
+				)
+			}
+
+			// Re-throw for NestJS exception filter to handle
+			throw error
+		}
+	}
+
+	/**
+	 * GET /v1/countries - List countries with pagination
+	 * 
+	 * @param query - Pagination query parameters (offset, limit)
+	 * @param req - Express request object for correlation ID
+	 * @returns Paginated list of countries with metadata
+	 */
+	@Get()
+	@ApiOperation({
+		summary: 'List countries with pagination',
+		description: 'Returns a paginated list of countries sorted by alpha-2 code ascending. Supports offset-based pagination with X-Total-Count and Link headers. Max limit is 50.',
+	})
+	@ApiResponse({
+		status: 200,
+		description: 'Countries retrieved successfully',
+		type: [CountryResponseDto],
+		headers: {
+			'X-Total-Count': {
+				description: 'Total number of countries',
+				schema: { type: 'string' },
+			},
+			'Link': {
+				description: 'RFC 8288 pagination links (rel=next, rel=prev, rel=first, rel=last)',
+				schema: { type: 'string' },
+			},
+		},
+	})
+	@ApiResponse({
+		status: 400,
+		description: 'Validation error - invalid offset or limit',
+	})
+	@UseInterceptors(PaginationInterceptor)
+	async findAll(
+		@Query() query: PaginationQueryDto,
+		@Req() req: Request,
+	): Promise<{ items: CountryResponseDto[]; total: number }> {
+		const startTime = Date.now()
+		const correlationId = this.getCorrelationId(req)
+
+		this.logger.log(
+			`[${correlationId}] GET /v1/countries - List countries with pagination (offset=${query.offset || 0}, limit=${query.limit || 25})`,
+		)
+
+		try {
+			// The PaginationInterceptor will handle normalization and header setting
+			const { countries, total } = await this.countriesService.findPage(query as any)
+
+			const items = countries
+
+			const duration = Date.now() - startTime
+			this.logger.log(
+				`[${correlationId}] GET /v1/countries - 200 OK (${duration}ms) - Returned ${items.length} of ${total} countries`,
+			)
+
+			return { items, total }
+		} catch (error) {
+			const duration = Date.now() - startTime
+
+			// Log based on error type
+			if (error instanceof HttpException) {
+				const status = error.getStatus()
+				this.logger.warn(
+					`[${correlationId}] GET /v1/countries - ${status} ${error.message} (${duration}ms)`,
+				)
+			} else {
+				this.logger.error(
+					`[${correlationId}] GET /v1/countries - 500 Internal Server Error (${duration}ms)`,
 					error instanceof Error ? error.stack : undefined,
 				)
 			}
