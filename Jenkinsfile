@@ -90,7 +90,8 @@ pipeline
             docker.image(env.IMAGE).push()
           }
           echo TF_VAR_app_image
-          env.TF_VAR_app_image = "${ECR}${env.IMAGE}"
+          TF_VAR_app_image = "${ECR}${env.IMAGE}"
+          env.TF_VAR_app_image = TF_VAR_app_image
           echo TF_VAR_app_image
         }
 
@@ -247,6 +248,7 @@ pipeline
             ]]) {
             script
             {
+              def imageVar = env.TF_VAR_app_image
               docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
                 .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
                 {
@@ -255,11 +257,11 @@ pipeline
                   aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-dev
                   aws configure set region us-east-1 --profile exp-dev
 
-                  echo "DEBUG: TF_VAR_app_image value is: ${env.TF_VAR_app_image}"
+                  echo "DEBUG: TF_VAR_app_image value is: ${imageVar}"
                   cd account/exp-realty-dev/us-east-1/agent-service/dev/agent-service-dev/ecs
                   terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var "image=${env.TF_VAR_app_image}"
-                  terragrunt apply -auto-approve -input=false -var "image=${env.TF_VAR_app_image}"
+                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${imageVar}'
+                  terragrunt apply -auto-approve -input=false -var 'image=${imageVar}'
                   """
                 }
             }
@@ -370,6 +372,7 @@ pipeline
             ]]) {
             script
             {
+              def imageVar = env.TF_VAR_app_image
               docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
                 .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
                 {
@@ -380,8 +383,8 @@ pipeline
 
                   cd account/exp-realty-dev/us-east-1/agent-service/test/agent-service-test/ecs
                   terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var "image=${env.TF_VAR_app_image}"
-                  terragrunt apply -auto-approve -input=false -var "image=${env.TF_VAR_app_image}"
+                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${imageVar}'
+                  terragrunt apply -auto-approve -input=false -var 'image=${imageVar}'
                   """
                 }
             }
@@ -498,6 +501,7 @@ pipeline
         ]]) {
           script
           {
+            def imageVar = env.TF_VAR_app_image
             docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
               .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
               {
@@ -508,8 +512,8 @@ pipeline
 
                 cd /data/account/exp-realty-qa/us-east-1/agent-service/accp/agent-service-accp/ecs
                 terragrunt init -reconfigure
-                terragrunt plan --terragrunt-log-level trace -input=false -var "image=${env.TF_VAR_app_image}"
-                terragrunt apply -auto-approve -input=false -var "image=${env.TF_VAR_app_image}"
+                terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${imageVar}'
+                terragrunt apply -auto-approve -input=false -var 'image=${imageVar}'
                 """
               }
           }
@@ -620,6 +624,7 @@ pipeline
         ]]) {
           script
           {
+            def imageVar = env.TF_VAR_app_image
             docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
               .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
               {
@@ -630,8 +635,8 @@ pipeline
 
                 cd /data/account/exp-realty-prod/us-east-1/agent-service/prod/agent-service/ecs
                 terragrunt init -reconfigure
-                terragrunt plan --terragrunt-log-level trace -input=false -var "image=${env.TF_VAR_app_image}"
-                terragrunt apply -auto-approve -input=false -var "image=${env.TF_VAR_app_image}"
+                terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${imageVar}'
+                terragrunt apply -auto-approve -input=false -var 'image=${imageVar}'
                 """
               }
           }
