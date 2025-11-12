@@ -57,7 +57,10 @@ import { ApprovalEntity } from './entities/core/approval.entity.js'
  * @internal
  */
 function getSSLConfig() {
-	const useSSL = process.env.DB_SSL === 'true' || process.env.DB_SSL_CA_PATH
+	// Enable SSL for all non-local environments (dev/test/prod in AWS)
+	const nodeEnv = process.env.NODE_ENV || 'local'
+	const useSSL = process.env.DB_SSL === 'true' || process.env.DB_SSL_CA_PATH || nodeEnv !== 'local'
+	
 	if (!useSSL) {
 		return false
 	}
@@ -77,7 +80,7 @@ function getSSLConfig() {
 		}
 	}
 
-	// Fallback: SSL without certificate verification (less secure but works)
+	// Fallback: SSL without certificate verification (works for RDS)
 	return {
 		rejectUnauthorized: false,
 	}
@@ -111,7 +114,8 @@ console.log(`   Host: ${dbConfig.DB_HOST}`)
 console.log(`   Port: ${dbConfig.DB_PORT}`)
 console.log(`   Database: ${dbConfig.DB_NAME}`)
 console.log(`   User: ${dbConfig.DB_USERNAME}`)
-console.log(`   SSL: ${dbConfig.DB_SSL || 'false'}`)
+console.log(`   NODE_ENV: ${dbConfig.NODE_ENV}`)
+console.log(`   SSL: ${dbConfig.NODE_ENV !== 'local' ? 'true (auto-enabled for AWS)' : dbConfig.DB_SSL || 'false'}`)
 
 /**
  * TypeORM DataSource configuration for eXpRealty platform.
