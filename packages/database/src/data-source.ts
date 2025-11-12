@@ -1,8 +1,6 @@
 import 'reflect-metadata'
 import { DataSource } from 'typeorm'
 import * as fs from 'fs'
-import { loadEnv, BaseConfig } from '@exprealty/config'
-import { z } from 'zod'
 import { AddressEntity } from './entities/core/address.entity.js'
 import { AgentCompanyEntity } from './entities/core/agent-company.entity.js'
 import { AgentEntity } from './entities/core/agent.entity.js'
@@ -85,23 +83,27 @@ function getSSLConfig() {
 	}
 }
 
-// Load environment variables from .env files
-loadEnv()
-
-// Database-specific config schema
-const DatabaseConfigSchema = BaseConfig.extend({
-	// In local development, these will be loaded from .env files
-	// In AWS (dev/test/prod), these MUST come from Secrets Manager
-	DB_HOST: z.string().min(1, 'DB_HOST is required'),
-	DB_PORT: z.coerce.number().int().positive(),
-	DB_USERNAME: z.string().min(1, 'DB_USERNAME is required'),
-	DB_PASSWORD: z.string().min(1, 'DB_PASSWORD is required'),
-	DB_NAME: z.string().min(1, 'DB_NAME is required'),
-	DB_SSL: z.string().optional(),
-	DB_SSL_CA_PATH: z.string().optional(),
-})
-
-const dbConfig = DatabaseConfigSchema.parse(process.env)
+/**
+ * Database configuration for TypeORM CLI (migrations, schema sync, etc.)
+ * 
+ * This uses process.env directly since migrations are always run with environment variables
+ * explicitly set (Jenkins CI/CD, local development with .env loaded, ECS tasks, etc.)
+ * 
+ * The running NestJS application uses ConfigService which loads config through
+ * the async config module (with AWS Secrets Manager support).
+ */
+const dbConfig = {
+	DB_HOST: process.env.DB_HOST || 'localhost',
+	DB_PORT: parseInt(process.env.DB_PORT || '5432', 10),
+	DB_USERNAME: process.env.DB_USERNAME || 'postgres',
+	DB_PASSWORD: process.env.DB_PASSWORD || 'postgres',
+	DB_NAME: process.env.DB_NAME || 'agent_database',
+	DB_SSL: process.env.DB_SSL,
+	DB_SSL_CA_PATH: process.env.DB_SSL_CA_PATH,
+	NODE_ENV: process.env.NODE_ENV || 'local',
+	LOG_LEVEL: process.env.LOG_LEVEL || 'info',
+	LOG_DIR: process.env.LOG_DIR || './logs',
+}
 
 // Log database connection info (mask password)
 console.log('🔌 Database Configuration:')
