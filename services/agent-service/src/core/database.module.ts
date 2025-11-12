@@ -50,8 +50,8 @@ import { LoggerModule } from './logger.module.js'
             connectionTimeoutMillis: 10000,
           },
           
-          // SSL for production
-          ssl: cfg.NODE_ENV === 'prod' ? {
+          // SSL required for RDS in all AWS environments (dev/test/prod)
+          ssl: cfg.NODE_ENV !== 'local' ? {
             rejectUnauthorized: false,
           } : false,
         }
