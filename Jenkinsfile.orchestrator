@@ -14,6 +14,7 @@ pipeline
           VERSION = shortCommitHash
           // set the build display name
           currentBuild.displayName = "#${BUILD_ID}-orchestrator-${VERSION}"
+          def sanitizedBranchName = env.BRANCH_NAME.replaceAll('/', '-')
           if (env.BRANCH_NAME == 'dev') {
               IMAGE = "$PROJECT:dev-$VERSION" 
           } else if (env.BRANCH_NAME == 'test') {
@@ -22,6 +23,8 @@ pipeline
               IMAGE = "$PROJECT:accp-$VERSION"
           } else if (env.BRANCH_NAME == 'main') {
               IMAGE = "$PROJECT:prod-$VERSION"
+          } else {
+              IMAGE = "$PROJECT:${sanitizedBranchName}-$VERSION"
           }
         }
 
