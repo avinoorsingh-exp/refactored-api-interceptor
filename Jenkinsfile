@@ -257,8 +257,8 @@ pipeline
 
                   cd account/exp-realty-dev/us-east-1/agent-service/dev/agent-service-dev/ecs
                   terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var "image=$TF_VAR_image"
-                  terragrunt apply -auto-approve -input=false -var "image=$TF_VAR_image"
+                  terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$TF_VAR_image"
+                  terragrunt apply -auto-approve -input=false -var "image=\$TF_VAR_image"
                   """
                 }
             }
@@ -379,8 +379,8 @@ pipeline
 
                   cd account/exp-realty-dev/us-east-1/agent-service/test/agent-service-test/ecs
                   terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var "image=$TF_VAR_image"
-                  terragrunt apply -auto-approve -input=false -var "image=$TF_VAR_image"
+                  terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$TF_VAR_image"
+                  terragrunt apply -auto-approve -input=false -var "image=\$TF_VAR_image"
                   """
                 }
             }
@@ -507,8 +507,8 @@ pipeline
 
                 cd /data/account/exp-realty-qa/us-east-1/agent-service/accp/agent-service-accp/ecs
                 terragrunt init -reconfigure
-                terragrunt plan --terragrunt-log-level trace -input=false -var "image=$TF_VAR_image"
-                terragrunt apply -auto-approve -input=false -var "image=$TF_VAR_image"
+                terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$TF_VAR_image"
+                terragrunt apply -auto-approve -input=false -var "image=\$TF_VAR_image"
                 """
               }
           }
@@ -629,8 +629,8 @@ pipeline
 
                 cd /data/account/exp-realty-prod/us-east-1/agent-service/prod/agent-service/ecs
                 terragrunt init -reconfigure
-                terragrunt plan --terragrunt-log-level trace -input=false -var "image=$TF_VAR_image"
-                terragrunt apply -auto-approve -input=false -var "image=$TF_VAR_image"
+                terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$TF_VAR_image"
+                terragrunt apply -auto-approve -input=false -var "image=\$TF_VAR_image"
                 """
               }
           }
