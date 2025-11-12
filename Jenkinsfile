@@ -10,17 +10,9 @@ pipeline
         script {
           gitCommitHash = sh(returnStdout: true, script: 'git rev-parse HEAD').trim()
           shortCommitHash = gitCommitHash.take(7)
-          echo "DEBUG: gitCommitHash = '${gitCommitHash}'"
-          echo "DEBUG: shortCommitHash = '${shortCommitHash}'"
-          // calculate a sample version tag
           env.VERSION = shortCommitHash
-          // set the build display name
           currentBuild.displayName = "#${BUILD_ID}-${env.VERSION}"
-          echo "DEBUG: BRANCH_NAME = '${env.BRANCH_NAME}'"
-          echo "DEBUG: env.VERSION after assignment = '${env.VERSION}'"
-          echo "DEBUG: PROJECT = '${env.PROJECT}'"
           
-          // Construct image tag using local variables to avoid interpolation issues
           def imageTag = ''
           if (env.BRANCH_NAME == 'dev') {
               imageTag = "${env.PROJECT}:dev-${env.VERSION}"
@@ -33,13 +25,9 @@ pipeline
           } else if (env.BRANCH_NAME == 'main') {
               imageTag = "${env.PROJECT}:prod-${env.VERSION}"
           } else {
-              // Fallback: use branch name as tag prefix if it doesn't match known branches
               imageTag = "${env.PROJECT}:${env.BRANCH_NAME}-${env.VERSION}"
-              echo "DEBUG: Branch '${env.BRANCH_NAME}' not in known list, using branch name as tag prefix"
           }
-          echo "DEBUG: Constructed imageTag = '${imageTag}'"
           env.IMAGE = imageTag
-          echo "DEBUG: Set env.IMAGE to: ${env.IMAGE}"
         }
 
       }
@@ -48,7 +36,6 @@ pipeline
     stage('Docker build') {
       steps {
         script {
-          echo "DEBUG: Building Docker image with tag: ${env.IMAGE}"
           docker.build("${env.IMAGE}", "-f services/agent-service/Dockerfile .")
         }
       }
@@ -63,12 +50,7 @@ pipeline
       }
       steps {
         script {
-          echo "🔍 DEBUG: About to call centralized coverage job"
-          echo "🔍 DEBUG: Service: agent-service"
-          echo "🔍 DEBUG: Branch: ${env.BRANCH_NAME}"
-          
           try {
-            echo "🔍 DEBUG: Calling centralized coverage job"
             build job: 'Transaction Calculator/centralized-coverage/main',
               wait: false,
               propagate: false,
@@ -82,13 +64,11 @@ pipeline
                       string(name: 'MIN_COVERAGE_PERCENTAGE', value: '0'),
                       booleanParam(name: 'FAIL_ON_COVERAGE_THRESHOLD', value: false)
                   ]
-            echo "✅ DEBUG: Successfully called centralized coverage job"
           } catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException e) {
             // FlowInterruptedException is expected when wait: false and downstream job returns UNSTABLE
             // This is not a real error - the job was triggered successfully
-            echo "ℹ️  INFO: Centralized coverage job triggered (may return UNSTABLE, which is expected and non-blocking)"
           } catch (Exception e) {
-            echo "❌ DEBUG: Error calling centralized coverage job: ${e.getClass().getSimpleName()}: ${e.getMessage()}"
+            // Log error but don't fail the build
           }
         }
       }
@@ -99,18 +79,12 @@ pipeline
         script {
           sh("aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR}")
           ECRURL = "http://${ECR}"
-          echo ECRURL
-          // Push the Docker image to ECR
-          docker.withRegistry(ECRURL)
-          {
+          docker.withRegistry(ECRURL) {
             docker.image(env.IMAGE).push()
           }
           TF_VAR_app_image = "${ECR}${env.IMAGE}"
           env.TF_VAR_app_image = TF_VAR_app_image
-          echo "TF_VAR_app_image: ${TF_VAR_app_image}"
-          // Write image to file for use in later stages
           writeFile file: 'image-tag.txt', text: TF_VAR_app_image
-          echo "Image written to file: ${readFile('image-tag.txt')}"
         }
 
       }
@@ -266,8 +240,6 @@ pipeline
             ]]) {
             script
             {
-              def imageVar = readFile('image-tag.txt').trim()
-              echo "DEBUG: Reading image from file: ${imageVar}"
               docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
                 .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
                 {
@@ -277,7 +249,6 @@ pipeline
                   aws configure set region us-east-1 --profile exp-dev
 
                   IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
-                  echo "DEBUG: Image tag from file: \$IMAGE_TAG"
                   cd account/exp-realty-dev/us-east-1/agent-service/dev/agent-service-dev/ecs
                   terragrunt init -reconfigure
                   terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$IMAGE_TAG"
@@ -392,8 +363,6 @@ pipeline
             ]]) {
             script
             {
-              def imageVar = readFile('image-tag.txt').trim()
-              echo "DEBUG: Reading image from file: ${imageVar}"
               docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
                 .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
                 {
@@ -403,7 +372,6 @@ pipeline
                   aws configure set region us-east-1 --profile exp-dev
 
                   IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
-                  echo "DEBUG: Image tag from file: \$IMAGE_TAG"
                   cd account/exp-realty-dev/us-east-1/agent-service/test/agent-service-test/ecs
                   terragrunt init -reconfigure
                   terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$IMAGE_TAG"
@@ -524,8 +492,6 @@ pipeline
         ]]) {
           script
           {
-            def imageVar = readFile('image-tag.txt').trim()
-            echo "DEBUG: Reading image from file: ${imageVar}"
             docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
               .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
               {
@@ -535,7 +501,6 @@ pipeline
                 aws configure set region us-east-1 --profile exp-qa
 
                 IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
-                echo "DEBUG: Image tag from file: \$IMAGE_TAG"
                 cd /data/account/exp-realty-qa/us-east-1/agent-service/accp/agent-service-accp/ecs
                 terragrunt init -reconfigure
                 terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$IMAGE_TAG"
@@ -650,8 +615,6 @@ pipeline
         ]]) {
           script
           {
-            def imageVar = readFile('image-tag.txt').trim()
-            echo "DEBUG: Reading image from file: ${imageVar}"
             docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
               .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
               {
@@ -661,7 +624,6 @@ pipeline
                 aws configure set region us-east-1 --profile exp-production
 
                 IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
-                echo "DEBUG: Image tag from file: \$IMAGE_TAG"
                 cd /data/account/exp-realty-prod/us-east-1/agent-service/prod/agent-service/ecs
                 terragrunt init -reconfigure
                 terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$IMAGE_TAG"
