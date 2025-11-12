@@ -132,23 +132,22 @@ export async function loadConfig<TOutput>(
 	}
 	// AWS environments: Load from Secrets Manager automatically
 	else {
-		// Determine secret key with environment-specific defaults
-		let secretKey = process.env.AWS_SECRET_KEY || opts?.secretKey
+		// AWS_SECRET_KEY should contain the FULL secret name: env/secret-name
+		const secretName = process.env.AWS_SECRET_KEY || opts?.secretKey
 		
-		// Default to environment-specific secret names if not specified
-		if (!secretKey) {
-			secretKey = env === 'dev' ? 'agent-service-dev' : 'config'
+		if (!secretName) {
+			throw new Error(
+				'AWS_SECRET_KEY is required in non-local environments. ' +
+				'Format: env/secret-name'
+			)
 		}
 		
 		const region = process.env.AWS_REGION || opts?.awsRegion || 'us-east-1'
-		// Convention: {NODE_ENV}/{secretKey} (no /config suffix per DevOps)
-		const secretName = `${env}/${secretKey}`
 		
 		console.log(`[Config] Loading secrets from AWS Secrets Manager:`)
 		console.log(`[Config]   NODE_ENV: ${env}`)
-		console.log(`[Config]   AWS_SECRET_KEY: ${process.env.AWS_SECRET_KEY || '(not set)'}`)
+		console.log(`[Config]   AWS_SECRET_KEY: ${secretName}`)
 		console.log(`[Config]   Region: ${region}`)
-		console.log(`[Config]   Secret Name: ${secretName}`)
 		
 		try {
 			await loadSecretsFromAWS(secretName, region)
