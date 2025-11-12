@@ -42,11 +42,11 @@ export type Config = z.infer<typeof ConfigSchema>
  * 
  * The config package automatically handles:
  * - Local: Loads from .env files
- * - AWS (dev/test/prod): Loads from AWS Secrets Manager at {NODE_ENV}/{AWS_SECRET_KEY}/config
+ * - AWS (dev/test/prod): Loads from AWS Secrets Manager at {NODE_ENV}/{AWS_SECRET_KEY}
  * 
  * ECS Task Definition should set:
  * - NODE_ENV: dev|test|prod
- * - AWS_SECRET_KEY: agent-platform (or whatever DevOps configured)
+ * - AWS_SECRET_KEY: agent-service-dev (e.g., dev/agent-service-dev in Secrets Manager)
  * - AWS_REGION: us-east-1 (optional, defaults to us-east-1)
  * 
  * CRITICAL: Configuration errors are logged to console.error here

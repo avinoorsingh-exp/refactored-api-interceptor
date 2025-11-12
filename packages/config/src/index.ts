@@ -141,8 +141,8 @@ export async function loadConfig<TOutput>(
 		}
 		
 		const region = process.env.AWS_REGION || opts?.awsRegion || 'us-east-1'
-		// Convention: {NODE_ENV}/{secretKey}/config
-		const secretName = `${env}/${secretKey}/config`
+		// Convention: {NODE_ENV}/{secretKey} (no /config suffix per DevOps)
+		const secretName = `${env}/${secretKey}`
 		
 		console.log(`[Config] Loading secrets from AWS Secrets Manager:`)
 		console.log(`[Config]   NODE_ENV: ${env}`)
@@ -154,26 +154,19 @@ export async function loadConfig<TOutput>(
 			await loadSecretsFromAWS(secretName, region)
 			console.log(`[Config] Successfully loaded secrets from ${secretName}`)
 		} catch (error) {
-			// Log error but continue - services will catch validation errors and log to Datadog
+			// FAIL FAST: Don't swallow AWS errors and continue to Zod validation
+			// The AWS error message is much clearer than "DB_HOST is required"
 			console.error(`[Config] Failed to load AWS secrets from ${secretName}`)
 			console.error(`[Config] Error: ${error instanceof Error ? error.message : String(error)}`)
 			console.error(`[Config] Stack: ${error instanceof Error ? error.stack : 'N/A'}`)
-			console.error(`[Config] Continuing with existing environment variables (may cause validation errors if not set)`)
-			// Continue - let validation errors bubble up to service for proper Datadog logging
+			// Re-throw immediately - don't continue to validation with missing secrets
+			throw error
 		}
 	}
 
-	try {
-		const cfg = schema.parse(process.env)
-		cache.set(schema, cfg)
-		return cfg
-	} catch (error) {
-		// Log validation failure and re-throw for service to catch
-		console.error(`[Config] Configuration validation failed`)
-		console.error(`[Config] Error: ${error instanceof Error ? error.message : String(error)}`)
-		// Re-throw so service can log to Datadog and handle gracefully
-		throw error
-	}
+	const cfg = schema.parse(process.env)
+	cache.set(schema, cfg)
+	return cfg
 }
 
 /**
