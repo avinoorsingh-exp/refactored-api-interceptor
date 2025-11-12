@@ -89,10 +89,12 @@ pipeline
           {
             docker.image(env.IMAGE).push()
           }
-          echo TF_VAR_app_image
           TF_VAR_app_image = "${ECR}${env.IMAGE}"
           env.TF_VAR_app_image = TF_VAR_app_image
-          echo TF_VAR_app_image
+          echo "TF_VAR_app_image: ${TF_VAR_app_image}"
+          // Write image to file for use in later stages
+          writeFile file: 'image-tag.txt', text: TF_VAR_app_image
+          echo "Image written to file: ${readFile('image-tag.txt')}"
         }
 
       }
@@ -248,7 +250,8 @@ pipeline
             ]]) {
             script
             {
-              def imageVar = env.TF_VAR_app_image
+              def imageVar = readFile('image-tag.txt').trim()
+              echo "DEBUG: Reading image from file: ${imageVar}"
               docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
                 .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
                 {
@@ -257,11 +260,12 @@ pipeline
                   aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-dev
                   aws configure set region us-east-1 --profile exp-dev
 
-                  echo "DEBUG: TF_VAR_app_image value is: ${imageVar}"
+                  IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
+                  echo "DEBUG: Image tag from file: \$IMAGE_TAG"
                   cd account/exp-realty-dev/us-east-1/agent-service/dev/agent-service-dev/ecs
                   terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${imageVar}'
-                  terragrunt apply -auto-approve -input=false -var 'image=${imageVar}'
+                  terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$IMAGE_TAG"
+                  terragrunt apply -auto-approve -input=false -var "image=\$IMAGE_TAG"
                   """
                 }
             }
@@ -372,7 +376,8 @@ pipeline
             ]]) {
             script
             {
-              def imageVar = env.TF_VAR_app_image
+              def imageVar = readFile('image-tag.txt').trim()
+              echo "DEBUG: Reading image from file: ${imageVar}"
               docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
                 .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
                 {
@@ -381,10 +386,12 @@ pipeline
                   aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-dev
                   aws configure set region us-east-1 --profile exp-dev
 
+                  IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
+                  echo "DEBUG: Image tag from file: \$IMAGE_TAG"
                   cd account/exp-realty-dev/us-east-1/agent-service/test/agent-service-test/ecs
                   terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${imageVar}'
-                  terragrunt apply -auto-approve -input=false -var 'image=${imageVar}'
+                  terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$IMAGE_TAG"
+                  terragrunt apply -auto-approve -input=false -var "image=\$IMAGE_TAG"
                   """
                 }
             }
@@ -501,7 +508,8 @@ pipeline
         ]]) {
           script
           {
-            def imageVar = env.TF_VAR_app_image
+            def imageVar = readFile('image-tag.txt').trim()
+            echo "DEBUG: Reading image from file: ${imageVar}"
             docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
               .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
               {
@@ -510,10 +518,12 @@ pipeline
                 aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-qa
                 aws configure set region us-east-1 --profile exp-qa
 
+                IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
+                echo "DEBUG: Image tag from file: \$IMAGE_TAG"
                 cd /data/account/exp-realty-qa/us-east-1/agent-service/accp/agent-service-accp/ecs
                 terragrunt init -reconfigure
-                terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${imageVar}'
-                terragrunt apply -auto-approve -input=false -var 'image=${imageVar}'
+                terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$IMAGE_TAG"
+                terragrunt apply -auto-approve -input=false -var "image=\$IMAGE_TAG"
                 """
               }
           }
@@ -624,7 +634,8 @@ pipeline
         ]]) {
           script
           {
-            def imageVar = env.TF_VAR_app_image
+            def imageVar = readFile('image-tag.txt').trim()
+            echo "DEBUG: Reading image from file: ${imageVar}"
             docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
               .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
               {
@@ -633,10 +644,12 @@ pipeline
                 aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-production
                 aws configure set region us-east-1 --profile exp-production
 
+                IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
+                echo "DEBUG: Image tag from file: \$IMAGE_TAG"
                 cd /data/account/exp-realty-prod/us-east-1/agent-service/prod/agent-service/ecs
                 terragrunt init -reconfigure
-                terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${imageVar}'
-                terragrunt apply -auto-approve -input=false -var 'image=${imageVar}'
+                terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$IMAGE_TAG"
+                terragrunt apply -auto-approve -input=false -var "image=\$IMAGE_TAG"
                 """
               }
           }
