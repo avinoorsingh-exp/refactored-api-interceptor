@@ -1,1 +1,9 @@
-pnpm lint-staged
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+if command -v pnpm >/dev/null 2>&1; then
+  pnpm lint-staged
+else
+  echo "pnpm not found, skipping lint-staged"
+  exit 0
+fi

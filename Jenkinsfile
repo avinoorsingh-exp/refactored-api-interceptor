@@ -14,6 +14,7 @@ pipeline
           currentBuild.displayName = "#${BUILD_ID}-${env.VERSION}"
           
           def imageTag = ''
+          def sanitizedBranchName = env.BRANCH_NAME.replaceAll('/', '-')
           if (env.BRANCH_NAME == 'dev') {
               imageTag = "${env.PROJECT}:dev-${env.VERSION}"
           } else if (env.BRANCH_NAME == 'test') {
@@ -25,7 +26,7 @@ pipeline
           } else if (env.BRANCH_NAME == 'main') {
               imageTag = "${env.PROJECT}:prod-${env.VERSION}"
           } else {
-              imageTag = "${env.PROJECT}:${env.BRANCH_NAME}-${env.VERSION}"
+              imageTag = "${env.PROJECT}:${sanitizedBranchName}-${env.VERSION}"
           }
           env.IMAGE = imageTag
         }
@@ -77,9 +78,10 @@ pipeline
     stage('Docker push') {
       when {
         anyOf {
+          branch 'development'
           branch 'dev'
-          branch 'test'
           branch 'qa'
+          branch 'test'
           branch 'accp'
           branch 'main'
         }
@@ -102,10 +104,9 @@ pipeline
     stage('Fetch Database Secrets') {
       when {
         anyOf {
-          branch 'development'
           branch 'dev'
-          branch 'qa'
           branch 'test'
+          branch 'qa'
           branch 'accp'
           branch 'main'
         }
