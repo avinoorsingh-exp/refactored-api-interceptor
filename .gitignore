@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Compiled output in source directories
+packages/*/src/**/*.js
+packages/*/src/**/*.d.ts
+services/*/src/**/*.js
+services/*/src/**/*.d.ts
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -23,6 +29,8 @@ dist-ssr
 *.sln
 *.sw?
 coverage
+coverage-unit
+*.lcov
 
 **/tsconfig.build.tsbuildinfo
 
@@ -35,8 +43,9 @@ coverage
 
 .env*
 !env.example
+!.env.agentservice.example
 .env
 **/temp
 **/*Zone.Identifier*
 docs/ERD/**
-.kiro/settings/mcp.json
+.kiro/**

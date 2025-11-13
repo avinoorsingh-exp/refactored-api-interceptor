@@ -669,7 +669,7 @@ services:
 - `REDIS_TLS` - Enable TLS (default: false)
 
 **Application:**
-- `NODE_ENV` - Environment (development|test|production)
+- `NODE_ENV` - Environment (dev|test|prod)
 - `LOG_LEVEL` - Log level (debug|info|warn|error)
 - `LOG_DIR` - Log directory (default: ./logs)
 - `PORT` - Service port

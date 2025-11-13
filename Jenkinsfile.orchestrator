@@ -14,7 +14,8 @@ pipeline
           VERSION = shortCommitHash
           // set the build display name
           currentBuild.displayName = "#${BUILD_ID}-orchestrator-${VERSION}"
-          if (env.BRANCH_NAME == 'development') {
+          def sanitizedBranchName = env.BRANCH_NAME.replaceAll('/', '-')
+          if (env.BRANCH_NAME == 'dev') {
               IMAGE = "$PROJECT:dev-$VERSION" 
           } else if (env.BRANCH_NAME == 'test') {
               IMAGE = "$PROJECT:test-$VERSION" 
@@ -22,6 +23,8 @@ pipeline
               IMAGE = "$PROJECT:accp-$VERSION"
           } else if (env.BRANCH_NAME == 'main') {
               IMAGE = "$PROJECT:prod-$VERSION"
+          } else {
+              IMAGE = "$PROJECT:${sanitizedBranchName}-$VERSION"
           }
         }
 
@@ -39,7 +42,7 @@ pipeline
     stage('Test + Coverage') {
       when {
         anyOf {
-          branch 'development'
+          branch 'dev'
           expression { env.BRANCH_NAME.startsWith('feature/') }
         }
       }
@@ -107,12 +110,12 @@ pipeline
 
     stage('Deploy - Development') {
       when {
-        branch 'development'
+        branch 'dev'
       }
 
       steps
       {
-        git(url: 'https://bitbucket.org/exp-realty/exp-tf-dev.git', branch: 'agent-service-orch-dev', credentialsId: 'exp-jenkins')
+        git(url: 'https://bitbucket.org/exp-realty/exp-tf-dev.git', branch: 'master', credentialsId: 'exp-jenkins')
             withCredentials([[
               $class: 'AmazonWebServicesCredentialsBinding',
               accessKeyVariable: 'AWS_ACCESS_KEY_ID',

@@ -219,12 +219,15 @@ export const MLS = {
 
 /**
  * Country entity field constraints.
+ * Conforms to ISO 3166-1 international standard.
  * @public
  */
 export const COUNTRY = {
 	name: { min: 1, max: 255 },
-	twoLetterCode: 2,
-	iso3166: { max: 50 },
+	alpha2: 2,
+	alpha3: 3,
+	number: { min: 1, max: 999 },
+	dialingCode: { min: 1 },
 } as const
 
 /**

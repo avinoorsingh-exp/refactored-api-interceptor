@@ -3,6 +3,10 @@ import { expand } from 'dotenv-expand'
 import { z } from 'zod'
 import fs from 'node:fs'
 import path from 'node:path'
+import { loadSecretsFromAWS } from './secrets-loader.js'
+
+// Re-export secrets loader for direct use
+export { loadSecretsFromAWS, loadMultipleSecrets } from './secrets-loader.js'
 
 /**
  * Loads .env files from:
@@ -20,6 +24,10 @@ export type EnvLoadOptions = {
 	serviceDir?: string
 	/** Repository root path (auto-detected relative to serviceDir if not provided) */
 	repoRoot?: string
+	/** Secret key for AWS Secrets Manager (e.g., 'agent-platform', 'shared-config') - will be combined with NODE_ENV as: {NODE_ENV}/{secretKey}/config */
+	secretKey?: string
+	/** AWS region for Secrets Manager (defaults to us-east-1) */
+	awsRegion?: string
 }
 
 function safeExists(p?: string) {
@@ -57,6 +65,12 @@ function detectRepoRoot(startDir: string) {
 
 /** Load env files with sensible defaults */
 export function loadEnv(options: EnvLoadOptions = {}) {
+	// Only load .env files in local development
+	// AWS Secrets Manager will provide environment variables in dev/test/prod
+	if (process.env.NODE_ENV !== 'local') {
+		return
+	}
+
 	const serviceDir = path.resolve(options.serviceDir ?? process.cwd())
 	const repoRoot = options.repoRoot ?? detectRepoRoot(serviceDir)
 
@@ -81,18 +95,102 @@ export function loadEnv(options: EnvLoadOptions = {}) {
 
 /** Base schema shared by all services */
 export const BaseConfig = z.object({
-	NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+	NODE_ENV: z.enum(['local', 'dev', 'test', 'prod']).default('local'),
 	LOG_LEVEL: z.string().default('info'),
 	LOG_DIR: z.string().default('./logs'),
+	AWS_REGION: z.string().default('us-east-1'),
 })
 
 /**
  * Validate process.env against a schema.
  * Returns the typed config and caches it by schema instance to avoid re-parsing.
+ * 
+ * Automatically handles configuration loading based on NODE_ENV:
+ * - local: Loads from .env files
+ * - dev/test/prod: Loads from AWS Secrets Manager using convention: {NODE_ENV}/{secretKey}/config
+ * 
+ * Services only need to specify their secretKey - everything else is automatic.
  */
 const cache = new WeakMap<z.ZodTypeAny, unknown>()
 
-export function loadConfig<TOutput>(
+export async function loadConfig<TOutput>(
+	schema: z.ZodType<TOutput, z.ZodTypeDef, unknown>,
+	opts?: EnvLoadOptions,
+): Promise<TOutput> {
+	const cached = cache.get(schema)
+	if (cached !== undefined) {
+		return cached as TOutput
+	}
+
+	// Read NODE_ENV directly from process.env to determine loading strategy
+	// This is the ONLY place services should access process.env.NODE_ENV
+	const env = process.env.NODE_ENV || 'local'
+
+	// Local development: Load from .env files
+	if (env === 'local') {
+		loadEnv(opts)
+	}
+	// AWS environments: Load from Secrets Manager automatically
+	else {
+		// Map NODE_ENV to the correct secret name
+		// This mapping is based on the AWS Secrets Manager naming convention
+		const secretNameMap: Record<string, string> = {
+			dev: 'dev/agent-service-dev',
+			test: 'qa/agent-service-accp',
+			prod: 'prod/agent-service-prod',
+		}
+		
+		// Use AWS_SECRET_KEY if provided, otherwise auto-determine from NODE_ENV
+		let secretName: string
+		let isAutoMapped = false
+		
+		if (process.env.AWS_SECRET_KEY) {
+			secretName = process.env.AWS_SECRET_KEY
+		} else if (opts?.secretKey) {
+			secretName = opts.secretKey
+		} else {
+			// Auto-map based on NODE_ENV
+			secretName = secretNameMap[env] || secretNameMap.dev
+			isAutoMapped = true
+		}
+		
+		const region = process.env.AWS_REGION || opts?.awsRegion || 'us-east-1'
+		
+		console.log(`[Config] Loading secrets from AWS Secrets Manager:`)
+		console.log(`[Config]   NODE_ENV: ${env}`)
+		if (isAutoMapped) {
+			console.log(`[Config]   AWS_SECRET_KEY: (not set) - auto-mapped to '${secretName}'`)
+			console.log(`[Config]   ℹ️  Secret auto-mapped based on NODE_ENV`)
+		} else {
+			console.log(`[Config]   AWS_SECRET_KEY: ${secretName}`)
+		}
+		console.log(`[Config]   Region: ${region}`)
+		
+		try {
+			await loadSecretsFromAWS(secretName, region)
+			console.log(`[Config] Successfully loaded secrets from ${secretName}`)
+		} catch (error) {
+			// FAIL FAST: Don't swallow AWS errors and continue to Zod validation
+			// The AWS error message is much clearer than "DB_HOST is required"
+			console.error(`[Config] Failed to load AWS secrets from ${secretName}`)
+			console.error(`[Config] Error: ${error instanceof Error ? error.message : String(error)}`)
+			console.error(`[Config] Stack: ${error instanceof Error ? error.stack : 'N/A'}`)
+			// Re-throw immediately - don't continue to validation with missing secrets
+			throw error
+		}
+	}
+
+	const cfg = schema.parse(process.env)
+	cache.set(schema, cfg)
+	return cfg
+}
+
+/**
+ * Synchronous version of loadConfig for backwards compatibility
+ * Only works in local mode or when secrets are already in process.env
+ * @deprecated Use async loadConfig instead
+ */
+export function loadConfigSync<TOutput>(
 	schema: z.ZodType<TOutput, z.ZodTypeDef, unknown>,
 	opts?: EnvLoadOptions,
 ): TOutput {
@@ -101,8 +199,10 @@ export function loadConfig<TOutput>(
 		return cached as TOutput
 	}
 
-	// Load env files prior to parsing
-	loadEnv(opts)
+	// Only load .env files in local mode
+	if (process.env.NODE_ENV === 'local') {
+		loadEnv(opts)
+	}
 
 	const cfg = schema.parse(process.env)
 	cache.set(schema, cfg)

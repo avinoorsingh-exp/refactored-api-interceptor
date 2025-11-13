@@ -6,7 +6,7 @@
 
 TypeORM DataSource configuration for eXpRealty platform.
 
-Environment Variables: - DB_HOST: Database host (default: localhost) - DB_PORT: Database port (default: 5432) - DB_USERNAME: Database user (default: postgres) - DB_PASSWORD: Database password (default: postgres) - DB_NAME: Database name (default: transaction_calculator) - NODE_ENV: Environment (development\|production\|test)
+Environment Variables: - DB_HOST: Database host (default: localhost) - DB_PORT: Database port (default: 5432) - DB_USERNAME: Database user (default: postgres) - DB_PASSWORD: Database password (default: postgres) - DB_NAME: Database name (default: agent_database) - NODE_ENV: Environment (dev\|prod\|test)
 
 **Signature:**
 
