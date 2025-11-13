@@ -1,13 +1,21 @@
-const baseConfig = require('../../jest.config.base.cjs');
+const unitPreset = require('../../jest.preset.unit.cjs');
 
 module.exports = {
-  ...baseConfig,
+  ...unitPreset,
   displayName: 'orchestrator-unit',
   rootDir: '.',
   testMatch: ['<rootDir>/src/**/*.spec.ts'],
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.spec.ts',
+    '!src/**/*.e2e-spec.ts',
     '!src/main.ts',
   ],
+  moduleNameMapper: {
+    ...unitPreset.moduleNameMapper,
+    '^@exprealty/shared-domain$': '<rootDir>/../../packages/shared-domain/src/index.ts',
+    '^@exprealty/logger$': '<rootDir>/../../packages/logger/src/index.ts',
+    '^@exprealty/logger/metrics$': '<rootDir>/../../packages/logger/src/metrics.ts',
+    '^@exprealty/config$': '<rootDir>/../../packages/config/src/index.ts',
+  },
 };

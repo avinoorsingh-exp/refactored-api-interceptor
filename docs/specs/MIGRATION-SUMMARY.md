@@ -339,7 +339,7 @@ pnpm migration:revert
 
 ### 3. Never Edit Applied Migrations
 
-Once a migration has been applied to any environment (dev, staging, production):
+Once a migration has been applied to any environment (dev, staging, prod):
 
 - Never edit the migration file
 - Create a new migration for changes instead

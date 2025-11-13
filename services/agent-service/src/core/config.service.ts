@@ -23,6 +23,13 @@ export class ConfigService {
 			ALLOWED_ORIGINS: get('ALLOWED_ORIGINS'),
 			S2S_INTERNAL_KEY: get('S2S_INTERNAL_KEY'),
 
+			DB_HOST: get('DB_HOST'),
+			DB_PORT: get('DB_PORT'),
+			DB_USERNAME: get('DB_USERNAME'),
+			DB_PASSWORD: get('DB_PASSWORD'),
+			DB_NAME: get('DB_NAME'),
+			DB_SSL: get('DB_SSL'),
+
 			METRICS_EXPORTER_ENDPOINT: get('METRICS_EXPORTER_ENDPOINT'),
 			METRICS_EXPORTER_PROTOCOL: get('METRICS_EXPORTER_PROTOCOL'),
 			METRICS_EXPORT_INTERVAL_MS: get('METRICS_EXPORT_INTERVAL_MS'),
@@ -42,11 +49,11 @@ export class ConfigService {
 	}
 
 	isDevelopment(): boolean {
-		return this.config.NODE_ENV === 'development'
+		return this.config.NODE_ENV === 'dev'
 	}
 
 	isProduction(): boolean {
-		return this.config.NODE_ENV === 'production'
+		return this.config.NODE_ENV === 'prod'
 	}
 
 	isTest(): boolean {

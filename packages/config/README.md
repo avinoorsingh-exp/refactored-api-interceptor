@@ -179,7 +179,7 @@ Base Zod schema with common configuration:
 
 ```typescript
 const BaseConfig = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  NODE_ENV: z.enum(['dev', 'test', 'prod']).default('dev'),
   LOG_LEVEL: z.string().default('info'),
   LOG_DIR: z.string().default('./logs'),
 })
@@ -377,7 +377,7 @@ const config = loadConfig(MySchema, {
 
 ```bash
 # repo/.env (base config for all services)
-NODE_ENV=development
+NODE_ENV=dev
 LOG_LEVEL=debug
 
 # repo/.env.local (gitignored personal overrides)
@@ -393,7 +393,7 @@ AGENT_SERVICE_URL=http://localhost:3000
 ```yaml
 # docker-compose.yml or Kubernetes manifest
 environment:
-  NODE_ENV: production
+  NODE_ENV: prod
   LOG_LEVEL: info
   DATABASE_URL: postgresql://prod-db:5432/app
   PORT: 8081

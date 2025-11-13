@@ -1,0 +1,1468 @@
+{
+	"info": {
+		"name": "Agent Service API",
+		"description": "Complete test suite for Agent Service REST API endpoints with acceptance criteria validation",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "agent-service"
+	},
+	"item": [
+		{
+			"name": "Countries",
+			"item": [
+				{
+					"name": "POST /countries - AC1: Create with all fields",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201 Created\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Response has Location header\", function () {",
+									"    pm.response.to.have.header('Location');",
+									"    const location = pm.response.headers.get('Location');",
+									"    pm.expect(location).to.match(/^\\/v1\\/countries\\/[A-Z]{2}$/);",
+									"});",
+									"",
+									"pm.test(\"Response body contains created country\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('alpha2', 'ZZ');",
+									"    pm.expect(jsonData).to.have.property('alpha3', 'ZZZ');",
+									"    pm.expect(jsonData).to.have.property('number', 999);",
+									"    pm.expect(jsonData).to.have.property('name', 'Test Country');",
+									"    pm.expect(jsonData).to.have.property('dialingCode', 999);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"alpha2\": \"ZZ\",\n  \"alpha3\": \"ZZZ\",\n  \"number\": 999,\n  \"name\": \"Test Country\",\n  \"dialingCode\": 999\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries"]
+						}
+					}
+				},
+				{
+					"name": "POST /countries - AC2: Create with minimal fields",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201 Created\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Response contains default null values\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('alpha2', 'YY');",
+									"    pm.expect(jsonData).to.have.property('name', null);",
+									"    pm.expect(jsonData).to.have.property('dialingCode', null);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"alpha2\": \"YY\",\n  \"alpha3\": \"YYY\",\n  \"number\": 998\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries"]
+						}
+					}
+				},
+				{
+					"name": "POST /countries - AC3: Duplicate alpha2",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 409 Conflict\", function () {",
+									"    pm.response.to.have.status(409);",
+									"});",
+									"",
+									"pm.test(\"Response is RFC 9457 Problem Details\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.country.duplicate');",
+									"    pm.expect(jsonData).to.have.property('status', 409);",
+									"    pm.expect(jsonData).to.have.property('detail');",
+									"    pm.expect(jsonData.detail).to.include('alpha_2');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"alpha2\": \"ZZ\",\n  \"alpha3\": \"AAA\",\n  \"number\": 111\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries"]
+						}
+					}
+				},
+				{
+					"name": "POST /countries - AC4: Validation error (empty alpha2)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response contains validation error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.country.validation');",
+									"    pm.expect(jsonData).to.have.property('invalidParams');",
+									"    pm.expect(jsonData.invalidParams).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"alpha2\": \"\",\n  \"alpha3\": \"ABC\",\n  \"number\": 100\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries"]
+						}
+					}
+				},
+				{
+					"name": "GET /countries/:code - AC1: Retrieve existing country",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response contains country data\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('alpha2', 'US');",
+									"    pm.expect(jsonData).to.have.property('alpha3');",
+									"    pm.expect(jsonData).to.have.property('number');",
+									"    pm.expect(jsonData).to.have.property('name');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries/US",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries", "US"]
+						}
+					}
+				},
+				{
+					"name": "GET /countries/:code - AC2: Not found",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 404 Not Found\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"",
+									"pm.test(\"Response is RFC 9457 Problem Details\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.country.not_found');",
+									"    pm.expect(jsonData).to.have.property('status', 404);",
+									"    pm.expect(jsonData).to.have.property('detail');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries/XX",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries", "XX"]
+						}
+					}
+				},
+				{
+					"name": "GET /countries/:code - AC3: Invalid code format",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response contains validation error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.country.validation');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries/invalid",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries", "invalid"]
+						}
+					}
+				},
+				{
+					"name": "PUT /countries/:code - AC1: Update existing",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response contains updated data\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('alpha2', 'ZZ');",
+									"    pm.expect(jsonData).to.have.property('name', 'Updated Test Country');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"alpha2\": \"ZZ\",\n  \"alpha3\": \"ZZZ\",\n  \"number\": 999,\n  \"name\": \"Updated Test Country\",\n  \"dialingCode\": 999\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries/ZZ",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries", "ZZ"]
+						}
+					}
+				},
+				{
+					"name": "PUT /countries/:code - AC2: Upsert (create new)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201 Created\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Response has Location header\", function () {",
+									"    pm.response.to.have.header('Location');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"alpha2\": \"XY\",\n  \"alpha3\": \"XYZ\",\n  \"number\": 888,\n  \"name\": \"New Country via PUT\",\n  \"dialingCode\": 888\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries/XY",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries", "XY"]
+						}
+					}
+				},
+				{
+					"name": "PUT /countries/:code - AC3: Validation error",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response contains validation error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.country.validation');",
+									"    pm.expect(jsonData).to.have.property('invalidParams');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"alpha2\": \"AB\",\n  \"alpha3\": \"\",\n  \"number\": 123\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries/AB",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries", "AB"]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Companies",
+			"item": [
+				{
+					"name": "POST /companies - AC1: Create valid company",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201 Created\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Response has Location header\", function () {",
+									"    pm.response.to.have.header('Location');",
+									"    const location = pm.response.headers.get('Location');",
+									"    pm.expect(location).to.match(/^\\/v1\\/companies\\/[a-f0-9-]{36}$/);",
+									"});",
+									"",
+									"pm.test(\"Response contains created company with normalized name\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('name', 'test company inc');",
+									"    pm.expect(jsonData).to.have.property('email', 'info@testcompany.com');",
+									"    pm.expect(jsonData).to.have.property('createdAt');",
+									"    pm.expect(jsonData).to.have.property('updatedAt');",
+									"    ",
+									"    // Save company ID for subsequent tests",
+									"    pm.environment.set('testCompanyId', jsonData.id);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Test Company Inc\",\n  \"email\": \"info@testcompany.com\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/companies",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "companies"]
+						}
+					}
+				},
+				{
+					"name": "POST /companies - AC2: Duplicate name",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 409 Conflict\", function () {",
+									"    pm.response.to.have.status(409);",
+									"});",
+									"",
+									"pm.test(\"Response is RFC 9457 Problem Details\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.company.duplicate_name');",
+									"    pm.expect(jsonData).to.have.property('status', 409);",
+									"    pm.expect(jsonData).to.have.property('detail');",
+									"    pm.expect(jsonData.detail).to.include('TEST COMPANY INC');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"TEST COMPANY INC\",\n  \"email\": \"different@testcompany.com\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/companies",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "companies"]
+						}
+					}
+				},
+				{
+					"name": "POST /companies - AC3: Validation error (empty name)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response contains validation error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.company.validation');",
+									"    pm.expect(jsonData).to.have.property('invalidParams');",
+									"    pm.expect(jsonData.invalidParams).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"\",\n  \"email\": \"test@example.com\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/companies",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "companies"]
+						}
+					}
+				},
+				{
+					"name": "POST /companies - AC3b: Validation error (invalid email)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response contains email validation error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.company.validation');",
+									"    const emailError = jsonData.invalidParams.find(p => p.name === 'email');",
+									"    pm.expect(emailError).to.exist;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Valid Company\",\n  \"email\": \"invalid-email\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/companies",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "companies"]
+						}
+					}
+				},
+				{
+					"name": "GET /companies/:id - AC1: Retrieve existing",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response contains company data\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('name');",
+									"    pm.expect(jsonData).to.have.property('email');",
+									"    pm.expect(jsonData).to.have.property('createdAt');",
+									"    pm.expect(jsonData).to.have.property('updatedAt');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/companies/{{testCompanyId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "companies", "{{testCompanyId}}"]
+						}
+					}
+				},
+				{
+					"name": "GET /companies/:id - AC2: Not found",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 404 Not Found\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"",
+									"pm.test(\"Response is RFC 9457 Problem Details\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.company.not_found');",
+									"    pm.expect(jsonData).to.have.property('status', 404);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/companies/550e8400-e29b-41d4-a716-446655440000",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "companies", "550e8400-e29b-41d4-a716-446655440000"]
+						}
+					}
+				},
+				{
+					"name": "GET /companies/:id - AC3: Invalid UUID",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response contains validation error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.company.validation');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/companies/not-a-uuid",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "companies", "not-a-uuid"]
+						}
+					}
+				},
+				{
+					"name": "PUT /companies/:id - AC1: Update existing",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response contains updated data\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('name', 'updated test company inc');",
+									"    pm.expect(jsonData).to.have.property('email', 'updated@testcompany.com');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Updated Test Company Inc\",\n  \"email\": \"updated@testcompany.com\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/companies/{{testCompanyId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "companies", "{{testCompanyId}}"]
+						}
+					}
+				},
+				{
+					"name": "PUT /companies/:id - AC2: Not found",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 404 Not Found\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"",
+									"pm.test(\"Response is RFC 9457 Problem Details\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.company.not_found');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Non-existent Company\",\n  \"email\": \"test@example.com\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/companies/550e8400-e29b-41d4-a716-446655440000",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "companies", "550e8400-e29b-41d4-a716-446655440000"]
+						}
+					}
+				},
+				{
+					"name": "PUT /companies/:id - AC3: Validation error",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response contains validation error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.company.validation');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Valid Name\",\n  \"email\": \"invalid-email\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/companies/{{testCompanyId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "companies", "{{testCompanyId}}"]
+						}
+					}
+				},
+				{
+					"name": "GET /companies - AC1: List with default pagination",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has pagination headers\", function () {",
+									"    pm.response.to.have.header('X-Total-Count');",
+									"    pm.response.to.have.header('Link');",
+									"});",
+									"",
+									"pm.test(\"Response contains data array and meta\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('data');",
+									"    pm.expect(jsonData).to.have.property('meta');",
+									"    pm.expect(jsonData.data).to.be.an('array');",
+									"});",
+									"",
+									"pm.test(\"Meta contains pagination info with defaults\", function () {",
+									"    const meta = pm.response.json().meta;",
+									"    pm.expect(meta).to.have.property('total');",
+									"    pm.expect(meta).to.have.property('limit', 25);",
+									"    pm.expect(meta).to.have.property('offset', 0);",
+									"});",
+									"",
+									"pm.test(\"AC7: Response items have correct snake_case timestamps\", function () {",
+									"    const data = pm.response.json().data;",
+									"    if (data.length > 0) {",
+									"        const item = data[0];",
+									"        pm.expect(item).to.have.property('id');",
+									"        pm.expect(item).to.have.property('name');",
+									"        pm.expect(item).to.have.property('email');",
+									"        pm.expect(item).to.have.property('created_at');",
+									"        pm.expect(item).to.have.property('updated_at');",
+									"        pm.expect(item.created_at).to.match(/^\\d{4}-\\d{2}-\\d{2}T/);",
+									"        pm.expect(item.updated_at).to.match(/^\\d{4}-\\d{2}-\\d{2}T/);",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/companies",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "companies"]
+						}
+					}
+				},
+				{
+					"name": "GET /companies - AC1: List with custom pagination",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Meta reflects custom pagination params\", function () {",
+									"    const meta = pm.response.json().meta;",
+									"    pm.expect(meta).to.have.property('limit', 10);",
+									"    pm.expect(meta).to.have.property('offset', 5);",
+									"});",
+									"",
+									"pm.test(\"Link header contains RFC 8288 pagination links\", function () {",
+									"    pm.response.to.have.header('Link');",
+									"    const link = pm.response.headers.get('Link');",
+									"    pm.expect(link).to.include('rel=\"first\"');",
+									"    pm.expect(link).to.include('rel=\"last\"');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/companies?offset=5&limit=10",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "companies"],
+							"query": [
+								{
+									"key": "offset",
+									"value": "5"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "GET /companies - AC2: Max page size (limit clamped to 50)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response is RFC 9457 Problem Details\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type');",
+									"    pm.expect(jsonData).to.have.property('status', 400);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/companies?limit=100",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "companies"],
+							"query": [
+								{
+									"key": "limit",
+									"value": "100"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "GET /companies - AC3: Validation error (negative offset)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response is RFC 9457 Problem Details\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type');",
+									"    pm.expect(jsonData).to.have.property('status', 400);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/companies?offset=-1",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "companies"],
+							"query": [
+								{
+									"key": "offset",
+									"value": "-1"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "GET /companies - AC3: Validation error (negative limit)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response is RFC 9457 Problem Details\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type');",
+									"    pm.expect(jsonData).to.have.property('status', 400);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/companies?limit=-10",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "companies"],
+							"query": [
+								{
+									"key": "limit",
+									"value": "-10"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
+			"name": "Regions",
+			"item": [
+				{
+					"name": "POST /regions - AC1: Create valid region",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201 Created\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Response has Location header\", function () {",
+									"    pm.response.to.have.header('Location');",
+									"    const location = pm.response.headers.get('Location');",
+									"    pm.expect(location).to.match(/^\\/v1\\/regions\\/\\d+$/);",
+									"});",
+									"",
+									"pm.test(\"Response contains created region with normalized name\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('name', 'midwest region');",
+									"    ",
+									"    // Save region ID for subsequent tests",
+									"    pm.environment.set('testRegionId', jsonData.id);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Midwest Region\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/regions",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "regions"]
+						}
+					}
+				},
+				{
+					"name": "POST /regions - AC2: Duplicate name",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 409 Conflict\", function () {",
+									"    pm.response.to.have.status(409);",
+									"});",
+									"",
+									"pm.test(\"Response is RFC 9457 Problem Details\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.region.duplicate_name');",
+									"    pm.expect(jsonData).to.have.property('status', 409);",
+									"    pm.expect(jsonData).to.have.property('detail');",
+									"    pm.expect(jsonData.detail).to.include('MIDWEST REGION');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"MIDWEST REGION\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/regions",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "regions"]
+						}
+					}
+				},
+				{
+					"name": "POST /regions - AC3: Validation error (empty name)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response contains validation error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.region.validation');",
+									"    pm.expect(jsonData).to.have.property('invalidParams');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/regions",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "regions"]
+						}
+					}
+				},
+				{
+					"name": "POST /regions - AC4: Validation error (name too long)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response contains max length validation error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.region.validation');",
+									"    const nameError = jsonData.invalidParams.find(p => p.name === 'name');",
+									"    pm.expect(nameError.reason).to.include('at most 255');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/regions",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "regions"]
+						}
+					}
+				},
+				{
+					"name": "GET /regions/:id - AC1: Retrieve existing",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response contains region data\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('id');",
+									"    pm.expect(jsonData).to.have.property('name');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/regions/{{testRegionId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "regions", "{{testRegionId}}"]
+						}
+					}
+				},
+				{
+					"name": "GET /regions/:id - AC2: Not found",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 404 Not Found\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"",
+									"pm.test(\"Response is RFC 9457 Problem Details\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.region.not_found');",
+									"    pm.expect(jsonData).to.have.property('status', 404);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/regions/999999",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "regions", "999999"]
+						}
+					}
+				},
+				{
+					"name": "GET /regions/:id - AC3: Invalid ID format",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response contains validation error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.region.validation');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/regions/not-a-number",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "regions", "not-a-number"]
+						}
+					}
+				},
+				{
+					"name": "PUT /regions/:id - AC1: Update existing",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response contains updated data\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('name', 'updated midwest region');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Updated Midwest Region\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/regions/{{testRegionId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "regions", "{{testRegionId}}"]
+						}
+					}
+				},
+				{
+					"name": "PUT /regions/:id - AC2: Not found",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 404 Not Found\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"",
+									"pm.test(\"Response is RFC 9457 Problem Details\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.region.not_found');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Non-existent Region\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/regions/999999",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "regions", "999999"]
+						}
+					}
+				},
+				{
+					"name": "PUT /regions/:id - AC3: Validation error",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response contains validation error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.region.validation');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/regions/{{testRegionId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "regions", "{{testRegionId}}"]
+						}
+					}
+				},
+				{
+					"name": "PUT /regions/:id - AC4: Duplicate name conflict",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 409 Conflict\", function () {",
+									"    pm.response.to.have.status(409);",
+									"});",
+									"",
+									"pm.test(\"Response is RFC 9457 Problem Details\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type', 'agent.region.duplicate_name');",
+									"    pm.expect(jsonData).to.have.property('status', 409);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// First create another region to test conflict",
+									"pm.sendRequest({",
+									"    url: pm.environment.get('baseUrl') + '/v1/regions',",
+									"    method: 'POST',",
+									"    header: { 'Content-Type': 'application/json' },",
+									"    body: {",
+									"        mode: 'raw',",
+									"        raw: JSON.stringify({ name: 'Conflict Test Region' })",
+									"    }",
+									"}, function (err, response) {",
+									"    if (!err) {",
+									"        const data = response.json();",
+									"        pm.environment.set('conflictRegionId', data.id);",
+									"    }",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Conflict Test Region\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/regions/{{testRegionId}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "regions", "{{testRegionId}}"]
+						}
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3000",
+			"type": "string"
+		}
+	]
+}

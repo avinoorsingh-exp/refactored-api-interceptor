@@ -37,22 +37,39 @@ export type Config = z.infer<typeof ConfigSchema>
  * Configuration loader function for NestJS ConfigModule
  * Uses @exprealty/config for env file loading and validation
  * 
- * File loading order:
- * 1. {repoRoot}/.env
- * 2. {repoRoot}/.env.local
- * 3. {serviceDir}/.env (serviceDir defaults to process.cwd())
- * 4. {serviceDir}/.env.local
- * 5. {repoRoot}/.env.batchdata (extraEnvFile)
+ * The config package automatically handles:
+ * - Local: Loads from .env files
+ * - AWS (dev/test/prod): Loads from AWS Secrets Manager at {NODE_ENV}/{AWS_SECRET_KEY}
+ * 
+ * ECS Task Definition should set:
+ * - NODE_ENV: dev|test|prod
+ * - AWS_SECRET_KEY: agent-service-dev (e.g., dev/agent-service-dev in Secrets Manager)
+ * - AWS_REGION: us-east-1 (optional, defaults to us-east-1)
+ * 
+ * CRITICAL: Configuration errors are logged to console.error here
+ * These errors will appear in CloudWatch Logs and should trigger Datadog alerts
+ * Check for [Config] prefixed error messages in CloudWatch
  */
-export default () => {
+export default async () => {
 	try {
-		const config = loadConfig(ConfigSchema, {
+		const config = await loadConfig(ConfigSchema, {
 			extraEnvFile: '.env.orchestrator',
 		})
 		
 		return config
 	} catch (error) {
-		console.error('[configuration()] FAILED to load config:', error);
-		throw error;
+		// Log structured error details for CloudWatch/Datadog alerting
+		console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+		console.error('CRITICAL: Configuration Loading Failed')
+		console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+		console.error('Service: orchestrator')
+		console.error(`NODE_ENV: ${process.env.NODE_ENV || 'undefined'}`)
+		console.error(`AWS_SECRET_KEY: ${process.env.AWS_SECRET_KEY || 'undefined'}`)
+		console.error(`AWS_REGION: ${process.env.AWS_REGION || 'undefined'}`)
+		console.error('Error Details:', error)
+		console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+		
+		// Re-throw to prevent service startup with invalid configuration
+		throw error
 	}
 }

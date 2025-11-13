@@ -135,7 +135,7 @@ export {
 	type CreateAddressInput as CreateAddressInputType,
 	UpdateAddressInput,
 	type UpdateAddressInput as UpdateAddressInputType,
-} from './entities/address.js'
+} from './schemas/address.js'
 
 // ============================================================================
 // ENTITIES - AGENT ADDRESS (JOIN TABLE)
@@ -153,7 +153,7 @@ export {
 	type CreateAgentAddressInput as CreateAgentAddressInputType,
 	UpdateAgentAddressInput,
 	type UpdateAgentAddressInput as UpdateAgentAddressInputType,
-} from './entities/agent-address.js'
+} from './schemas/agent-address.js'
 
 // ============================================================================
 // ENTITIES - COMPANY
@@ -169,11 +169,13 @@ export {
 	type CompanyBase,
 	type CompanyExpanded,
 	type Company,
-	CreateCompanyInput,
-	type CreateCompanyInput as CreateCompanyInputType,
-	UpdateCompanyInput,
-	type UpdateCompanyInput as UpdateCompanyInputType,
-} from './entities/company.js'
+	CreateCompanyInputSchema,
+	type CreateCompanyInput,
+	UpdateCompanyInputSchema,
+	type UpdateCompanyInput,
+	CompanyIdParamSchema,
+	type CompanyIdParam,
+} from './schemas/company.js'
 
 // ============================================================================
 // ENTITIES - AGENT COMPANY
@@ -193,7 +195,7 @@ export {
 	type CreateAgentCompanyInput as CreateAgentCompanyInputType,
 	UpdateAgentCompanyInput,
 	type UpdateAgentCompanyInput as UpdateAgentCompanyInputType,
-} from './entities/agent-company.js'
+} from './schemas/agent-company.js'
 
 // ============================================================================
 // ENTITIES - EXTERNAL REFERENCE
@@ -213,7 +215,7 @@ export {
 	type CreateExternalReferenceInput as CreateExternalReferenceInputType,
 	UpdateExternalReferenceInput,
 	type UpdateExternalReferenceInput as UpdateExternalReferenceInputType,
-} from './entities/external-reference.js'
+} from './schemas/external-reference.js'
 
 // ============================================================================
 // ENTITIES - COMPANY EXTERNAL REFERENCE (JOIN TABLE)
@@ -231,7 +233,7 @@ export {
 	type CompanyExternalReference,
 	CreateCompanyExternalReferenceInput,
 	type CreateCompanyExternalReferenceInput as CreateCompanyExternalReferenceInputType,
-} from './entities/company-external-reference.js'
+} from './schemas/company-external-reference.js'
 
 // ============================================================================
 // ENTITIES - AGENT EXTERNAL REFERENCE (JOIN TABLE)
@@ -249,7 +251,7 @@ export {
 	type AgentExternalReference,
 	CreateAgentExternalReferenceInput,
 	type CreateAgentExternalReferenceInput as CreateAgentExternalReferenceInputType,
-} from './entities/agent-external-reference.js'
+} from './schemas/agent-external-reference.js'
 
 // ============================================================================
 // ENTITIES - OFFICE EXTERNAL REFERENCE (JOIN TABLE)
@@ -267,7 +269,7 @@ export {
 	type OfficeExternalReference,
 	CreateOfficeExternalReferenceInput,
 	type CreateOfficeExternalReferenceInput as CreateOfficeExternalReferenceInputType,
-} from './entities/office-external-reference.js'
+} from './schemas/office-external-reference.js'
 
 // ============================================================================
 // ENTITIES - AGENT
@@ -289,7 +291,7 @@ export {
 	type UpdateAgentInput as UpdateAgentInputType,
 	AgentExpandedSchema,
 	type AgentExpanded,
-} from './entities/agent.js'
+} from './schemas/agent.js'
 
 // ============================================================================
 // ENTITIES - PUBLIC PROFILE
@@ -308,7 +310,7 @@ export {
 	type CreatePublicProfileInputType,
 	UpdatePublicProfileInput,
 	type UpdatePublicProfileInputType,
-} from './entities/public-profile.js'
+} from './schemas/public-profile.js'
 
 // ============================================================================
 // ENTITIES - CONTACT METHOD
@@ -329,7 +331,7 @@ export {
 	type CreateContactMethodInputType,
 	UpdateContactMethodInput,
 	type UpdateContactMethodInputType,
-} from './entities/contact-method.js'
+} from './schemas/contact-method.js'
 
 // ============================================================================
 // ENTITIES - EMAIL FORWARD
@@ -348,7 +350,7 @@ export {
 	type CreateEmailForwardInputType,
 	UpdateEmailForwardInput,
 	type UpdateEmailForwardInputType,
-} from './entities/email-forward.js'
+} from './schemas/email-forward.js'
 
 // ============================================================================
 // ENTITIES - SOCIAL
@@ -368,7 +370,7 @@ export {
 	type CreateSocialInputType,
 	UpdateSocialInput,
 	type UpdateSocialInputType,
-} from './entities/social.js'
+} from './schemas/social.js'
 
 // ============================================================================
 // ENTITIES - LANGUAGE
@@ -390,7 +392,7 @@ export {
 	type CreateLanguageInput,
 	UpdateLanguageInputSchema,
 	type UpdateLanguageInput,
-} from './entities/language.js'
+} from './schemas/language.js'
 
 // ============================================================================
 // ENTITIES - AGENT LANGUAGE (JOIN TABLE)
@@ -410,7 +412,7 @@ export {
 	type CreateAgentLanguageInput,
 	UpdateAgentLanguageInputSchema,
 	type UpdateAgentLanguageInput,
-} from './entities/agent-language.js'
+} from './schemas/agent-language.js'
 
 // ============================================================================
 // ENTITIES - SPECIALTY
@@ -430,7 +432,7 @@ export {
 	type CreateSpecialtyInput,
 	UpdateSpecialtyInputSchema,
 	type UpdateSpecialtyInput,
-} from './entities/specialty.js'
+} from './schemas/specialty.js'
 
 // ============================================================================
 // ENTITIES - AGENT SPECIALTY (JOIN TABLE)
@@ -450,7 +452,7 @@ export {
 	type CreateAgentSpecialtyInput,
 	UpdateAgentSpecialtyInputSchema,
 	type UpdateAgentSpecialtyInput,
-} from './entities/agent-specialty.js'
+} from './schemas/agent-specialty.js'
 
 // ============================================================================
 // ENTITIES - AGENT MLS (JOIN TABLE)
@@ -470,7 +472,7 @@ export {
 	type CreateAgentMLSInput,
 	UpdateAgentMLSInputSchema,
 	type UpdateAgentMLSInput,
-} from './entities/agent-mls.js'
+} from './schemas/agent-mls.js'
 
 // ============================================================================
 // ENTITIES - ACTIVE LOCATION
@@ -490,7 +492,7 @@ export {
 	type CreateActiveLocationInput,
 	UpdateActiveLocationInputSchema,
 	type UpdateActiveLocationInput,
-} from './entities/active-location.js'
+} from './schemas/active-location.js'
 
 // ============================================================================
 // ENTITIES - LINE OF BUSINESS
@@ -510,7 +512,7 @@ export {
 	type CreateLineOfBusinessInput,
 	UpdateLineOfBusinessInputSchema,
 	type UpdateLineOfBusinessInput,
-} from './entities/line-of-business.js'
+} from './schemas/line-of-business.js'
 
 // ============================================================================
 // ENTITIES - LICENSE
@@ -532,7 +534,7 @@ export {
 	type CreateLicenseInput,
 	UpdateLicenseInputSchema,
 	type UpdateLicenseInput,
-} from './entities/license.js'
+} from './schemas/license.js'
 
 // ============================================================================
 // ENTITIES - NOTE
@@ -552,7 +554,7 @@ export {
 	type CreateNoteInput,
 	UpdateNoteInputSchema,
 	type UpdateNoteInput,
-} from './entities/note.js'
+} from './schemas/note.js'
 
 // ============================================================================
 // ENTITIES - LIFECYCLE EVENT
@@ -574,7 +576,7 @@ export {
 	type CreateLifecycleEventInput,
 	UpdateLifecycleEventInputSchema,
 	type UpdateLifecycleEventInput,
-} from './entities/lifecycle-event.js'
+} from './schemas/lifecycle-event.js'
 
 // ============================================================================
 // ENTITIES - LICENSE EVENT
@@ -598,7 +600,7 @@ export {
 	type CreateLicenseEventInput,
 	UpdateLicenseEventInputSchema,
 	type UpdateLicenseEventInput,
-} from './entities/license-event.js'
+} from './schemas/license-event.js'
 
 // ============================================================================
 // ENTITIES - RELATIONSHIP
@@ -620,7 +622,7 @@ export {
 	type CreateRelationshipInput,
 	UpdateRelationshipInputSchema,
 	type UpdateRelationshipInput,
-} from './entities/relationship.js'
+} from './schemas/relationship.js'
 
 // ============================================================================
 // ENTITIES - SPONSOR CONFIGURATION
@@ -640,7 +642,7 @@ export {
 	type CreateSponsorConfigurationInput,
 	UpdateSponsorConfigurationInputSchema,
 	type UpdateSponsorConfigurationInput,
-} from './entities/sponsor-configuration.js'
+} from './schemas/sponsor-configuration.js'
 
 // ============================================================================
 // ENTITIES - MLS
@@ -662,7 +664,7 @@ export {
 	type CreateMLSInput,
 	UpdateMLSInputSchema,
 	type UpdateMLSInput,
-} from './entities/mls.js'
+} from './schemas/mls.js'
 
 // ============================================================================
 // ENTITIES - COUNTRY
@@ -682,7 +684,9 @@ export {
 	type CreateCountryInput,
 	UpdateCountryInputSchema,
 	type UpdateCountryInput,
-} from './entities/country.js'
+	CountryCodeParamSchema,
+	type CountryCodeParam,
+} from './schemas/country.js'
 
 // ============================================================================
 // ENTITIES - REGION
@@ -702,7 +706,9 @@ export {
 	type CreateRegionInput,
 	UpdateRegionInputSchema,
 	type UpdateRegionInput,
-} from './entities/region.js'
+	RegionIdParamSchema,
+	type RegionIdParam,
+} from './schemas/region.js'
 
 // ============================================================================
 // ENTITIES - STATE
@@ -722,7 +728,7 @@ export {
 	type CreateStateInput,
 	UpdateStateInputSchema,
 	type UpdateStateInput,
-} from './entities/state.js'
+} from './schemas/state.js'
 
 // ============================================================================
 // ENTITIES - PROGRAM
@@ -742,7 +748,7 @@ export {
 	type CreateProgramInput,
 	UpdateProgramInputSchema,
 	type UpdateProgramInput,
-} from './entities/program.js'
+} from './schemas/program.js'
 
 // ============================================================================
 // ENTITIES - STATE PROGRAM (JOIN TABLE)
@@ -760,7 +766,7 @@ export {
 	type StateProgramExpanded,
 	CreateStateProgramInputSchema,
 	type CreateStateProgramInput,
-} from './entities/state-program.js'
+} from './schemas/state-program.js'
 
 // ============================================================================
 // ENTITIES - ORGANIZATION CONTACT
@@ -780,7 +786,7 @@ export {
 	type CreateOrganizationContactInput,
 	UpdateOrganizationContactInputSchema,
 	type UpdateOrganizationContactInput,
-} from './entities/organization-contact.js'
+} from './schemas/organization-contact.js'
 
 // ============================================================================
 // ENTITIES - W9
@@ -802,7 +808,7 @@ export {
 	type CreateW9Input,
 	UpdateW9InputSchema,
 	type UpdateW9Input,
-} from './entities/w9.js'
+} from './schemas/w9.js'
 
 // ============================================================================
 // ENTITIES - W9 ADDRESS (JOIN TABLE)
@@ -820,7 +826,7 @@ export {
 	type W9AddressExpanded,
 	CreateW9AddressInputSchema,
 	type CreateW9AddressInput,
-} from './entities/w9-address.js'
+} from './schemas/w9-address.js'
 
 // ============================================================================
 // ENTITIES - TAX
@@ -840,7 +846,7 @@ export {
 	type CreateTaxInput,
 	UpdateTaxInputSchema,
 	type UpdateTaxInput,
-} from './entities/tax.js'
+} from './schemas/tax.js'
 
 // ============================================================================
 // ENTITIES - OFFICE ADDRESS (JOIN TABLE)
@@ -858,7 +864,7 @@ export {
 	type OfficeAddressExpanded,
 	CreateOfficeAddressInputSchema,
 	type CreateOfficeAddressInput,
-} from './entities/office-address.js'
+} from './schemas/office-address.js'
 
 // ============================================================================
 // ENTITIES - ARTIFACT
@@ -878,7 +884,7 @@ export {
 	type CreateArtifactInput,
 	UpdateArtifactInputSchema,
 	type UpdateArtifactInput,
-} from './entities/artifact.js'
+} from './schemas/artifact.js'
 
 // ============================================================================
 // ENTITIES - CUSTOM FLAG (@beta)
@@ -902,7 +908,7 @@ export {
 	type CreateCustomFlagInput,
 	UpdateCustomFlagInputSchema,
 	type UpdateCustomFlagInput,
-} from './entities/custom-flag.js'
+} from './schemas/custom-flag.js'
 
 // ============================================================================
 // ENTITIES - FEES (@beta)
@@ -922,7 +928,7 @@ export {
 	type CreateFeesInput,
 	UpdateFeesInputSchema,
 	type UpdateFeesInput,
-} from './entities/fees.js'
+} from './schemas/fees.js'
 
 // ============================================================================
 // ENTITIES - APPROVAL (@beta)
@@ -946,4 +952,4 @@ export {
 	type CreateApprovalInput,
 	UpdateApprovalInputSchema,
 	type UpdateApprovalInput,
-} from './entities/approval.js'
+} from './schemas/approval.js'

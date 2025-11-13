@@ -6,23 +6,24 @@ RUN npm install -g pnpm
 
 WORKDIR /app
 
-# Copy package files
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nodeuser -u 1001
+
+# Copy all source code first
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY packages/config/package.json ./packages/config/
-COPY packages/logger/package.json ./packages/logger/
-COPY packages/shared-domain/package.json ./packages/shared-domain/
-COPY services/orchestrator/package.json ./services/orchestrator/
-
-# Install dependencies (skip prepare scripts like husky)
-ENV HUSKY=0
-RUN pnpm install --frozen-lockfile --ignore-scripts
-
-# Copy source code and tsconfig
 COPY tsconfig.json ./
 COPY packages/config ./packages/config
 COPY packages/logger ./packages/logger
 COPY packages/shared-domain ./packages/shared-domain
 COPY services/orchestrator ./services/orchestrator
+
+# Install dependencies (allow build scripts to run, but skip husky)
+ENV HUSKY=0
+RUN pnpm install --frozen-lockfile
 
 # Build packages in order
 WORKDIR /app/packages/config
@@ -44,6 +45,9 @@ FROM node:20-alpine
 # Install pnpm
 RUN npm install -g pnpm
 
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs && adduser -S nodeuser -u 1001
+
 WORKDIR /app
 
 # Copy package files
@@ -53,9 +57,9 @@ COPY packages/logger/package.json ./packages/logger/
 COPY packages/shared-domain/package.json ./packages/shared-domain/
 COPY services/orchestrator/package.json ./services/orchestrator/
 
-# Install all dependencies including peerDependencies (skip prepare scripts like husky)
+# Install only production dependencies
 ENV HUSKY=0
-RUN pnpm install --frozen-lockfile --ignore-scripts
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 
 # Copy built files from builder
 COPY --from=builder /app/packages/config/dist ./packages/config/dist
@@ -64,6 +68,12 @@ COPY --from=builder /app/packages/shared-domain/dist ./packages/shared-domain/di
 COPY --from=builder /app/services/orchestrator/dist ./services/orchestrator/dist
 
 WORKDIR /app/services/orchestrator
+
+# Create logs directory with full write permissions for the non-root user
+RUN mkdir -p ./logs && chown -R nodeuser:nodejs ./logs && chmod -R 755 ./logs
+
+# Switch to non-root user
+USER nodeuser
 
 EXPOSE 8081
 
