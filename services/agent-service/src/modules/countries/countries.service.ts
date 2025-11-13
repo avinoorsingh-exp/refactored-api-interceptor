@@ -41,7 +41,7 @@ export class CountriesService {
 
 			const duration = Date.now() - startTime
 			this.logger.log(
-				`Country created successfully: ${country.alpha2} (${country.countryId}) in ${duration}ms`,
+				`Country created successfully: ${country.alpha2} (${country.id}) in ${duration}ms`,
 			)
 
 			return country
@@ -78,7 +78,7 @@ export class CountriesService {
 			const duration = Date.now() - startTime
 			const operation = result.created ? 'created' : 'updated'
 			this.logger.log(
-				`Country ${operation}: ${result.country.alpha2} (${result.country.countryId}) in ${duration}ms`,
+				`Country ${operation}: ${result.country.alpha2} (${result.country.id}) in ${duration}ms`,
 			)
 
 			return result
@@ -108,7 +108,7 @@ export class CountriesService {
 			
 			if (country) {
 				this.logger.log(
-					`Country found: ${country.alpha2} (${country.countryId}) in ${duration}ms`,
+					`Country found: ${country.alpha2} (${country.id}) in ${duration}ms`,
 				)
 				return country
 			}

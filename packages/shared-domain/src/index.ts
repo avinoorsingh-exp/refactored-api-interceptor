@@ -13,6 +13,9 @@ export * from './common/logging.js'
 export * from './common/paging.js'
 export * from './common/problem-details.js' // <-- NEW
 
+// --- Audit
+export { AuditableSchema, type Auditable } from './schemas/audit.js'
+
 // ============================================================================
 // VALUE OBJECTS
 // ============================================================================

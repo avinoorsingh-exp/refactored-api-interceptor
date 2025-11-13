@@ -15,7 +15,7 @@ export class CountryResponseDto implements Country {
 		description: 'Auto-generated country ID',
 		example: 1,
 	})
-	countryId!: number
+	id!: number
 
 	/**
 	 * Country name
@@ -66,4 +66,31 @@ export class CountryResponseDto implements Country {
 		example: 1,
 	})
 	dialingCode!: number
+
+	/**
+	 * Timestamp when record was created
+	 */
+	@ApiProperty({
+		description: 'Timestamp when record was created',
+		example: '2024-01-15T10:30:00Z',
+	})
+	created!: Date
+
+	/**
+	 * Timestamp when record was last modified
+	 */
+	@ApiProperty({
+		description: 'Timestamp when record was last modified',
+		example: '2024-01-15T14:45:00Z',
+	})
+	lastModified!: Date
+
+	/**
+	 * User/system identifier who last modified the record
+	 */
+	@ApiProperty({
+		description: 'User/system identifier who last modified the record',
+		example: 'system',
+	})
+	modifiedBy!: string
 }

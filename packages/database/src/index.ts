@@ -8,6 +8,17 @@
  */
 
 // ============================================================================
+// Base Entities
+// ============================================================================
+
+/**
+ * Base auditable entity providing audit trail fields.
+ * All domain entities should extend this class.
+ * @public
+ */
+export { AuditableEntity } from './entities/core/auditable.entity.js'
+
+// ============================================================================
 // Entities
 // ============================================================================
 

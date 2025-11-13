@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { AuditableSchema } from './audit.js'
 
 /**
  * Base schema for Country entity.
@@ -8,7 +9,7 @@ import { z } from 'zod'
  */
 export const CountryBaseSchema = z
 	.object({
-		countryId: z.number().int().positive(),
+		id: z.number().int().positive(),
 		name: z.string().min(1).max(255),
 		alpha2: z
 			.string()
@@ -21,6 +22,7 @@ export const CountryBaseSchema = z
 		number: z.number().int().min(1).max(999),
 		dialingCode: z.number().int().positive(),
 	})
+	.merge(AuditableSchema)
 	.describe('Base Country (ISO 3166-1)')
 
 /**
@@ -49,10 +51,16 @@ export type Country = CountryExpanded
 
 /**
  * Schema for creating a new Country.
+ * Omits auto-generated fields (id, audit fields).
  *
  * @public
  */
-export const CreateCountryInputSchema = CountryBaseSchema.omit({ countryId: true })
+export const CreateCountryInputSchema = CountryBaseSchema.omit({
+	id: true,
+	created: true,
+	lastModified: true,
+	modifiedBy: true,
+})
 
 /**
  * @public
@@ -61,11 +69,15 @@ export type CreateCountryInput = z.infer<typeof CreateCountryInputSchema>
 
 /**
  * Schema for updating a Country.
+ * Omits auto-generated/immutable fields (id, audit fields).
  *
  * @public
  */
 export const UpdateCountryInputSchema = CountryBaseSchema.omit({
-	countryId: true,
+	id: true,
+	created: true,
+	lastModified: true,
+	modifiedBy: true,
 }).partial()
 
 /**

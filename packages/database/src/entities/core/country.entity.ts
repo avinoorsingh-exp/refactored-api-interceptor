@@ -1,4 +1,6 @@
+import { Country } from '@exprealty/shared-domain'
 import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm'
+import { AuditableEntity } from './auditable.entity.js'
 
 /**
  * TypeORM entity for Country table.
@@ -6,13 +8,13 @@ import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm'
  * @public
  */
 @Entity({ name: 'country', schema: 'core' })
-export class CountryEntity {
+export class CountryEntity extends AuditableEntity implements Country {
 	/**
 	 * Primary key with auto-increment integer.
 	 * @public
 	 */
-	@PrimaryGeneratedColumn('increment', { type: 'integer', name: 'country_id' })
-	countryId!: number
+	@PrimaryGeneratedColumn('increment', { type: 'integer', name: 'id' })
+	id!: number
 
 	/**
 	 * Country name (e.g., "United States of America", "Canada").

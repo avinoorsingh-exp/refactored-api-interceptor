@@ -12,12 +12,15 @@ import type { Country, CreateCountryInput } from '@exprealty/shared-domain';
  * This keeps the domain pure and independent of database implementation.
  */
 const mapEntity = (e: CountryEntity): Country => ({
-  countryId: e.countryId,
+  id: e.id,
   name: e.name,
   alpha2: e.alpha2,
   alpha3: e.alpha3,
   number: e.number,
   dialingCode: e.dialingCode,
+  created: e.created,
+  lastModified: e.lastModified,
+  modifiedBy: e.modifiedBy,
 });
 
 /**
@@ -42,7 +45,7 @@ export class CountriesTypeOrmRepository implements ICountriesRepository {
    * Find a country by its numeric ID.
    */
   async findById(id: number): Promise<Country | null> {
-    const entity = await this.repo.findOne({ where: { countryId: id } });
+    const entity = await this.repo.findOne({ where: { id } });
     return entity ? mapEntity(entity) : null;
   }
 
@@ -119,8 +122,8 @@ export class CountriesTypeOrmRepository implements ICountriesRepository {
    * Update an existing country by ID.
    */
   async update(id: number, patch: Partial<Country>): Promise<Country> {
-    await this.repo.update({ countryId: id }, patch);
-    const updated = await this.repo.findOneOrFail({ where: { countryId: id } });
+    await this.repo.update({ id }, patch);
+    const updated = await this.repo.findOneOrFail({ where: { id } });
     return mapEntity(updated);
   }
 
@@ -128,7 +131,7 @@ export class CountriesTypeOrmRepository implements ICountriesRepository {
    * Delete a country by ID.
    */
   async delete(id: number): Promise<void> {
-    await this.repo.delete({ countryId: id });
+    await this.repo.delete({ id });
   }
 
   /**
