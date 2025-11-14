@@ -13,8 +13,9 @@ import type { Region } from '@exprealty/shared-domain';
 const mapEntity = (e: RegionEntity): Region => ({
   id: e.id,
   name: e.name,
-  createdAt: e.createdAt,
-  updatedAt: e.updatedAt,
+  created: e.created,
+  lastModified: e.lastModified,
+  modifiedBy: e.modifiedBy,
 });
 
 /**

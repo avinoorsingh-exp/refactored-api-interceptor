@@ -307,8 +307,9 @@ export class CompaniesService {
 			id: entity.id,
 			name: entity.name as any,
 			email: entity.email as any,
-			createdAt: entity.createdAt as any,
-			updatedAt: entity.updatedAt as any,
+			created: entity.created,
+			lastModified: entity.lastModified,
+			modifiedBy: entity.modifiedBy,
 		}
 	}
 }

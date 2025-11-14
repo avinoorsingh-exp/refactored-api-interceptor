@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { AuditableSchema } from './audit.js'
 
 /**
  * Base schema for Region entity.
@@ -12,9 +13,8 @@ export const RegionBaseSchema = z
 			.regex(/^\d+$/, { message: 'errors.region.id.invalid' })
 			.describe('Primary key (bigint as string)'),
 		name: z.string().min(1).max(255),
-		createdAt: z.coerce.date().describe('Timestamp when the region was created'),
-		updatedAt: z.coerce.date().describe('Timestamp when the region was last updated'),
 	})
+	.merge(AuditableSchema)
 	.describe('Base Region')
 
 /**
@@ -48,8 +48,13 @@ export type Region = RegionExpanded
  *
  * @public
  */
-export const CreateRegionInputSchema = z
-	.object({
+export const CreateRegionInputSchema = RegionBaseSchema.omit({
+	id: true,
+	created: true,
+	lastModified: true,
+	modifiedBy: true,
+})
+	.extend({
 		name: z
 			.string()
 			.trim()
@@ -70,8 +75,13 @@ export type CreateRegionInput = z.infer<typeof CreateRegionInputSchema>
  *
  * @public
  */
-export const UpdateRegionInputSchema = z
-	.object({
+export const UpdateRegionInputSchema = RegionBaseSchema.omit({
+	id: true,
+	created: true,
+	lastModified: true,
+	modifiedBy: true,
+})
+	.extend({
 		name: z
 			.string()
 			.trim()
@@ -79,6 +89,7 @@ export const UpdateRegionInputSchema = z
 			.max(255, { message: 'errors.region.name.too_long' })
 			.optional(),
 	})
+	.partial()
 	.describe('Input for updating a Region')
 
 /**
