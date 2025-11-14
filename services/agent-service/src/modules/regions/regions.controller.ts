@@ -159,8 +159,9 @@ export class RegionsController {
 		const items = regions.map(r => ({
 			id: r.id,
 			name: r.name,
-			created_at: r.createdAt.toISOString(),
-			updated_at: r.updatedAt.toISOString(),
+			created: r.created.toISOString(),
+			last_modified: r.lastModified.toISOString(),
+			modified_by: r.modifiedBy,
 		}))
 
 		return { items, total }

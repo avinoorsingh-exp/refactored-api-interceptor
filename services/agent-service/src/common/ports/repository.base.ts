@@ -8,8 +8,8 @@ export interface IRepository<TId, TEntity> {
   findPage(p: NormalizedPagination, opts?: unknown): Promise<PageResult<TEntity>>;
 
   // Writes (optional—keep minimal for now)
-  // Omits id, createdAt, updatedAt as those are auto-generated
-  create(entity: Omit<TEntity, 'id' | 'createdAt' | 'updatedAt'>): Promise<TEntity>;
+  // Omits id and audit fields (created, lastModified, modifiedBy) as those are auto-generated
+  create(entity: Omit<TEntity, 'id' | 'created' | 'lastModified' | 'modifiedBy'>): Promise<TEntity>;
   update(id: TId, patch: Partial<TEntity>): Promise<TEntity>;
   delete(id: TId): Promise<void>;
 }

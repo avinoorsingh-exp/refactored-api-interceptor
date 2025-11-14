@@ -159,8 +159,9 @@ export class CompaniesController {
 				id: c.id,
 				name: c.name as string,
 				email: c.email as string,
-				created_at: c.createdAt.toISOString(),
-				updated_at: c.updatedAt.toISOString(),
+				created: c.created.toISOString(),
+				last_modified: c.lastModified.toISOString(),
+				modified_by: c.modifiedBy,
 			}))
 
 			const duration = Date.now() - startTime
@@ -240,8 +241,9 @@ export class CompaniesController {
 			id: company.id,
 			name: company.name as string,
 			email: company.email as string,
-			created_at: company.createdAt.toISOString(),
-			updated_at: company.updatedAt.toISOString(),
+			created: company.created.toISOString(),
+			last_modified: company.lastModified.toISOString(),
+			modified_by: company.modifiedBy,
 		}
 	}
 
@@ -299,8 +301,9 @@ export class CompaniesController {
 			id: company.id,
 			name: company.name as string,
 			email: company.email as string,
-			created_at: company.createdAt.toISOString(),
-			updated_at: company.updatedAt.toISOString(),
+			created: company.created.toISOString(),
+			last_modified: company.lastModified.toISOString(),
+			modified_by: company.modifiedBy,
 		}
 	}
 

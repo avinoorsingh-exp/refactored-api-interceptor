@@ -2,10 +2,9 @@ import {
 	Entity,
 	Column,
 	PrimaryGeneratedColumn,
-	CreateDateColumn,
-	UpdateDateColumn,
 } from 'typeorm'
-import type { Company, Name, InstantUTC, Email } from '@exprealty/shared-domain'
+import type { Company, Name, Email } from '@exprealty/shared-domain'
+import { AuditableEntity } from './auditable.entity.js'
 
 /**
  * TypeORM entity for Company table.
@@ -13,7 +12,7 @@ import type { Company, Name, InstantUTC, Email } from '@exprealty/shared-domain'
  * @public
  */
 @Entity({ name: 'company', schema: 'core' })
-export class CompanyEntity implements Company {
+export class CompanyEntity extends AuditableEntity implements Company {
 	/**
 	 * Primary key (bigint).
 	 * @public
@@ -34,18 +33,4 @@ export class CompanyEntity implements Company {
 	 */
 	@Column({ type: 'text', unique: true })
 	email!: Email
-
-	/**
-	 * Creation timestamp.
-	 * @public
-	 */
-	@CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
-	createdAt!: InstantUTC
-
-	/**
-	 * Last update timestamp.
-	 * @public
-	 */
-	@UpdateDateColumn({ name: 'updated_at', type: 'timestamp with time zone' })
-	updatedAt!: InstantUTC
 }
