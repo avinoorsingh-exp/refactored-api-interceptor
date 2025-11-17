@@ -25,6 +25,7 @@ import { CreateRegionInputSchema, UpdateRegionInputSchema, RegionIdParamSchema, 
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js'
 import { RegionsService } from './regions.service.js'
 import { PaginationService } from '../../common/pagination/pagination.service.js'
+import { RegionMapper } from './mappers/region.mapper.js'
 import { CreateRegionDto } from './dto/create-region.dto.js'
 import { UpdateRegionDto } from './dto/update-region.dto.js'
 import { RegionIdParamDto } from './dto/region-id-param.dto.js'
@@ -96,14 +97,7 @@ export class RegionsController {
 		// Set Location header
 		res.setHeader('Location', `/v1/regions/${region.id}`)
 
-		// Map to response DTO with snake_case timestamps
-		return {
-			id: region.id,
-			name: region.name,
-			created: region.created.toISOString(),
-			last_modified: region.lastModified.toISOString(),
-			modified_by: region.modifiedBy,
-		}
+		return RegionMapper.toResponse(region)
 	}
 
 	/**
@@ -162,14 +156,7 @@ export class RegionsController {
 		// Just return the data in the expected format
 		const { regions, total } = await this.regionsService.findPage(query as any)
 
-		// Map domain Region to RegionResponseDto with snake_case timestamps
-		const items = regions.map(r => ({
-			id: r.id,
-			name: r.name,
-			created: r.created.toISOString(),
-			last_modified: r.lastModified.toISOString(),
-			modified_by: r.modifiedBy,
-		}))
+		const items = RegionMapper.toResponseList(regions)
 
 		return { items, total }
 	}
@@ -212,14 +199,7 @@ export class RegionsController {
 	): Promise<RegionResponseDto> {
 		const region = await this.regionsService.findById(params.id)
 		
-		// Map to response DTO with snake_case timestamps
-		return {
-			id: region.id,
-			name: region.name,
-			created: region.created.toISOString(),
-			last_modified: region.lastModified.toISOString(),
-			modified_by: region.modifiedBy,
-		}
+		return RegionMapper.toResponse(region)
 	}
 
 	/**
@@ -274,13 +254,6 @@ export class RegionsController {
 	): Promise<RegionResponseDto> {
 		const region = await this.regionsService.update(id, body as any)
 		
-		// Map to response DTO with snake_case timestamps
-		return {
-			id: region.id,
-			name: region.name,
-			created: region.created.toISOString(),
-			last_modified: region.lastModified.toISOString(),
-			modified_by: region.modifiedBy,
-		}
+		return RegionMapper.toResponse(region)
 	}
 }
