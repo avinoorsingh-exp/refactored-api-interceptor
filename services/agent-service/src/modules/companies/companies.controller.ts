@@ -100,7 +100,15 @@ export class CompaniesController {
 		// Set Location header
 		res.setHeader('Location', `/v1/companies/${company.id}`)
 
-		return company as any
+		// Map to response DTO with snake_case timestamps
+		return {
+			id: company.id,
+			name: company.name as string,
+			email: company.email as string,
+			created: company.created.toISOString(),
+			last_modified: company.lastModified.toISOString(),
+			modified_by: company.modifiedBy,
+		}
 	}
 
 	/**

@@ -96,7 +96,14 @@ export class RegionsController {
 		// Set Location header
 		res.setHeader('Location', `/v1/regions/${region.id}`)
 
-		return region as any
+		// Map to response DTO with snake_case timestamps
+		return {
+			id: region.id,
+			name: region.name,
+			created: region.created.toISOString(),
+			last_modified: region.lastModified.toISOString(),
+			modified_by: region.modifiedBy,
+		}
 	}
 
 	/**
@@ -203,7 +210,16 @@ export class RegionsController {
 		@Param(new ZodValidationPipe(RegionIdParamSchema, 'agent.region.validation'))
 		params: RegionIdParamDto,
 	): Promise<RegionResponseDto> {
-		return this.regionsService.findById(params.id) as any
+		const region = await this.regionsService.findById(params.id)
+		
+		// Map to response DTO with snake_case timestamps
+		return {
+			id: region.id,
+			name: region.name,
+			created: region.created.toISOString(),
+			last_modified: region.lastModified.toISOString(),
+			modified_by: region.modifiedBy,
+		}
 	}
 
 	/**
@@ -257,6 +273,14 @@ export class RegionsController {
 		body: UpdateRegionDto,
 	): Promise<RegionResponseDto> {
 		const region = await this.regionsService.update(id, body as any)
-		return region as any
+		
+		// Map to response DTO with snake_case timestamps
+		return {
+			id: region.id,
+			name: region.name,
+			created: region.created.toISOString(),
+			last_modified: region.lastModified.toISOString(),
+			modified_by: region.modifiedBy,
+		}
 	}
 }
