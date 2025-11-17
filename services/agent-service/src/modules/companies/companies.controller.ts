@@ -28,6 +28,8 @@ import {
 } from '@exprealty/shared-domain'
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js'
 import { CompaniesService } from './companies.service.js'
+import { PaginationService } from '../../common/pagination/pagination.service.js'
+import { CompanyMapper } from './mappers/company.mapper.js'
 import { CompanyIdParamDto } from './dto/company-id-param.dto.js'
 import { CreateCompanyDto } from './dto/create-company.dto.js'
 import { UpdateCompanyInputDto } from './dto/update-company-input.dto.js'
@@ -100,7 +102,7 @@ export class CompaniesController {
 		// Set Location header
 		res.setHeader('Location', `/v1/companies/${company.id}`)
 
-		return company as any
+		return CompanyMapper.toResponse(company)
 	}
 
 	/**
@@ -154,15 +156,7 @@ export class CompaniesController {
 			// Just return the data in the expected format
 			const { companies, total } = await this.companiesService.findPage(query as any)
 
-			// Map domain Company to CompanyResponseDto with snake_case timestamps
-			const items = companies.map(c => ({
-				id: c.id,
-				name: c.name as string,
-				email: c.email as string,
-				created: c.created.toISOString(),
-				last_modified: c.lastModified.toISOString(),
-				modified_by: c.modifiedBy,
-			}))
+			const items = CompanyMapper.toResponseList(companies)
 
 			const duration = Date.now() - startTime
 			this.logger.info('GET /v1/companies - Success', {
@@ -236,15 +230,7 @@ export class CompaniesController {
 	): Promise<CompanyResponseDto> {
 		const company = await this.companiesService.findById(params.id)
 		
-		// Map to response DTO with snake_case timestamps
-		return {
-			id: company.id,
-			name: company.name as string,
-			email: company.email as string,
-			created: company.created.toISOString(),
-			last_modified: company.lastModified.toISOString(),
-			modified_by: company.modifiedBy,
-		}
+		return CompanyMapper.toResponse(company)
 	}
 
 	/**
@@ -296,15 +282,7 @@ export class CompaniesController {
 	): Promise<CompanyResponseDto> {
 		const company = await this.companiesService.update(params.id, body as any)
 		
-		// Map to response DTO with snake_case timestamps
-		return {
-			id: company.id,
-			name: company.name as string,
-			email: company.email as string,
-			created: company.created.toISOString(),
-			last_modified: company.lastModified.toISOString(),
-			modified_by: company.modifiedBy,
-		}
+		return CompanyMapper.toResponse(company)
 	}
 
 	/**
