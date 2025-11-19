@@ -1009,6 +1009,338 @@
 			]
 		},
 		{
+			"name": "Validation Errors (invalidParams)",
+			"item": [
+				{
+					"name": "AC1: Negative number returns invalidParams",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response has Problem Details structure\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('type');",
+									"    pm.expect(jsonData).to.have.property('title');",
+									"    pm.expect(jsonData).to.have.property('status', 400);",
+									"    pm.expect(jsonData).to.have.property('detail');",
+									"    pm.expect(jsonData).to.have.property('instance');",
+									"});",
+									"",
+									"pm.test(\"Response includes invalidParams array\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('invalidParams');",
+									"    pm.expect(jsonData.invalidParams).to.be.an('array');",
+									"    pm.expect(jsonData.invalidParams.length).to.be.greaterThan(0);",
+									"});",
+									"",
+									"pm.test(\"invalidParams contains number validation error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    const numberError = jsonData.invalidParams.find(p => p.name === 'number');",
+									"    ",
+									"    pm.expect(numberError).to.exist;",
+									"    pm.expect(numberError).to.have.property('name', 'number');",
+									"    pm.expect(numberError).to.have.property('reason', 'errors.validation.number.too_small');",
+									"    pm.expect(numberError).to.have.property('in', 'body');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Negative Test Country\",\n  \"alpha2\": \"ZZ\",\n  \"alpha3\": \"ZZZ\",\n  \"number\": -50,\n  \"dialingCode\": 999\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries"]
+						}
+					}
+				},
+				{
+					"name": "AC2: Multiple validation errors return multiple invalidParams",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response includes invalidParams array with multiple errors\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('invalidParams');",
+									"    pm.expect(jsonData.invalidParams).to.be.an('array');",
+									"    pm.expect(jsonData.invalidParams.length).to.be.at.least(3);",
+									"});",
+									"",
+									"pm.test(\"invalidParams contains alpha2 length error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    const alpha2Error = jsonData.invalidParams.find(p => p.name === 'alpha2');",
+									"    ",
+									"    pm.expect(alpha2Error).to.exist;",
+									"    pm.expect(alpha2Error.reason).to.include('errors.validation.string');",
+									"});",
+									"",
+									"pm.test(\"invalidParams contains number type error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    const numberError = jsonData.invalidParams.find(p => p.name === 'number');",
+									"    ",
+									"    pm.expect(numberError).to.exist;",
+									"    pm.expect(numberError.reason).to.equal('errors.validation.type.expected_number');",
+									"});",
+									"",
+									"pm.test(\"invalidParams contains dialingCode type error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    const dialingError = jsonData.invalidParams.find(p => p.name === 'dialingCode');",
+									"    ",
+									"    pm.expect(dialingError).to.exist;",
+									"    pm.expect(dialingError.reason).to.equal('errors.validation.type.expected_number');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"alpha2\": \"TOOLONG\",\n  \"alpha3\": \"ZZZ\",\n  \"number\": \"not-a-number\",\n  \"dialingCode\": \"invalid\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries"]
+						}
+					}
+				},
+				{
+					"name": "AC3: Missing required fields return invalidParams",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response includes invalidParams for missing fields\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('invalidParams');",
+									"    pm.expect(jsonData.invalidParams).to.be.an('array');",
+									"    pm.expect(jsonData.invalidParams.length).to.be.at.least(3);",
+									"});",
+									"",
+									"pm.test(\"invalidParams contains alpha2 required error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    const alpha2Error = jsonData.invalidParams.find(p => p.name === 'alpha2');",
+									"    ",
+									"    pm.expect(alpha2Error).to.exist;",
+									"    pm.expect(alpha2Error.reason).to.equal('errors.validation.required');",
+									"});",
+									"",
+									"pm.test(\"invalidParams contains alpha3 required error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    const alpha3Error = jsonData.invalidParams.find(p => p.name === 'alpha3');",
+									"    ",
+									"    pm.expect(alpha3Error).to.exist;",
+									"    pm.expect(alpha3Error.reason).to.equal('errors.validation.required');",
+									"});",
+									"",
+									"pm.test(\"invalidParams contains number required error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    const numberError = jsonData.invalidParams.find(p => p.name === 'number');",
+									"    ",
+									"    pm.expect(numberError).to.exist;",
+									"    pm.expect(numberError.reason).to.equal('errors.validation.required');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Incomplete Country\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries"]
+						}
+					}
+				},
+				{
+					"name": "AC4: Query parameter validation returns invalidParams",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response includes invalidParams for query validation\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('invalidParams');",
+									"    pm.expect(jsonData.invalidParams).to.be.an('array');",
+									"    pm.expect(jsonData.invalidParams.length).to.be.greaterThan(0);",
+									"});",
+									"",
+									"pm.test(\"invalidParams contains limit validation error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    const limitError = jsonData.invalidParams.find(p => p.name === 'limit');",
+									"    ",
+									"    pm.expect(limitError).to.exist;",
+									"    pm.expect(limitError.reason).to.include('errors.validation.number');",
+									"    pm.expect(limitError.in).to.equal('body');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries?limit=-10",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries"],
+							"query": [
+								{
+									"key": "limit",
+									"value": "-10"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "AC5: Path parameter validation returns invalidParams",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response includes invalidParams for path validation\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('invalidParams');",
+									"    pm.expect(jsonData.invalidParams).to.be.an('array');",
+									"    pm.expect(jsonData.invalidParams.length).to.be.greaterThan(0);",
+									"});",
+									"",
+									"pm.test(\"invalidParams contains code validation error\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    const codeError = jsonData.invalidParams.find(p => p.name === 'code');",
+									"    ",
+									"    pm.expect(codeError).to.exist;",
+									"    pm.expect(codeError.reason).to.include('errors.validation.string');",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries/TOOLONG",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries", "TOOLONG"]
+						}
+					}
+				},
+				{
+					"name": "AC6: PUT validation returns invalidParams",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response includes invalidParams array\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.have.property('invalidParams');",
+									"    pm.expect(jsonData.invalidParams).to.be.an('array');",
+									"});",
+									"",
+									"pm.test(\"All invalidParams have required fields\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    jsonData.invalidParams.forEach(param => {",
+									"        pm.expect(param).to.have.property('name');",
+									"        pm.expect(param).to.have.property('reason');",
+									"        pm.expect(param).to.have.property('in');",
+									"        pm.expect(param.reason).to.match(/^errors\\.validation\\./);",
+									"    });",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"alpha2\": \"US\",\n  \"alpha3\": \"USA\",\n  \"number\": -1,\n  \"dialingCode\": \"invalid\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries/US",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries", "US"]
+						}
+					}
+				}
+			]
+		},
+		{
 			"name": "Correlation ID (x-correlation-id)",
 			"item": [
 				{

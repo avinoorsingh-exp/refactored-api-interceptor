@@ -179,7 +179,7 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 
 	/**
 	 * Handle validation errors from ZodValidationPipe.
-	 * The pipe returns Zod's formatted error object.
+	 * The pipe returns Zod's issues array with optional _i18nType.
 	 */
 	private handleValidationError(
 		exceptionResponse: Record<string, unknown>,
@@ -188,31 +188,49 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 	): ProblemDetails {
 		const invalidParams: InvalidParam[] = []
 
-		// Zod's format() returns nested objects with _errors arrays
-		const extractErrors = (obj: Record<string, unknown>, path: string[] = []): void => {
-			if (typeof obj !== 'object') return
+		// Check if we have Zod issues array
+		const zodIssues = exceptionResponse._zodIssues as Array<{
+			path: (string | number)[]
+			message: string
+			code: string
+		}> | undefined
 
-			// Check for _errors array at this level
-			const errors = obj._errors as unknown[] | undefined
-			if (Array.isArray(errors) && errors.length > 0) {
-				for (const error of errors) {
-					invalidParams.push({
-						name: path.join('.') || 'request',
-						reason: String(error),
-						in: 'body',
-					})
+		if (zodIssues && Array.isArray(zodIssues)) {
+			// Convert Zod issues to InvalidParam format
+			for (const issue of zodIssues) {
+				invalidParams.push({
+					name: issue.path.length > 0 ? issue.path.join('.') : 'request',
+					reason: issue.message,
+					in: 'body',
+				})
+			}
+		} else {
+			// Fallback: extract from Zod's format() structure (legacy support)
+			const extractErrors = (obj: Record<string, unknown>, path: string[] = []): void => {
+				if (typeof obj !== 'object') return
+
+				// Check for _errors array at this level
+				const errors = obj._errors as unknown[] | undefined
+				if (Array.isArray(errors) && errors.length > 0) {
+					for (const error of errors) {
+						invalidParams.push({
+							name: path.join('.') || 'request',
+							reason: String(error),
+							in: 'body',
+						})
+					}
+				}
+
+				// Recursively check nested properties
+				for (const [key, value] of Object.entries(obj)) {
+					if (key !== '_errors' && key !== '_zodIssues' && typeof value === 'object' && value !== null) {
+						extractErrors(value as Record<string, unknown>, [...path, key])
+					}
 				}
 			}
 
-			// Recursively check nested properties
-			for (const [key, value] of Object.entries(obj)) {
-				if (key !== '_errors' && typeof value === 'object' && value !== null) {
-					extractErrors(value as Record<string, unknown>, [...path, key])
-				}
-			}
+			extractErrors(exceptionResponse)
 		}
-
-		extractErrors(exceptionResponse)
 
 		return Problems.validation(
 			'The request body failed schema validation',

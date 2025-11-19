@@ -22,8 +22,10 @@ export class ZodValidationPipe implements PipeTransform {
 	transform(value: unknown) {
 		const parsed = this.schema.safeParse(value, { errorMap: validationErrorMap })
 		if (!parsed.success) {
-			// Attach i18nType to the error response so ProblemDetailsFilter can use it
-			const errorResponse: Record<string, unknown> = parsed.error.format()
+			// Pass Zod error issues directly for better invalidParams extraction
+			const errorResponse: Record<string, unknown> = {
+				_zodIssues: parsed.error.issues,
+			}
 			if (this.i18nType) {
 				errorResponse._i18nType = this.i18nType
 			}

@@ -14,10 +14,12 @@ describe('ZodValidationPipe', () => {
 			try {
 				pipe.transform({ dialingCode: 'invalid' })
 				fail('Should have thrown BadRequestException')
-			} catch (error) {
+			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
 				const response = error.getResponse() as any
-				expect(response.dialingCode._errors[0]).toBe('errors.validation.type.expected_number')
+				expect(response._zodIssues).toBeDefined()
+				expect(response._zodIssues[0].path).toEqual(['dialingCode'])
+				expect(response._zodIssues[0].message).toBe('errors.validation.type.expected_number')
 			}
 		})
 
@@ -31,10 +33,12 @@ describe('ZodValidationPipe', () => {
 			try {
 				pipe.transform({})
 				fail('Should have thrown BadRequestException')
-			} catch (error) {
+			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
 				const response = error.getResponse() as any
-				expect(response.name._errors[0]).toBe('errors.validation.required')
+				expect(response._zodIssues).toBeDefined()
+				expect(response._zodIssues[0].path).toEqual(['name'])
+				expect(response._zodIssues[0].message).toBe('errors.validation.required')
 			}
 		})
 
@@ -48,11 +52,12 @@ describe('ZodValidationPipe', () => {
 			try {
 				pipe.transform({ code: 'ABC' })
 				fail('Should have thrown BadRequestException')
-			} catch (error) {
+			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
 				const response = error.getResponse() as any
-				// Too long
-				expect(response.code._errors[0]).toBe('errors.validation.string.max_length')
+				expect(response._zodIssues).toBeDefined()
+				expect(response._zodIssues[0].path).toEqual(['code'])
+				expect(response._zodIssues[0].message).toBe('errors.validation.string.max_length')
 			}
 		})
 
@@ -66,10 +71,12 @@ describe('ZodValidationPipe', () => {
 			try {
 				pipe.transform({ email: 'not-an-email' })
 				fail('Should have thrown BadRequestException')
-			} catch (error) {
+			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
 				const response = error.getResponse() as any
-				expect(response.email._errors[0]).toBe('errors.validation.string.invalid_email')
+				expect(response._zodIssues).toBeDefined()
+				expect(response._zodIssues[0].path).toEqual(['email'])
+				expect(response._zodIssues[0].message).toBe('errors.validation.string.invalid_email')
 			}
 		})
 
@@ -83,10 +90,12 @@ describe('ZodValidationPipe', () => {
 			try {
 				pipe.transform({ age: 10 })
 				fail('Should have thrown BadRequestException')
-			} catch (error) {
+			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
 				const response = error.getResponse() as any
-				expect(response.age._errors[0]).toBe('errors.validation.number.too_small')
+				expect(response._zodIssues).toBeDefined()
+				expect(response._zodIssues[0].path).toEqual(['age'])
+				expect(response._zodIssues[0].message).toBe('errors.validation.number.too_small')
 			}
 		})
 
@@ -100,10 +109,12 @@ describe('ZodValidationPipe', () => {
 			try {
 				pipe.transform({ alpha2: 'abc' })
 				fail('Should have thrown BadRequestException')
-			} catch (error) {
+			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
 				const response = error.getResponse() as any
-				expect(response.alpha2._errors[0]).toBe('errors.validation.string.invalid_format')
+				expect(response._zodIssues).toBeDefined()
+				expect(response._zodIssues[0].path).toEqual(['alpha2'])
+				expect(response._zodIssues[0].message).toBe('errors.validation.string.invalid_format')
 			}
 		})
 
@@ -117,7 +128,7 @@ describe('ZodValidationPipe', () => {
 			try {
 				pipe.transform({})
 				fail('Should have thrown BadRequestException')
-			} catch (error) {
+			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
 				const response = error.getResponse() as any
 				expect(response._i18nType).toBe('agent.country.validation')
@@ -154,16 +165,161 @@ describe('ZodValidationPipe', () => {
 					dialingCode: 'not_a_number',
 				})
 				fail('Should have thrown BadRequestException')
-			} catch (error) {
+			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
 				const response = error.getResponse() as any
 				
-				// Missing required field
-				expect(response.name._errors[0]).toBe('errors.validation.required')
-				// String too long
-				expect(response.alpha2._errors[0]).toBe('errors.validation.string.max_length')
-				// Wrong type
-				expect(response.dialingCode._errors[0]).toBe('errors.validation.type.expected_number')
+				expect(response._zodIssues).toBeDefined()
+				expect(response._zodIssues.length).toBe(3)
+				
+				// Find specific issues
+				const nameIssue = response._zodIssues.find((i: any) => i.path[0] === 'name')
+				const alpha2Issue = response._zodIssues.find((i: any) => i.path[0] === 'alpha2')
+				const dialingCodeIssue = response._zodIssues.find((i: any) => i.path[0] === 'dialingCode')
+				
+				expect(nameIssue.message).toBe('errors.validation.required')
+				expect(alpha2Issue.message).toBe('errors.validation.string.max_length')
+				expect(dialingCodeIssue.message).toBe('errors.validation.type.expected_number')
+			}
+		})
+	})
+
+	describe('invalidParams array extraction', () => {
+		it('should include _zodIssues array in error response', () => {
+			const schema = z.object({
+				number: z.number().int().min(1),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+
+			try {
+				pipe.transform({ number: -50 })
+				fail('Should have thrown BadRequestException')
+			} catch (error: any) {
+				expect(error).toBeInstanceOf(BadRequestException)
+				const response = error.getResponse() as any
+				
+				// Should have _zodIssues array
+				expect(response._zodIssues).toBeDefined()
+				expect(Array.isArray(response._zodIssues)).toBe(true)
+				expect(response._zodIssues.length).toBeGreaterThan(0)
+				
+				// Should contain issue details
+				const issue = response._zodIssues[0]
+				expect(issue.path).toEqual(['number'])
+				expect(issue.message).toBe('errors.validation.number.too_small')
+				expect(issue.code).toBeDefined()
+			}
+		})
+
+		it('should include multiple issues in _zodIssues array', () => {
+			const schema = z.object({
+				alpha2: z.string().length(2).regex(/^[A-Z]{2}$/),
+				number: z.number().int().min(1).max(999),
+				dialingCode: z.number().int().positive(),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+
+			try {
+				pipe.transform({
+					alpha2: 'TOOLONG',
+					number: -50,
+					dialingCode: 'invalid',
+				})
+				fail('Should have thrown BadRequestException')
+			} catch (error: any) {
+				expect(error).toBeInstanceOf(BadRequestException)
+				const response = error.getResponse() as any
+				
+				expect(response._zodIssues).toBeDefined()
+				expect(Array.isArray(response._zodIssues)).toBe(true)
+				// alpha2 fails both length AND regex (2 issues), number fails (1 issue), dialingCode fails (1 issue) = 4 total
+				expect(response._zodIssues.length).toBe(4)
+				
+				// Check each issue has proper structure
+				response._zodIssues.forEach((issue: any) => {
+					expect(issue).toHaveProperty('path')
+					expect(issue).toHaveProperty('message')
+					expect(issue).toHaveProperty('code')
+					expect(Array.isArray(issue.path)).toBe(true)
+				})
+			}
+		})
+
+		it('should include _i18nType when provided', () => {
+			const schema = z.object({
+				name: z.string(),
+			})
+
+			const pipe = new ZodValidationPipe(schema, 'agent.country.validation')
+
+			try {
+				pipe.transform({})
+				fail('Should have thrown BadRequestException')
+			} catch (error: any) {
+				expect(error).toBeInstanceOf(BadRequestException)
+				const response = error.getResponse() as any
+				
+				expect(response._zodIssues).toBeDefined()
+				expect(response._i18nType).toBe('agent.country.validation')
+			}
+		})
+
+		it('should handle nested object validation', () => {
+			const schema = z.object({
+				address: z.object({
+					city: z.string().min(1),
+					zipCode: z.string().regex(/^\d{5}$/),
+				}),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+
+			try {
+				pipe.transform({
+					address: {
+						city: '',
+						zipCode: 'INVALID',
+					},
+				})
+				fail('Should have thrown BadRequestException')
+			} catch (error: any) {
+				expect(error).toBeInstanceOf(BadRequestException)
+				const response = error.getResponse() as any
+				
+				expect(response._zodIssues).toBeDefined()
+				expect(response._zodIssues.length).toBe(2)
+				
+				// Check nested paths
+				const cityIssue = response._zodIssues.find((i: any) => 
+					i.path.join('.') === 'address.city'
+				)
+				const zipIssue = response._zodIssues.find((i: any) => 
+					i.path.join('.') === 'address.zipCode'
+				)
+				
+				expect(cityIssue).toBeDefined()
+				expect(zipIssue).toBeDefined()
+			}
+		})
+
+		it('should handle array validation', () => {
+			const schema = z.object({
+				tags: z.array(z.string().min(1)).min(1),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+
+			try {
+				pipe.transform({ tags: [] })
+				fail('Should have thrown BadRequestException')
+			} catch (error: any) {
+				expect(error).toBeInstanceOf(BadRequestException)
+				const response = error.getResponse() as any
+				
+				expect(response._zodIssues).toBeDefined()
+				expect(response._zodIssues[0].path).toEqual(['tags'])
 			}
 		})
 	})
