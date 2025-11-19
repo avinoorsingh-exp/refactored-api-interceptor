@@ -25,7 +25,6 @@ import { CreateRegionInputSchema, UpdateRegionInputSchema, RegionIdParamSchema, 
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js'
 import { RegionsService } from './regions.service.js'
 import { PaginationService } from '../../common/pagination/pagination.service.js'
-import { RegionMapper } from './mappers/region.mapper.js'
 import { CreateRegionDto } from './dto/create-region.dto.js'
 import { UpdateRegionDto } from './dto/update-region.dto.js'
 import { RegionIdParamDto } from './dto/region-id-param.dto.js'
@@ -97,7 +96,7 @@ export class RegionsController {
 		// Set Location header
 		res.setHeader('Location', `/v1/regions/${region.id}`)
 
-		return RegionMapper.toResponse(region)
+		return region
 	}
 
 	/**
@@ -156,7 +155,7 @@ export class RegionsController {
 		// Just return the data in the expected format
 		const { regions, total } = await this.regionsService.findPage(query as any)
 
-		const items = RegionMapper.toResponseList(regions)
+		const items = regions
 
 		return { items, total }
 	}
@@ -199,7 +198,7 @@ export class RegionsController {
 	): Promise<RegionResponseDto> {
 		const region = await this.regionsService.findById(params.id)
 		
-		return RegionMapper.toResponse(region)
+		return region
 	}
 
 	/**
@@ -254,6 +253,6 @@ export class RegionsController {
 	): Promise<RegionResponseDto> {
 		const region = await this.regionsService.update(id, body as any)
 		
-		return RegionMapper.toResponse(region)
+		return region
 	}
 }

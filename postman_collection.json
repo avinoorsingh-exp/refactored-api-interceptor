@@ -1009,6 +1009,390 @@
 			]
 		},
 		{
+			"name": "Correlation ID (x-correlation-id)",
+			"item": [
+				{
+					"name": "AC1: Response includes x-correlation-id when provided",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has x-correlation-id header\", function () {",
+									"    pm.response.to.have.header('x-correlation-id');",
+									"});",
+									"",
+									"pm.test(\"Response x-correlation-id matches request\", function () {",
+									"    const requestCorrelationId = pm.request.headers.get('x-correlation-id');",
+									"    const responseCorrelationId = pm.response.headers.get('x-correlation-id');",
+									"    pm.expect(responseCorrelationId).to.equal(requestCorrelationId);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-correlation-id",
+								"value": "test-correlation-123-provided",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries?limit=1",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries"],
+							"query": [
+								{
+									"key": "limit",
+									"value": "1"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "AC2: Response generates x-correlation-id when not provided",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has x-correlation-id header\", function () {",
+									"    pm.response.to.have.header('x-correlation-id');",
+									"});",
+									"",
+									"pm.test(\"Generated correlation ID is valid UUID v4\", function () {",
+									"    const correlationId = pm.response.headers.get('x-correlation-id');",
+									"    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;",
+									"    pm.expect(correlationId).to.match(uuidRegex);",
+									"});",
+									"",
+									"pm.test(\"Store generated correlation ID for next test\", function () {",
+									"    const correlationId = pm.response.headers.get('x-correlation-id');",
+									"    pm.collectionVariables.set('generatedCorrelationId', correlationId);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries?limit=1",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries"],
+							"query": [
+								{
+									"key": "limit",
+									"value": "1"
+								}
+							]
+						}
+					}
+				},
+				{
+					"name": "AC3: POST request returns x-correlation-id",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// Generate unique alpha2 code for this test",
+									"const randomCode = 'T' + Math.random().toString(36).substring(2, 3).toUpperCase();",
+									"pm.collectionVariables.set('tempAlpha2', randomCode);",
+									"pm.collectionVariables.set('tempAlpha3', randomCode + 'T');",
+									"pm.collectionVariables.set('tempNumber', Math.floor(Math.random() * 100) + 900);"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201 Created\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Response has x-correlation-id header\", function () {",
+									"    pm.response.to.have.header('x-correlation-id');",
+									"});",
+									"",
+									"pm.test(\"Response x-correlation-id matches request\", function () {",
+									"    const requestCorrelationId = pm.request.headers.get('x-correlation-id');",
+									"    const responseCorrelationId = pm.response.headers.get('x-correlation-id');",
+									"    pm.expect(responseCorrelationId).to.equal(requestCorrelationId);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "x-correlation-id",
+								"value": "test-correlation-post-456",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"alpha2\": \"{{tempAlpha2}}\",\n  \"alpha3\": \"{{tempAlpha3}}\",\n  \"number\": {{tempNumber}},\n  \"name\": \"Correlation Test Country\",\n  \"dialingCode\": 555\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries"]
+						}
+					}
+				},
+				{
+					"name": "AC4: PUT request returns x-correlation-id",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has x-correlation-id header\", function () {",
+									"    pm.response.to.have.header('x-correlation-id');",
+									"});",
+									"",
+									"pm.test(\"Response x-correlation-id matches request\", function () {",
+									"    const requestCorrelationId = pm.request.headers.get('x-correlation-id');",
+									"    const responseCorrelationId = pm.response.headers.get('x-correlation-id');",
+									"    pm.expect(responseCorrelationId).to.equal(requestCorrelationId);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "x-correlation-id",
+								"value": "test-correlation-put-789",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"alpha2\": \"{{tempAlpha2}}\",\n  \"alpha3\": \"{{tempAlpha3}}\",\n  \"number\": {{tempNumber}},\n  \"name\": \"Updated Correlation Test\",\n  \"dialingCode\": 556\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries/{{tempAlpha2}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries", "{{tempAlpha2}}"]
+						}
+					}
+				},
+				{
+					"name": "AC5: DELETE request returns x-correlation-id",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 204 No Content\", function () {",
+									"    pm.response.to.have.status(204);",
+									"});",
+									"",
+									"pm.test(\"Response has x-correlation-id header\", function () {",
+									"    pm.response.to.have.header('x-correlation-id');",
+									"});",
+									"",
+									"pm.test(\"Response x-correlation-id matches request\", function () {",
+									"    const requestCorrelationId = pm.request.headers.get('x-correlation-id');",
+									"    const responseCorrelationId = pm.response.headers.get('x-correlation-id');",
+									"    pm.expect(responseCorrelationId).to.equal(requestCorrelationId);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "x-correlation-id",
+								"value": "test-correlation-delete-abc",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries/{{tempAlpha2}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries", "{{tempAlpha2}}"]
+						}
+					}
+				},
+				{
+					"name": "AC6: Error responses include x-correlation-id",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 404 Not Found\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"",
+									"pm.test(\"Response has x-correlation-id header even on error\", function () {",
+									"    pm.response.to.have.header('x-correlation-id');",
+									"});",
+									"",
+									"pm.test(\"Response x-correlation-id matches request\", function () {",
+									"    const requestCorrelationId = pm.request.headers.get('x-correlation-id');",
+									"    const responseCorrelationId = pm.response.headers.get('x-correlation-id');",
+									"    pm.expect(responseCorrelationId).to.equal(requestCorrelationId);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "x-correlation-id",
+								"value": "test-correlation-error-404",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries/NOTFOUND",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries", "NOTFOUND"]
+						}
+					}
+				},
+				{
+					"name": "AC7: Validation error includes x-correlation-id",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 400 Bad Request\", function () {",
+									"    pm.response.to.have.status(400);",
+									"});",
+									"",
+									"pm.test(\"Response has x-correlation-id header on validation error\", function () {",
+									"    pm.response.to.have.header('x-correlation-id');",
+									"});",
+									"",
+									"pm.test(\"Response x-correlation-id matches request\", function () {",
+									"    const requestCorrelationId = pm.request.headers.get('x-correlation-id');",
+									"    const responseCorrelationId = pm.response.headers.get('x-correlation-id');",
+									"    pm.expect(responseCorrelationId).to.equal(requestCorrelationId);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "x-correlation-id",
+								"value": "test-correlation-validation-400",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"alpha2\": \"TOOLONG\",\n  \"alpha3\": \"ZZZ\",\n  \"number\": \"not-a-number\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries"]
+						}
+					}
+				},
+				{
+					"name": "AC8: Each request gets unique correlation ID",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200 OK\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has x-correlation-id header\", function () {",
+									"    pm.response.to.have.header('x-correlation-id');",
+									"});",
+									"",
+									"pm.test(\"New correlation ID differs from previous\", function () {",
+									"    const previousId = pm.collectionVariables.get('generatedCorrelationId');",
+									"    const currentId = pm.response.headers.get('x-correlation-id');",
+									"    ",
+									"    pm.expect(currentId).to.not.equal(previousId);",
+									"    pm.expect(currentId).to.be.a('string');",
+									"    pm.expect(currentId.length).to.be.greaterThan(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/v1/countries?limit=1",
+							"host": ["{{baseUrl}}"],
+							"path": ["v1", "countries"],
+							"query": [
+								{
+									"key": "limit",
+									"value": "1"
+								}
+							]
+						}
+					}
+				}
+			]
+		},
+		{
 			"name": "Regions",
 			"item": [
 				{

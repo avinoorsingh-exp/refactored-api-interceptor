@@ -201,6 +201,9 @@ importers:
 
   packages/logger:
     dependencies:
+      '@exprealty/cache':
+        specifier: workspace:*
+        version: link:../cache
       '@exprealty/config':
         specifier: workspace:*
         version: link:../config
@@ -411,6 +414,9 @@ importers:
 
   services/orchestrator:
     dependencies:
+      '@exprealty/cache':
+        specifier: workspace:*
+        version: link:../../packages/cache
       '@exprealty/config':
         specifier: workspace:*
         version: link:../../packages/config

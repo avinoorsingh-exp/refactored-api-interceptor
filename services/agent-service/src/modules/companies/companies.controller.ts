@@ -29,7 +29,6 @@ import {
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js'
 import { CompaniesService } from './companies.service.js'
 import { PaginationService } from '../../common/pagination/pagination.service.js'
-import { CompanyMapper } from './mappers/company.mapper.js'
 import { CompanyIdParamDto } from './dto/company-id-param.dto.js'
 import { CreateCompanyDto } from './dto/create-company.dto.js'
 import { UpdateCompanyInputDto } from './dto/update-company-input.dto.js'
@@ -102,7 +101,7 @@ export class CompaniesController {
 		// Set Location header
 		res.setHeader('Location', `/v1/companies/${company.id}`)
 
-		return CompanyMapper.toResponse(company)
+		return company
 	}
 
 	/**
@@ -156,7 +155,7 @@ export class CompaniesController {
 			// Just return the data in the expected format
 			const { companies, total } = await this.companiesService.findPage(query as any)
 
-			const items = CompanyMapper.toResponseList(companies)
+			const items = companies
 
 			const duration = Date.now() - startTime
 			this.logger.info('GET /v1/companies - Success', {
@@ -230,7 +229,7 @@ export class CompaniesController {
 	): Promise<CompanyResponseDto> {
 		const company = await this.companiesService.findById(params.id)
 		
-		return CompanyMapper.toResponse(company)
+		return company
 	}
 
 	/**
@@ -282,7 +281,7 @@ export class CompaniesController {
 	): Promise<CompanyResponseDto> {
 		const company = await this.companiesService.update(params.id, body as any)
 		
-		return CompanyMapper.toResponse(company)
+		return company
 	}
 
 	/**

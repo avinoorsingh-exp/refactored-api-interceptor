@@ -13,12 +13,15 @@ describe('CountriesController', () => {
   let repository: jest.Mocked<ICountriesRepository>;
 
   const mockCountry: Country = {
-    countryId: 1,
+    id: 1,
     name: 'United States',
     alpha2: 'US',
     alpha3: 'USA',
     number: 840,
     dialingCode: 1,
+    created: new Date('2024-01-15T10:30:00Z'),
+    lastModified: new Date('2024-01-15T14:45:00Z'),
+    modifiedBy: 'system',
   };
 
   const mockRequest = (): any =>
@@ -75,9 +78,9 @@ describe('CountriesController', () => {
      */
     it('should return paginated countries sorted by alpha2 code ascending', async () => {
       const mockCountries = [
-        { ...mockCountry, alpha2: 'AD', countryId: 1 },
-        { ...mockCountry, alpha2: 'AE', countryId: 2 },
-        { ...mockCountry, alpha2: 'AF', countryId: 3 },
+        { ...mockCountry, alpha2: 'AD', id: 1 },
+        { ...mockCountry, alpha2: 'AE', id: 2 },
+        { ...mockCountry, alpha2: 'AF', id: 3 },
       ];
 
       repository.findPage.mockResolvedValue({
@@ -104,8 +107,8 @@ describe('CountriesController', () => {
      */
     it('should return second page of countries with correct offset', async () => {
       const mockCountries = [
-        { ...mockCountry, alpha2: 'BR', countryId: 30 },
-        { ...mockCountry, alpha2: 'BS', countryId: 31 },
+        { ...mockCountry, alpha2: 'BR', id: 30 },
+        { ...mockCountry, alpha2: 'BS', id: 31 },
       ];
 
       repository.findPage.mockResolvedValue({
@@ -149,7 +152,7 @@ describe('CountriesController', () => {
     it('should handle maximum limit of 50 correctly', async () => {
       const mockCountries = Array.from({ length: 50 }, (_, i) => ({
         ...mockCountry,
-        countryId: i + 1,
+        id: i + 1,
         alpha2: `C${i}`,
       }));
 
@@ -238,7 +241,13 @@ describe('CountriesController', () => {
      * Test successful country creation
      */
     it('should create a new country successfully', async () => {
-      const newCountry: Country = { ...createDto, countryId: 2 };
+      const newCountry: Country = { 
+        ...createDto, 
+        id: 2,
+        created: new Date('2024-01-15T10:30:00Z'),
+        lastModified: new Date('2024-01-15T14:45:00Z'),
+        modifiedBy: 'system',
+      };
       repository.create.mockResolvedValue(newCountry);
 
       const req = mockRequest();
@@ -326,7 +335,13 @@ describe('CountriesController', () => {
      * Test upsert creates new country (201)
      */
     it('should create new country and return 201 Created', async () => {
-      const newCountry: Country = { ...upsertDto, countryId: 2 };
+      const newCountry: Country = { 
+        ...upsertDto, 
+        id: 2,
+        created: new Date('2024-01-15T10:30:00Z'),
+        lastModified: new Date('2024-01-15T14:45:00Z'),
+        modifiedBy: 'system',
+      };
       repository.upsert.mockResolvedValue({
         country: newCountry,
         created: true,
@@ -354,7 +369,13 @@ describe('CountriesController', () => {
      * Test upsert updates existing country (200)
      */
     it('should update existing country and return 200 OK', async () => {
-      const updatedCountry: Country = { ...upsertDto, countryId: 1 };
+      const updatedCountry: Country = { 
+        ...upsertDto, 
+        id: 1,
+        created: new Date('2024-01-15T10:30:00Z'),
+        lastModified: new Date('2024-01-15T14:45:00Z'),
+        modifiedBy: 'system',
+      };
       repository.upsert.mockResolvedValue({
         country: updatedCountry,
         created: false,
@@ -378,7 +399,13 @@ describe('CountriesController', () => {
      * Test upsert with code mismatch handling
      */
     it('should handle upsert when path code matches body alpha2', async () => {
-      const country: Country = { ...upsertDto, countryId: 1 };
+      const country: Country = { 
+        ...upsertDto, 
+        id: 1,
+        created: new Date('2024-01-15T10:30:00Z'),
+        lastModified: new Date('2024-01-15T14:45:00Z'),
+        modifiedBy: 'system',
+      };
       repository.upsert.mockResolvedValue({
         country,
         created: false,
