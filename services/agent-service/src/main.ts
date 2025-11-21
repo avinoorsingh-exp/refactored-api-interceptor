@@ -38,6 +38,7 @@ async function bootstrap() {
 		credentials: true,
 	})
 
+	// Register global exception filter (handles all exceptions including database errors)
 	app.useGlobalFilters(new ProblemDetailsFilter(logger))
 
 	// Setup Swagger/OpenAPI documentation

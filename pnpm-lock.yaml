@@ -290,6 +290,9 @@ importers:
 
   services/agent-service:
     dependencies:
+      '@exprealty/cache':
+        specifier: workspace:*
+        version: link:../../packages/cache
       '@exprealty/config':
         specifier: workspace:*
         version: link:../../packages/config

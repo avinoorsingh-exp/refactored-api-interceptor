@@ -137,6 +137,8 @@ export class CountriesRepository implements ICountriesRepository {
 
   /**
    * Update an existing country by ID.
+   * @throws ConflictException if alpha2, alpha3, or number already exists (via DatabaseExceptionFilter)
+   * @throws NotFoundException if country with given ID doesn't exist
    */
   async update(id: number, patch: Partial<Country>): Promise<Country> {
     await this.repo.update({ id }, patch);

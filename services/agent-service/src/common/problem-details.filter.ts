@@ -1,12 +1,14 @@
 import { ExceptionFilter, Catch, ArgumentsHost, HttpException } from '@nestjs/common'
 import { Request, Response } from 'express'
 import { ZodError } from 'zod'
+import { QueryFailedError } from 'typeorm'
 import {
 	Problems,
 	type ProblemDetails,
 	type InvalidParam,
 } from '@exprealty/shared-domain'
 import { LoggerService } from '../core/logger.service.js'
+import { DatabaseErrorHandler } from '../errors/database-error.handler.js'
 
 /**
  * Global exception filter that transforms all errors into RFC 9457 Problem Details.
@@ -57,6 +59,48 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 						: undefined
 
 				problem = this.createProblemFromStatus(status, message, instance, traceId, i18nType)
+			}
+		}
+		// 2. Handle TypeORM QueryFailedError (database constraint violations)
+		else if (exception instanceof QueryFailedError) {
+			const dbError = exception as any;
+			
+			// Log the database error
+			this.logger.error('Database error occurred', {
+				code: dbError.code,
+				constraint: dbError.constraint,
+				table: dbError.table,
+				detail: dbError.detail,
+				traceId,
+			});
+
+			// Transform to HTTP exception if it's a known constraint violation
+			if (DatabaseErrorHandler.isDatabaseError(dbError)) {
+				const httpException = DatabaseErrorHandler.toHttpException(dbError);
+				
+				if (httpException instanceof HttpException) {
+					const status = httpException.getStatus();
+					const exceptionResponse = httpException.getResponse();
+					const message = typeof exceptionResponse === 'object' && 'message' in exceptionResponse
+						? String(exceptionResponse.message)
+						: 'Database constraint violation';
+					
+					problem = this.createProblemFromStatus(status, message, instance, traceId);
+				} else {
+					// Unknown database error
+					problem = Problems.internal(
+						exception.message || 'Database error occurred',
+						instance,
+						traceId,
+					);
+				}
+			} else {
+				// Unknown database error
+				problem = Problems.internal(
+					exception.message || 'Database error occurred',
+					instance,
+					traceId,
+				);
 			}
 		}
 		// 3. Handle ZodError directly (shouldn't happen if validation pipe works, but just in case)
