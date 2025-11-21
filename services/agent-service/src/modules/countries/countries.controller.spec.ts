@@ -6,6 +6,7 @@ import { PaginationModule } from '../../common/pagination/pagination.module.js';
 import type { ICountriesRepository } from './ports/countries.repository.port.js';
 import type { Country, CreateCountryInput } from '@exprealty/shared-domain';
 import type { Request, Response } from 'express';
+import { AsyncContextStorage, CorrelationIdHelper } from '@exprealty/cache';
 
 describe('CountriesController', () => {
   let controller: CountriesController;
@@ -63,6 +64,9 @@ describe('CountriesController', () => {
 
     controller = module.get<CountriesController>(CountriesController);
     service = module.get<CountriesService>(CountriesService);
+
+    // Establish AsyncLocalStorage context for all tests
+    // This simulates the middleware setting up the correlation ID context
   });
 
   afterEach(() => {
@@ -416,6 +420,181 @@ describe('CountriesController', () => {
       await controller.upsert({ code: 'CA' }, upsertDto, res, req);
 
       expect(repository.upsert).toHaveBeenCalledWith(upsertDto);
+    });
+  });
+
+  describe('Correlation ID Integration', () => {
+    /**
+     * Validates: Requirements 4.2, 10.4
+     * Test that controller can access correlation ID via AsyncContextStorage
+     */
+    it('should access correlation ID from AsyncContextStorage within controller context', async () => {
+      const testCorrelationId = 'test-correlation-123';
+      
+      repository.findPage.mockResolvedValue({
+        items: [mockCountry],
+        total: 1,
+      });
+
+      const req = mockRequest();
+      
+      // Run the controller method within a correlation context
+      const result = await CorrelationIdHelper.runInContext(
+        testCorrelationId,
+        { requestPath: '/v1/countries', method: 'GET' },
+        async () => {
+          // Verify correlation ID is accessible within the context
+          const correlationId = AsyncContextStorage.getCorrelationId();
+          expect(correlationId).toBe(testCorrelationId);
+          
+          // Execute controller method
+          return await controller.findAll({ offset: 0, limit: 25 }, req);
+        }
+      );
+
+      expect(result.items).toEqual([mockCountry]);
+      expect(result.total).toBe(1);
+    });
+
+    /**
+     * Validates: Requirements 4.2, 10.4
+     * Test that correlation ID persists through async operations in controller
+     */
+    it('should maintain correlation ID through async operations', async () => {
+      const testCorrelationId = 'test-async-correlation-456';
+      
+      repository.findByCode.mockResolvedValue(mockCountry);
+
+      const req = mockRequest();
+      
+      await CorrelationIdHelper.runInContext(
+        testCorrelationId,
+        { requestPath: '/v1/countries/US', method: 'GET' },
+        async () => {
+          // Verify correlation ID before async operation
+          expect(AsyncContextStorage.getCorrelationId()).toBe(testCorrelationId);
+          
+          // Execute controller method (which involves async repository call)
+          const result = await controller.findByCode({ code: 'US' }, req);
+          
+          // Verify correlation ID persists after async operation
+          expect(AsyncContextStorage.getCorrelationId()).toBe(testCorrelationId);
+          expect(result).toEqual(mockCountry);
+        }
+      );
+    });
+
+    /**
+     * Validates: Requirements 4.2, 10.4
+     * Test that correlation ID is accessible in nested async operations
+     */
+    it('should access correlation ID in nested async operations', async () => {
+      const testCorrelationId = 'test-nested-correlation-789';
+      
+      const createDto: CreateCountryInput = {
+        name: 'Test Country',
+        alpha2: 'TC',
+        alpha3: 'TST',
+        number: 999,
+        dialingCode: 1,
+      };
+
+      const newCountry: Country = { 
+        ...createDto, 
+        id: 99,
+        created: new Date('2024-01-15T10:30:00Z'),
+        lastModified: new Date('2024-01-15T14:45:00Z'),
+        modifiedBy: 'system',
+      };
+      
+      repository.create.mockResolvedValue(newCountry);
+
+      const req = mockRequest();
+      const res = mockResponse();
+      
+      await CorrelationIdHelper.runInContext(
+        testCorrelationId,
+        { requestPath: '/v1/countries', method: 'POST' },
+        async () => {
+          // Verify correlation ID at start
+          expect(AsyncContextStorage.getCorrelationId()).toBe(testCorrelationId);
+          
+          // Execute controller method with nested async operations
+          const result = await controller.create(createDto, res, req);
+          
+          // Verify correlation ID still accessible after nested operations
+          expect(AsyncContextStorage.getCorrelationId()).toBe(testCorrelationId);
+          expect(result).toEqual(newCountry);
+          
+          // Simulate additional async operation (like logging)
+          await new Promise(resolve => setTimeout(resolve, 10));
+          
+          // Verify correlation ID persists even after setTimeout
+          expect(AsyncContextStorage.getCorrelationId()).toBe(testCorrelationId);
+        }
+      );
+    });
+
+    /**
+     * Validates: Requirements 4.2, 10.4
+     * Test that correlation ID is undefined outside of context
+     */
+    it('should return undefined when accessing correlation ID outside context', async () => {
+      // Outside of any correlation context
+      const correlationId = AsyncContextStorage.getCorrelationId();
+      expect(correlationId).toBeUndefined();
+    });
+
+    /**
+     * Validates: Requirements 4.2, 10.4
+     * Test that multiple concurrent contexts maintain isolation
+     */
+    it('should maintain correlation ID isolation between concurrent operations', async () => {
+      const correlationId1 = 'concurrent-test-1';
+      const correlationId2 = 'concurrent-test-2';
+      
+      repository.findByCode.mockResolvedValue(mockCountry);
+
+      const req = mockRequest();
+      
+      // Execute two concurrent operations with different correlation IDs
+      const [result1, result2] = await Promise.all([
+        CorrelationIdHelper.runInContext(
+          correlationId1,
+          { requestPath: '/v1/countries/US', method: 'GET' },
+          async () => {
+            // Verify this context has the correct correlation ID
+            expect(AsyncContextStorage.getCorrelationId()).toBe(correlationId1);
+            
+            // Add small delay to ensure concurrency
+            await new Promise(resolve => setTimeout(resolve, 10));
+            
+            // Verify correlation ID hasn't changed
+            expect(AsyncContextStorage.getCorrelationId()).toBe(correlationId1);
+            
+            return await controller.findByCode({ code: 'US' }, req);
+          }
+        ),
+        CorrelationIdHelper.runInContext(
+          correlationId2,
+          { requestPath: '/v1/countries/CA', method: 'GET' },
+          async () => {
+            // Verify this context has the correct correlation ID
+            expect(AsyncContextStorage.getCorrelationId()).toBe(correlationId2);
+            
+            // Add small delay to ensure concurrency
+            await new Promise(resolve => setTimeout(resolve, 10));
+            
+            // Verify correlation ID hasn't changed
+            expect(AsyncContextStorage.getCorrelationId()).toBe(correlationId2);
+            
+            return await controller.findByCode({ code: 'CA' }, req);
+          }
+        ),
+      ]);
+
+      expect(result1).toEqual(mockCountry);
+      expect(result2).toEqual(mockCountry);
     });
   });
 });

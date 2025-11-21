@@ -1,4 +1,5 @@
 import { describe, it, expect } from '@jest/globals'
+import * as fc from 'fast-check'
 import { AsyncContextStorage, CorrelationIdHelper } from '../src/async-context.storage.js'
 
 describe('AsyncContextStorage', () => {
@@ -20,6 +21,23 @@ describe('AsyncContextStorage', () => {
 				},
 			)
 		})
+
+		it('should execute callback with context', () => {
+			let callbackExecuted = false
+			const result = AsyncContextStorage.run(
+				{
+					correlationId: 'callback-test',
+					timestamp: Date.now(),
+				},
+				() => {
+					callbackExecuted = true
+					return 'callback-result'
+				},
+			)
+
+			expect(callbackExecuted).toBe(true)
+			expect(result).toBe('callback-result')
+		})
 	})
 
 	describe('getCorrelationId', () => {
@@ -35,6 +53,32 @@ describe('AsyncContextStorage', () => {
 				},
 				() => {
 					expect(AsyncContextStorage.getCorrelationId()).toBe('abc-456')
+				},
+			)
+		})
+
+		it('should return correct ID in nested contexts', () => {
+			AsyncContextStorage.run(
+				{
+					correlationId: 'outer-context',
+					timestamp: Date.now(),
+				},
+				() => {
+					expect(AsyncContextStorage.getCorrelationId()).toBe('outer-context')
+
+					// Nested context with different ID
+					AsyncContextStorage.run(
+						{
+							correlationId: 'inner-context',
+							timestamp: Date.now(),
+						},
+						() => {
+							expect(AsyncContextStorage.getCorrelationId()).toBe('inner-context')
+						},
+					)
+
+					// Back to outer context
+					expect(AsyncContextStorage.getCorrelationId()).toBe('outer-context')
 				},
 			)
 		})
@@ -76,6 +120,208 @@ describe('AsyncContextStorage', () => {
 		})
 	})
 
+	describe('context isolation', () => {
+		it('should isolate concurrent run() calls', async () => {
+			const results: string[] = []
+
+			// Create 10 concurrent contexts with different correlation IDs
+			const promises = Array.from({ length: 10 }, (_, i) => {
+				const correlationId = `concurrent-${i}`
+				return AsyncContextStorage.run(
+					{
+						correlationId,
+						timestamp: Date.now(),
+					},
+					async () => {
+						// Simulate async work
+						await new Promise((resolve) => setTimeout(resolve, Math.random() * 10))
+
+						const retrievedId = AsyncContextStorage.getCorrelationId()
+						results.push(retrievedId!)
+
+						// Verify the ID matches what we set
+						expect(retrievedId).toBe(correlationId)
+
+						return retrievedId
+					},
+				)
+			})
+
+			await Promise.all(promises)
+
+			// Verify all 10 contexts maintained their own correlation IDs
+			expect(results).toHaveLength(10)
+			for (let i = 0; i < 10; i++) {
+				expect(results).toContain(`concurrent-${i}`)
+			}
+		})
+
+		it('should maintain separate contexts for each concurrent request', async () => {
+			const context1Results: string[] = []
+			const context2Results: string[] = []
+
+			const promise1 = AsyncContextStorage.run(
+				{
+					correlationId: 'context-1',
+					timestamp: Date.now(),
+				},
+				async () => {
+					for (let i = 0; i < 5; i++) {
+						await new Promise((resolve) => setTimeout(resolve, 5))
+						const id = AsyncContextStorage.getCorrelationId()
+						context1Results.push(id!)
+					}
+				},
+			)
+
+			const promise2 = AsyncContextStorage.run(
+				{
+					correlationId: 'context-2',
+					timestamp: Date.now(),
+				},
+				async () => {
+					for (let i = 0; i < 5; i++) {
+						await new Promise((resolve) => setTimeout(resolve, 5))
+						const id = AsyncContextStorage.getCorrelationId()
+						context2Results.push(id!)
+					}
+				},
+			)
+
+			await Promise.all([promise1, promise2])
+
+			// Verify no cross-contamination
+			expect(context1Results).toHaveLength(5)
+			expect(context2Results).toHaveLength(5)
+			expect(context1Results.every((id) => id === 'context-1')).toBe(true)
+			expect(context2Results.every((id) => id === 'context-2')).toBe(true)
+		})
+	})
+
+	describe('async context preservation', () => {
+		it('should preserve correlation ID in setTimeout callback', async () => {
+			await AsyncContextStorage.run(
+				{
+					correlationId: 'setTimeout-test',
+					timestamp: Date.now(),
+				},
+				async () => {
+					const idBeforeTimeout = AsyncContextStorage.getCorrelationId()
+					expect(idBeforeTimeout).toBe('setTimeout-test')
+
+					await new Promise<void>((resolve) => {
+						setTimeout(() => {
+							const idInTimeout = AsyncContextStorage.getCorrelationId()
+							expect(idInTimeout).toBe('setTimeout-test')
+							resolve()
+						}, 10)
+					})
+				},
+			)
+		})
+
+		it('should preserve correlation ID in Promise.then callback', async () => {
+			await AsyncContextStorage.run(
+				{
+					correlationId: 'promise-then-test',
+					timestamp: Date.now(),
+				},
+				async () => {
+					const idBefore = AsyncContextStorage.getCorrelationId()
+					expect(idBefore).toBe('promise-then-test')
+
+					await Promise.resolve('test-value').then(() => {
+						const idInThen = AsyncContextStorage.getCorrelationId()
+						expect(idInThen).toBe('promise-then-test')
+					})
+				},
+			)
+		})
+
+		it('should preserve correlation ID in async/await functions', async () => {
+			await AsyncContextStorage.run(
+				{
+					correlationId: 'async-await-test',
+					timestamp: Date.now(),
+				},
+				async () => {
+					const idBefore = AsyncContextStorage.getCorrelationId()
+					expect(idBefore).toBe('async-await-test')
+
+					const asyncFunction = async () => {
+						await new Promise((resolve) => setTimeout(resolve, 10))
+						return AsyncContextStorage.getCorrelationId()
+					}
+
+					const idInAsync = await asyncFunction()
+					expect(idInAsync).toBe('async-await-test')
+				},
+			)
+		})
+
+		it('should preserve correlation ID in Promise.all', async () => {
+			await AsyncContextStorage.run(
+				{
+					correlationId: 'promise-all-test',
+					timestamp: Date.now(),
+				},
+				async () => {
+					const promises = [
+						Promise.resolve().then(() => AsyncContextStorage.getCorrelationId()),
+						new Promise((resolve) =>
+							setTimeout(() => resolve(AsyncContextStorage.getCorrelationId()), 10),
+						),
+						(async () => {
+							await new Promise((resolve) => setTimeout(resolve, 5))
+							return AsyncContextStorage.getCorrelationId()
+						})(),
+					]
+
+					const results = await Promise.all(promises)
+
+					expect(results).toHaveLength(3)
+					expect(results.every((id) => id === 'promise-all-test')).toBe(true)
+				},
+			)
+		})
+
+		it('should preserve correlation ID through nested async operations', async () => {
+			await AsyncContextStorage.run(
+				{
+					correlationId: 'nested-async-test',
+					timestamp: Date.now(),
+				},
+				async () => {
+					const level1 = async () => {
+						await new Promise((resolve) => setTimeout(resolve, 5))
+						const id1 = AsyncContextStorage.getCorrelationId()
+						expect(id1).toBe('nested-async-test')
+
+						const level2 = async () => {
+							await new Promise((resolve) => setTimeout(resolve, 5))
+							const id2 = AsyncContextStorage.getCorrelationId()
+							expect(id2).toBe('nested-async-test')
+
+							const level3 = async () => {
+								await new Promise((resolve) => setTimeout(resolve, 5))
+								const id3 = AsyncContextStorage.getCorrelationId()
+								expect(id3).toBe('nested-async-test')
+								return id3
+							}
+
+							return await level3()
+						}
+
+						return await level2()
+					}
+
+					const finalId = await level1()
+					expect(finalId).toBe('nested-async-test')
+				},
+			)
+		})
+	})
+
 	describe('nested async operations', () => {
 		it('should maintain context through async operations', async () => {
 			const result = await AsyncContextStorage.run(
@@ -100,6 +346,135 @@ describe('AsyncContextStorage', () => {
 			)
 
 			expect(result).toBe('nested-result')
+		})
+	})
+
+	describe('Property-Based Tests', () => {
+		/**
+		 * Property 8: Concurrent Request Context Isolation
+		 * Validates: Requirements 5.1
+		 */
+		it('should isolate concurrent contexts with arbitrary correlation IDs', async () => {
+			await fc.assert(
+				fc.asyncProperty(
+					fc.array(fc.uuid(), { minLength: 1, maxLength: 100 }),
+					async (correlationIds) => {
+						const results = new Map<string, string[]>()
+
+						// Initialize results map
+						correlationIds.forEach((id) => {
+							results.set(id, [])
+						})
+
+						// Create concurrent contexts
+						const promises = correlationIds.map((correlationId) =>
+							AsyncContextStorage.run(
+								{
+									correlationId,
+									timestamp: Date.now(),
+								},
+								async () => {
+									// Simulate async work with random delay
+									await new Promise((resolve) =>
+										setTimeout(resolve, Math.random() * 10),
+									)
+
+									const retrievedId = AsyncContextStorage.getCorrelationId()
+
+									// Store the retrieved ID
+									if (retrievedId) {
+										const arr = results.get(correlationId)
+										if (arr) {
+											arr.push(retrievedId)
+										}
+									}
+
+									return retrievedId
+								},
+							),
+						)
+
+						await Promise.all(promises)
+
+						// Verify no cross-contamination
+						correlationIds.forEach((correlationId) => {
+							const retrievedIds = results.get(correlationId) || []
+							expect(retrievedIds).toHaveLength(1)
+							expect(retrievedIds[0]).toBe(correlationId)
+						})
+					},
+				),
+				{ numRuns: 100 },
+			)
+		})
+
+		/**
+		 * Property 9: Async Operation Context Preservation
+		 * Validates: Requirements 4.4, 5.2, 5.4
+		 */
+		it('should preserve correlation ID through arbitrary async operation chains', async () => {
+			await fc.assert(
+				fc.asyncProperty(
+					fc.uuid(),
+					fc.integer({ min: 1, max: 5 }),
+					async (correlationId, depth) => {
+						await AsyncContextStorage.run(
+							{
+								correlationId,
+								timestamp: Date.now(),
+							},
+							async () => {
+								// Create nested async operations based on depth
+								const createAsyncChain = async (currentDepth: number): Promise<string> => {
+									if (currentDepth === 0) {
+										return AsyncContextStorage.getCorrelationId() || 'undefined'
+									}
+
+									// Random async operation type
+									const operationType = currentDepth % 4
+
+									if (operationType === 0) {
+										// setTimeout
+										return new Promise((resolve) => {
+											setTimeout(async () => {
+												const id = AsyncContextStorage.getCorrelationId()
+												expect(id).toBe(correlationId)
+												const result = await createAsyncChain(currentDepth - 1)
+												resolve(result)
+											}, 5)
+										})
+									} else if (operationType === 1) {
+										// Promise.then
+										return Promise.resolve().then(async () => {
+											const id = AsyncContextStorage.getCorrelationId()
+											expect(id).toBe(correlationId)
+											return await createAsyncChain(currentDepth - 1)
+										})
+									} else if (operationType === 2) {
+										// async/await
+										await new Promise((resolve) => setTimeout(resolve, 5))
+										const id = AsyncContextStorage.getCorrelationId()
+										expect(id).toBe(correlationId)
+										return await createAsyncChain(currentDepth - 1)
+									} else {
+										// Promise.all
+										const results = await Promise.all([
+											Promise.resolve(AsyncContextStorage.getCorrelationId()),
+											createAsyncChain(currentDepth - 1),
+										])
+										expect(results[0]).toBe(correlationId)
+										return results[1]
+									}
+								}
+
+								const finalId = await createAsyncChain(depth)
+								expect(finalId).toBe(correlationId)
+							},
+						)
+					},
+				),
+				{ numRuns: 100 },
+			)
 		})
 	})
 })
