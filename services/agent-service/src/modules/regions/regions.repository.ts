@@ -2,9 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { IRegionsRepository } from './ports/regions.repository.port.js';
-import type { NormalizedPagination, PageResult } from '../../common/ports/pagination.types.js';
+import type { PageResult } from '../../common/ports/pagination.types.js';
 import { RegionEntity } from '@exprealty/database';
-import type { Region } from '@exprealty/shared-domain';
+import type { Region, QueryParams } from '@exprealty/shared-domain';
+import { QueryService } from '../../common/query/query.service.js';
 
 /**
  * Maps a TypeORM RegionEntity to a domain Region type.
@@ -27,6 +28,7 @@ export class RegionsTypeOrmRepository implements IRegionsRepository {
   constructor(
     @InjectRepository(RegionEntity)
     private readonly repo: Repository<RegionEntity>,
+    private readonly queryService: QueryService,
   ) {}
 
   async findById(id: string): Promise<Region | null> {
@@ -39,12 +41,26 @@ export class RegionsTypeOrmRepository implements IRegionsRepository {
     return entity ? mapEntity(entity) : null;
   }
 
-  async findPage(p: NormalizedPagination): Promise<PageResult<Region>> {
-    const [rows, total] = await this.repo.findAndCount({
-      order: { name: 'ASC' }, // Sort by name ascending
-      skip: p.offset,
-      take: p.limit,
-    });
+  async findPage(query: Partial<QueryParams>): Promise<PageResult<Region>> {
+    // Validate and normalize query params using entity decorators
+    const normalized = this.queryService.normalizeWithValidation(query, RegionEntity);
+
+    // Build query with TypeORM query builder
+    const qb = this.repo.createQueryBuilder('region');
+
+    // Apply filters, search, and sorting
+    this.queryService.applyAll(qb, normalized, 'region');
+
+    // Default sort by name ASC if no sort specified (AC-2)
+    if (!normalized.sort || normalized.sort.conditions.length === 0) {
+      qb.orderBy('region.name', 'ASC');
+    }
+
+    // Apply pagination
+    qb.skip(normalized.offset).take(normalized.limit);
+
+    // Execute query
+    const [rows, total] = await qb.getManyAndCount();
 
     return {
       items: rows.map(mapEntity),

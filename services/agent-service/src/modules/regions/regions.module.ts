@@ -5,6 +5,7 @@ import { RegionsController } from './regions.controller.js'
 import { RegionsService } from './regions.service.js'
 import { RegionsTypeOrmRepository } from './regions.repository.js'
 import { PaginationModule } from '../../common/pagination/pagination.module.js'
+import { QueryService } from '../../common/query/query.service.js'
 
 /**
  * Module for Region aggregate.
@@ -18,6 +19,7 @@ import { PaginationModule } from '../../common/pagination/pagination.module.js'
 	controllers: [RegionsController],
 	providers: [
 		RegionsService,
+		QueryService,
 		// Provide the repository adapter under the port token
 		{
 			provide: 'IRegionsRepository',

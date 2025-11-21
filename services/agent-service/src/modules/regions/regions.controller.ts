@@ -111,8 +111,8 @@ export class RegionsController {
 	@Get()
 	@HttpCode(HttpStatus.OK)
 	@ApiOperation({
-		summary: 'List regions with pagination',
-		description: 'Retrieves a paginated list of regions sorted by name (ascending). Returns X-Total-Count and Link headers for pagination.',
+		summary: 'List regions with pagination, filtering, sorting, and search',
+		description: 'Retrieves a paginated list of regions. Default sort: name ASC. Supports filtering, sorting, and search on name field.',
 	})
 	@ApiQuery({
 		name: 'offset',
@@ -145,15 +145,14 @@ export class RegionsController {
 	})
 	@ApiResponse({
 		status: 400,
-		description: 'Validation error - invalid offset or limit',
+		description: 'Validation error - invalid query parameters',
 	})
 	@UseInterceptors(PaginationInterceptor)
 	async findAll(
-		@Query() query: PaginationQueryDto,
+		@Query() query: any, // Accept all query params for filter, sort, search, pagination
 	): Promise<{ items: RegionResponseDto[]; total: number }> {
-		// The interceptor will handle pagination normalization and header setting
-		// Just return the data in the expected format
-		const { regions, total } = await this.regionsService.findPage(query as any)
+		// Pass query to service - QueryParamsSchema handles all parsing and validation
+		const { regions, total } = await this.regionsService.findPage(query)
 
 		const items = regions
 

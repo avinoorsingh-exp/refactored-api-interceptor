@@ -7,7 +7,8 @@ import {
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, QueryFailedError } from 'typeorm'
 import { CompanyEntity } from '@exprealty/database'
-import type { CreateCompanyInput, UpdateCompanyInput, Company, Name, NormalizedPagination } from '@exprealty/shared-domain'
+import type { CreateCompanyInput, UpdateCompanyInput, Company, Name, NormalizedPagination, QueryParams } from '@exprealty/shared-domain'
+import { QueryService } from '../../common/query/query.service.js'
 
 /**
  * Service for managing Company entities.
@@ -20,6 +21,7 @@ export class CompaniesService {
 	constructor(
 		@InjectRepository(CompanyEntity)
 		private readonly companyRepository: Repository<CompanyEntity>,
+		private readonly queryService: QueryService,
 	) {}
 
 	/**
@@ -119,23 +121,38 @@ export class CompaniesService {
 	}
 
 	/**
-	 * Retrieves a paginated list of companies.
+	 * Retrieves a paginated list of companies with optional filtering, sorting, and search.
 	 *
-	 * @param pagination - Normalized pagination parameters (offset, limit)
+	 * @param query - Query parameters (pagination, filter, sort, search)
 	 * @returns Object containing array of companies and total count
 	 */
-	async findPage(pagination: NormalizedPagination): Promise<{ companies: Company[]; total: number }> {
+	async findPage(query: Partial<QueryParams>): Promise<{ companies: Company[]; total: number }> {
 		const startTime = Date.now()
 
-		const [companies, total] = await this.companyRepository.findAndCount({
-			order: { name: 'ASC' }, // Sort by name ascending per AC1
-			skip: pagination.offset,
-			take: pagination.limit,
-		})
+		// Validate and normalize query params using entity decorators
+		const normalized = this.queryService.normalizeWithValidation(query, CompanyEntity)
+
+		// Build query with TypeORM query builder
+		const qb = this.companyRepository.createQueryBuilder('company')
+
+		// Apply filters, search, and sorting
+		this.queryService.applyAll(qb, normalized, 'company')
+
+		// Default sort by name ASC if no sort specified (AC-2)
+		if (!normalized.sort || normalized.sort.conditions.length === 0) {
+			qb.orderBy('company.name', 'ASC')
+		}
+
+		// Apply pagination
+		qb.skip(normalized.offset).take(normalized.limit)
+
+		// Execute query
+		const [companies, total] = await qb.getManyAndCount()
 
 		const duration = Date.now() - startTime
 		this.logger.log(
-			`Retrieved ${companies.length} companies (offset: ${pagination.offset}, limit: ${pagination.limit}, total: ${total}) in ${duration}ms`,
+			`Retrieved ${companies.length} companies (offset: ${normalized.offset}, limit: ${normalized.limit}, total: ${total}, ` +
+			`filter: ${normalized.filter ? 'yes' : 'no'}, sort: ${normalized.sort ? 'yes' : 'no'}, search: ${normalized.search ? 'yes' : 'no'}) in ${duration}ms`,
 		)
 
 		return {

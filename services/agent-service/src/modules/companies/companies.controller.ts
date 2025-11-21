@@ -138,22 +138,24 @@ export class CompaniesController {
 	})
 	@UseInterceptors(PaginationInterceptor)
 	async findAll(
-		@Query() query: PaginationQueryDto,
+		@Query() query: any, // Accept all query params for filter, sort, search, pagination
 		@Req() req: Request,
 	): Promise<{ items: CompanyResponseDto[]; total: number }> {
 		const startTime = Date.now()
 		const correlationId = this.getCorrelationId(req)
 
-		this.logger.info('GET /v1/companies - List companies with pagination', {
+		this.logger.info('GET /v1/companies - List companies with pagination, filter, sort, search', {
 			correlationId,
 			offset: query.offset,
 			limit: query.limit,
+			hasFilter: !!query.filter,
+			hasSort: !!query.sort,
+			hasSearch: !!query.search,
 		})
 
 		try {
-			// The interceptor will handle pagination normalization and header setting
-			// Just return the data in the expected format
-			const { companies, total } = await this.companiesService.findPage(query as any)
+			// Pass query to service - QueryParamsSchema handles all parsing and validation
+			const { companies, total } = await this.companiesService.findPage(query)
 
 			const items = companies
 
