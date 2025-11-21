@@ -26,16 +26,20 @@ COPY services/orchestrator ./services/orchestrator
 ENV HUSKY=0
 RUN pnpm install --frozen-lockfile
 
-# Build packages in order
-WORKDIR /app/packages/cache
-RUN pnpm build
-
+# Build packages in dependency order
+# 1. Config (no dependencies)
 WORKDIR /app/packages/config
 RUN pnpm build
 
+# 2. Logger (depends on config)
 WORKDIR /app/packages/logger
 RUN pnpm build
 
+# 3. Cache (depends on logger)
+WORKDIR /app/packages/cache
+RUN pnpm build
+
+# 4. Shared-domain (depends on config, logger)
 WORKDIR /app/packages/shared-domain
 RUN pnpm build
 
