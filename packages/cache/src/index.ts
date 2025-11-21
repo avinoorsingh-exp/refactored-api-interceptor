@@ -1,6 +1,16 @@
 import { Redis, RedisOptions } from 'ioredis'
 import type { Logger } from '@exprealty/logger'
 
+// Export async context storage functionality
+export { AsyncContextStorage, CorrelationIdHelper } from './async-context.storage.js'
+export type { RequestContext } from './async-context.storage.js'
+
+// Export constants
+export * from './constants.js'
+
+// Export types
+export type * from './types.js'
+
 export interface CacheOptions {
 	redisUrl?: string
 	redisPassword?: string

@@ -50,6 +50,18 @@ export type CountryExpanded = z.infer<typeof CountryExpandedSchema>
 export type Country = CountryExpanded
 
 /**
+ * API Response type for Country with snake_case audit fields.
+ * This represents the REST API contract.
+ * 
+ * @public
+ */
+export type CountryApiResponse = Omit<Country, 'created' | 'lastModified' | 'modifiedBy'> & {
+	created: string
+	last_modified: string
+	modified_by: string
+}
+
+/**
  * Schema for creating a new Country.
  * Omits auto-generated fields (id, audit fields).
  *

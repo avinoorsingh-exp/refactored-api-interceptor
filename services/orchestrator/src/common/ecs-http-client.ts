@@ -16,6 +16,7 @@ import {
 } from '@exprealty/shared-domain'
 import { normalizeEndpoint } from './endpoint.js'
 import { setHeaders } from './headers.js'
+import { CorrelationIdHelper } from '@exprealty/cache'
 
 // ---------------------------------------------------------------------------
 // Error and types
@@ -154,9 +155,13 @@ export class EcsHttpClient {
       const rid = uuid()
       metaMap.set(config, { t0: Date.now(), rid, retries: 0 })
 
+      // Get correlation ID from AsyncLocalStorage or generate new one
+      const correlationId = CorrelationIdHelper.getOrGenerateCorrelationId()
+
       setHeaders(config, {
         'x-request-id': rid,
-        'x-service-id': this.ctx.service,     // Internal service identifier
+        'x-correlation-id': correlationId,     // Propagate correlation ID
+        'x-service-id': this.ctx.service,      // Internal service identifier
         'x-source-service': 'orchestrator',    // Who's calling
         ...(this.ctx.capability ? { 'x-capability': this.ctx.capability } : {}),
       })

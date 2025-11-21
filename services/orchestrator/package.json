@@ -24,6 +24,7 @@
     "test:e2e:watch": "jest --config test/jest-e2e.config.cjs --watch"
   },
   "dependencies": {
+    "@exprealty/cache": "workspace:*",
     "@exprealty/config": "workspace:*",
     "@exprealty/logger": "workspace:*",
     "@exprealty/shared-domain": "workspace:*",

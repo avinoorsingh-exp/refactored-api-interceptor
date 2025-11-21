@@ -29,7 +29,6 @@ import {
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js'
 import { CompaniesService } from './companies.service.js'
 import { PaginationService } from '../../common/pagination/pagination.service.js'
-import { CompanyMapper } from './mappers/company.mapper.js'
 import { CompanyIdParamDto } from './dto/company-id-param.dto.js'
 import { CreateCompanyDto } from './dto/create-company.dto.js'
 import { UpdateCompanyInputDto } from './dto/update-company-input.dto.js'
@@ -102,7 +101,7 @@ export class CompaniesController {
 		// Set Location header
 		res.setHeader('Location', `/v1/companies/${company.id}`)
 
-		return CompanyMapper.toResponse(company)
+		return company
 	}
 
 	/**
@@ -139,24 +138,26 @@ export class CompaniesController {
 	})
 	@UseInterceptors(PaginationInterceptor)
 	async findAll(
-		@Query() query: PaginationQueryDto,
+		@Query() query: any, // Accept all query params for filter, sort, search, pagination
 		@Req() req: Request,
 	): Promise<{ items: CompanyResponseDto[]; total: number }> {
 		const startTime = Date.now()
 		const correlationId = this.getCorrelationId(req)
 
-		this.logger.info('GET /v1/companies - List companies with pagination', {
+		this.logger.info('GET /v1/companies - List companies with pagination, filter, sort, search', {
 			correlationId,
 			offset: query.offset,
 			limit: query.limit,
+			hasFilter: !!query.filter,
+			hasSort: !!query.sort,
+			hasSearch: !!query.search,
 		})
 
 		try {
-			// The interceptor will handle pagination normalization and header setting
-			// Just return the data in the expected format
-			const { companies, total } = await this.companiesService.findPage(query as any)
+			// Pass query to service - QueryParamsSchema handles all parsing and validation
+			const { companies, total } = await this.companiesService.findPage(query)
 
-			const items = CompanyMapper.toResponseList(companies)
+			const items = companies
 
 			const duration = Date.now() - startTime
 			this.logger.info('GET /v1/companies - Success', {
@@ -230,7 +231,7 @@ export class CompaniesController {
 	): Promise<CompanyResponseDto> {
 		const company = await this.companiesService.findById(params.id)
 		
-		return CompanyMapper.toResponse(company)
+		return company
 	}
 
 	/**
@@ -282,7 +283,7 @@ export class CompaniesController {
 	): Promise<CompanyResponseDto> {
 		const company = await this.companiesService.update(params.id, body as any)
 		
-		return CompanyMapper.toResponse(company)
+		return company
 	}
 
 	/**

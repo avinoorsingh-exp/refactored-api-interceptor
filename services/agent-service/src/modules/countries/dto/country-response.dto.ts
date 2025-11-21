@@ -3,8 +3,7 @@ import type { Country } from '@exprealty/shared-domain'
 
 /**
  * Response DTO for Country entity.
- * Implements shared-domain Country type.
- * Represents the full Country resource after creation.
+ * Represents the full Country resource with snake_case audit fields for REST API.
  */
 export class CountryResponseDto implements Country {
 	/**

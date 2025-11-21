@@ -28,21 +28,18 @@ export class CompanyResponseDto {
 	@ApiProperty({
 		description: 'Timestamp when the company was created',
 		example: '2024-01-15T08:30:00.000Z',
-		type: String,
 	})
-	created!: string
+	created!: Date
 
 	@ApiProperty({
 		description: 'Timestamp when the company was last modified',
 		example: '2024-01-20T14:45:00.000Z',
-		type: String,
 	})
-	last_modified!: string
+	lastModified!: Date
 
 	@ApiProperty({
 		description: 'User or system that last modified the company',
 		example: 'system',
-		type: String,
 	})
-	modified_by!: string
+	modifiedBy!: string
 }

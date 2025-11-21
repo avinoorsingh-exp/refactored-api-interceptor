@@ -1,6 +1,7 @@
 import { Country } from '@exprealty/shared-domain'
 import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm'
 import { AuditableEntity } from './auditable.entity.js'
+import { Searchable, Sortable, Filterable } from '../../decorators/searchable-decorators.js'
 
 /**
  * TypeORM entity for Country table.
@@ -14,6 +15,8 @@ export class CountryEntity extends AuditableEntity implements Country {
 	 * @public
 	 */
 	@PrimaryGeneratedColumn('increment', { type: 'integer', name: 'id' })
+	@Filterable()
+	@Sortable()
 	id!: number
 
 	/**
@@ -21,6 +24,9 @@ export class CountryEntity extends AuditableEntity implements Country {
 	 * @public
 	 */
 	@Column({ type: 'text' })
+	@Searchable()
+	@Filterable()
+	@Sortable()
 	name!: string
 
 	/**
@@ -28,6 +34,9 @@ export class CountryEntity extends AuditableEntity implements Country {
 	 * @public
 	 */
 	@Column({ name: 'alpha_2', type: 'varchar', length: 2, unique: true })
+	@Searchable()
+	@Filterable()
+	@Sortable()
 	alpha2!: string
 
 	/**
@@ -35,6 +44,9 @@ export class CountryEntity extends AuditableEntity implements Country {
 	 * @public
 	 */
 	@Column({ name: 'alpha_3', type: 'varchar', length: 3, unique: true })
+	@Searchable()
+	@Filterable()
+	@Sortable()
 	alpha3!: string
 
 	/**
@@ -42,6 +54,8 @@ export class CountryEntity extends AuditableEntity implements Country {
 	 * @public
 	 */
 	@Column({ name: 'number', type: 'integer', unique: true })
+	@Filterable()
+	@Sortable()
 	number!: number
 
 	/**
@@ -49,5 +63,7 @@ export class CountryEntity extends AuditableEntity implements Country {
 	 * @public
 	 */
 	@Column({ name: 'dialing_code', type: 'integer' })
+	@Filterable()
+	@Sortable()
 	dialingCode!: number
 }

@@ -2,6 +2,7 @@ import { Entity, PrimaryGeneratedColumn, Column, OneToMany, JoinColumn } from 't
 import { StateEntity } from './state.entity.js'
 import { AuditableEntity } from './auditable.entity.js'
 import type { Region } from '@exprealty/shared-domain'
+import { Searchable, Filterable, Sortable } from '../../decorators/searchable-decorators.js';
 
 /**
  * TypeORM entity for Region table.
@@ -10,8 +11,13 @@ import type { Region } from '@exprealty/shared-domain'
 @Entity({ name: 'region', schema: 'core' })
 export class RegionEntity extends AuditableEntity implements Region {
 	@PrimaryGeneratedColumn('increment', { type: 'bigint' })
+	@Filterable()
+	@Sortable()
 	id!: string
 
 	@Column({ type: 'text' })
+	@Searchable()
+	@Filterable()
+	@Sortable()
 	name!: string
 }

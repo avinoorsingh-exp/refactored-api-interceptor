@@ -311,6 +311,24 @@ export { FeesEntity } from './entities/core/fees.entity.js'
 export { ApprovalEntity } from './entities/core/approval.entity.js'
 
 // ============================================================================
+// Query Decorators
+// ============================================================================
+
+/**
+ * Decorators for marking entity fields as filterable, sortable, or searchable.
+ * Used by QueryService to validate and process query parameters.
+ * @public
+ */
+export {
+	Searchable,
+	Filterable,
+	Sortable,
+	getSearchableFields,
+	getFilterableFields,
+	getSortableFields,
+} from './decorators/searchable-decorators.js'
+
+// ============================================================================
 // Data Source
 // ============================================================================
 

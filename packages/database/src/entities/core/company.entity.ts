@@ -5,6 +5,7 @@ import {
 } from 'typeorm'
 import type { Company, Name, Email } from '@exprealty/shared-domain'
 import { AuditableEntity } from './auditable.entity.js'
+import { Searchable, Filterable, Sortable } from '../../decorators/searchable-decorators.js'
 
 /**
  * TypeORM entity for Company table.
@@ -18,6 +19,8 @@ export class CompanyEntity extends AuditableEntity implements Company {
 	 * @public
 	 */
 	@PrimaryGeneratedColumn('increment', { type: 'bigint' })
+	@Filterable()
+	@Sortable()
 	id!: string
 
 	/**
@@ -25,6 +28,9 @@ export class CompanyEntity extends AuditableEntity implements Company {
 	 * @public
 	 */
 	@Column({ type: 'text' })
+	@Searchable()
+	@Filterable()
+	@Sortable()
 	name!: Name
 
 	/**
@@ -32,5 +38,8 @@ export class CompanyEntity extends AuditableEntity implements Company {
 	 * @public
 	 */
 	@Column({ type: 'text', unique: true })
+	@Searchable()
+	@Filterable()
+	@Sortable()
 	email!: Email
 }
