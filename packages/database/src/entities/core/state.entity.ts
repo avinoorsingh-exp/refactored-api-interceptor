@@ -7,13 +7,14 @@ import {
 	OneToMany,
 } from 'typeorm'
 import { RegionEntity } from './region.entity.js'
+import { AuditableEntity } from './auditable.entity.js'
 
 /**
  * TypeORM entity for State table.
  * @public
  */
 @Entity({ name: 'state', schema: 'core' })
-export class StateEntity {
+export class StateEntity extends AuditableEntity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string
 
@@ -35,12 +36,6 @@ export class StateEntity {
 		nullable: true,
 	})
 	signatureDistributionEmail?: string
-
-	@Column({ name: 'last_modified', type: 'timestamp with time zone' })
-	lastModified!: Date
-
-	@Column({ name: 'modified_by', type: 'text' })
-	modifiedBy!: string
 
 	@Column({ name: 'region_id', type: 'bigint' })
 	regionId!: bigint
