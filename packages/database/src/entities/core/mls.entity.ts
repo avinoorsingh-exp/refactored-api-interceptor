@@ -75,4 +75,14 @@ export class MLSEntity {
 	@ManyToOne(() => AddressEntity, { nullable: true })
 	@JoinColumn({ name: 'address_id' })
 	address?: AddressEntity
+
+	toJSON(): Record<string, any> {
+		const obj: Record<string, any> = {}
+		for (const key in this) {
+			if (Object.prototype.hasOwnProperty.call(this, key) && !key.includes('_')) {
+				obj[key] = this[key]
+			}
+		}
+		return obj
+	}
 }

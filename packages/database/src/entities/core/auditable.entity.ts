@@ -25,16 +25,13 @@ export abstract class AuditableEntity implements Auditable {
 	 * Override toJSON to ensure only TypeScript property names (camelCase) are serialized,
 	 * excluding database column names (snake_case) that TypeORM QueryBuilder may add.
 	 */
-	toJSON() {
+	toJSON(): Record<string, any> {
 		const obj: Record<string, any> = {}
 		
-		// Copy all own enumerable properties
+		// Copy all own enumerable properties, excluding snake_case column names
 		for (const key in this) {
-			if (Object.prototype.hasOwnProperty.call(this, key)) {
-				// Skip snake_case properties (database column names)
-				if (!key.includes('_')) {
-					obj[key] = this[key]
-				}
+			if (Object.prototype.hasOwnProperty.call(this, key) && !key.includes('_')) {
+				obj[key] = this[key]
 			}
 		}
 		

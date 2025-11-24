@@ -34,4 +34,14 @@ export class PaymentSettingsVariantEntity {
 	@ManyToOne(() => PaymentSettingsEntity)
 	@JoinColumn({ name: 'payment_settings' })
 	paymentSettings?: PaymentSettingsEntity
+
+	toJSON(): Record<string, any> {
+		const obj: Record<string, any> = {}
+		for (const key in this) {
+			if (Object.prototype.hasOwnProperty.call(this, key) && !key.includes('_')) {
+				obj[key] = this[key]
+			}
+		}
+		return obj
+	}
 }
