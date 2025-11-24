@@ -25,6 +25,7 @@ import { CreateRegionInputSchema, UpdateRegionInputSchema, RegionIdParamSchema, 
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js'
 import { RegionsService } from './regions.service.js'
 import { PaginationService } from '../../common/pagination/pagination.service.js'
+import { RegionMapper } from './mappers/region.mapper.js'
 import { CreateRegionDto } from './dto/create-region.dto.js'
 import { UpdateRegionDto } from './dto/update-region.dto.js'
 import { RegionIdParamDto } from './dto/region-id-param.dto.js'
