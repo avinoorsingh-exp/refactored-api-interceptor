@@ -5,115 +5,53 @@ pipeline
   agent any
   stages
   {
-    stage('Check if agent-service changed') {
-      when {
-        not { triggeredBy 'Timer' }
-        not { triggeredBy 'BuildCause' } // Allow manual triggers
-      }
-      steps {
-        script {
-          // Check if any files in agent-service or shared packages changed
-          def changedFiles = sh(
-            script: 'git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only origin/${GIT_BRANCH} 2>/dev/null || echo ""',
-            returnStdout: true
-          ).trim()
-          
-          if (!changedFiles) {
-            // Try using changeset if available (webhook triggers)
-            if (currentBuild.changeSets) {
-              changedFiles = currentBuild.changeSets.collect { cs ->
-                cs.items.collect { item ->
-                  item.affectedFiles.collect { file -> file.path }
-                }.flatten()
-              }.flatten().join('\n')
-            }
-          }
-          
-          def relevantPaths = [
-            'services/agent-service/',
-            'packages/',  // Shared packages affect both services
-            'package.json',
-            'pnpm-lock.yaml',
-            'Jenkinsfile'  // Pipeline changes
-          ]
-          
-          def hasRelevantChanges = false
-          if (changedFiles) {
-            def files = changedFiles.split('\n')
-            hasRelevantChanges = files.any { file ->
-              relevantPaths.any { path -> file.startsWith(path) } &&
-              !file.startsWith('services/orchestrator/')
-            }
-          }
-          
-          if (!hasRelevantChanges && changedFiles) {
-            echo "⚠️  No agent-service changes detected. Changed files:"
-            changedFiles.split('\n').each { echo "  - ${it}" }
-            echo "⏭️  Skipping agent-service build (only orchestrator or unrelated files changed)"
-            env.SKIP_BUILD = 'true'
-            currentBuild.description = 'Skipped - no agent-service changes'
-          } else {
-            echo "✅ Agent-service or shared code changed. Proceeding with build."
-            env.SKIP_BUILD = 'false'
-          }
-        }
-      }
-    }
     stage('Build preparations') {
-      when {
-        expression { env.SKIP_BUILD != 'true' }
-      }
       steps {
         script {
           gitCommitHash = sh(returnStdout: true, script: 'git rev-parse HEAD').trim()
           shortCommitHash = gitCommitHash.take(7)
-          // calculate a sample version tag
-          VERSION = shortCommitHash
-          // set the build display name
-          currentBuild.displayName = "#${BUILD_ID}-${VERSION}"
-          if (env.BRANCH_NAME == 'development') {
-              IMAGE = "$PROJECT:dev-$VERSION" 
+          env.VERSION = shortCommitHash
+          currentBuild.displayName = "#${BUILD_ID}-${env.VERSION}"
+          
+          def imageTag = ''
+          def sanitizedBranchName = env.BRANCH_NAME.replaceAll('/', '-')
+          if (env.BRANCH_NAME == 'dev') {
+              imageTag = "${env.PROJECT}:dev-${env.VERSION}"
           } else if (env.BRANCH_NAME == 'test') {
-              IMAGE = "$PROJECT:test-$VERSION" 
+              imageTag = "${env.PROJECT}:test-${env.VERSION}"
+          } else if (env.BRANCH_NAME == 'accp') {
+              imageTag = "${env.PROJECT}:accp-${env.VERSION}"
           } else if (env.BRANCH_NAME == 'qa') {
-              IMAGE = "$PROJECT:qa-$VERSION"
+              imageTag = "${env.PROJECT}:qa-${env.VERSION}"
           } else if (env.BRANCH_NAME == 'main') {
-              IMAGE = "$PROJECT:prod-$VERSION"
+              imageTag = "${env.PROJECT}:prod-${env.VERSION}"
+          } else {
+              imageTag = "${env.PROJECT}:${sanitizedBranchName}-${env.VERSION}"
           }
+          env.IMAGE = imageTag
         }
 
       }
     }
 
     stage('Docker build') {
-      when {
-        expression { env.SKIP_BUILD != 'true' }
-      }
       steps {
         script {
-          docker.build("$IMAGE", "-f services/agent-service/Dockerfile .")
+          docker.build("${env.IMAGE}", "-f services/agent-service/Dockerfile .")
         }
       }
     }
 
     stage('Test + Coverage') {
       when {
-        allOf {
-          anyOf {
-            branch 'development'
-            expression { env.BRANCH_NAME.startsWith('feature/') }
-          }
-          expression { env.SKIP_BUILD != 'true' }
+        anyOf {
+          branch 'dev'
+          expression { env.BRANCH_NAME.startsWith('feature/') }
         }
       }
       steps {
         script {
-          echo "🔍 DEBUG: About to call centralized coverage job"
-          echo "🔍 DEBUG: Service: agent-service"
-          echo "🔍 DEBUG: Branch: ${env.BRANCH_NAME}"
-          
           try {
-            echo "🔍 DEBUG: Calling centralized coverage job"
             build job: 'Transaction Calculator/centralized-coverage/main',
               wait: false,
               propagate: false,
@@ -127,13 +65,11 @@ pipeline
                       string(name: 'MIN_COVERAGE_PERCENTAGE', value: '0'),
                       booleanParam(name: 'FAIL_ON_COVERAGE_THRESHOLD', value: false)
                   ]
-            echo "✅ DEBUG: Successfully called centralized coverage job"
           } catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException e) {
             // FlowInterruptedException is expected when wait: false and downstream job returns UNSTABLE
             // This is not a real error - the job was triggered successfully
-            echo "ℹ️  INFO: Centralized coverage job triggered (may return UNSTABLE, which is expected and non-blocking)"
           } catch (Exception e) {
-            echo "❌ DEBUG: Error calling centralized coverage job: ${e.getClass().getSimpleName()}: ${e.getMessage()}"
+            // Log error but don't fail the build
           }
         }
       }
@@ -141,187 +77,624 @@ pipeline
 
     stage('Docker push') {
       when {
-        expression { env.SKIP_BUILD != 'true' }
+        anyOf {
+          branch 'development'
+          branch 'dev'
+          branch 'qa'
+          branch 'test'
+          branch 'accp'
+          branch 'main'
+        }
       }
       steps {
         script {
-          sh("aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR}")
+          loginHelpers.dockerLogin()
           ECRURL = "http://${ECR}"
-          echo ECRURL
-          // Push the Docker image to ECR
-          docker.withRegistry(ECRURL)
-          {
-            docker.image(IMAGE).push()
+          docker.withRegistry(ECRURL) {
+            docker.image(env.IMAGE).push()
           }
-          echo TF_VAR_app_image
-          TF_VAR_app_image = "${ECR}${IMAGE}"
-          echo TF_VAR_app_image
+          TF_VAR_app_image = "${ECR}${env.IMAGE}"
+          env.TF_VAR_app_image = TF_VAR_app_image
+          writeFile file: 'image-tag.txt', text: TF_VAR_app_image
         }
 
+      }
+    }
+
+    stage('Fetch Database Secrets') {
+      steps {
+        script {
+          def secretName = ''
+          def credentialsId = ''
+          
+          if (env.BRANCH_NAME == 'dev') {
+            secretName = 'dev/agent-service-dev'
+            credentialsId = 'Jenkins-Dev'
+          } else if (env.BRANCH_NAME == 'test') {
+            secretName = 'dev/agent-service-test'
+            credentialsId = 'Jenkins-Dev'
+          } else if (env.BRANCH_NAME == 'qa') {
+            secretName = 'qa/agent-service-accp'
+            credentialsId = 'jenkins-qa-user'
+          } else if (env.BRANCH_NAME == 'accp') {
+            secretName = 'qa/agent-service-accp'
+            credentialsId = 'jenkins-qa-user'
+          } else if (env.BRANCH_NAME == 'main') {
+            secretName = 'prod/agent-service-prod'
+            credentialsId = '88caba18-4691-47c5-92a9-e66ee83da4e4'
+          }
+
+          // Create AWS config file for Secrets Manager access
+          loginHelpers.createRoleProfileConfig([
+            accountId: env.TARGET_ACCOUNT_DEV,
+            profileName: 'exp-dev',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID
+          ])
+          
+          sh """
+            export AWS_PROFILE=exp-dev
+            aws secretsmanager get-secret-value --secret-id "${secretName}" --region us-east-1 --query 'SecretString' --output text > db-secrets.json
+            """
+          
+          // Cleanup config file
+          sh 'sudo rm -rf .aws'
+        }
+      }
+    }
+
+    stage('Run Migrations - Development') {
+      when {
+        branch 'dev'
+      }
+
+      steps {
+        script {
+          docker.image('node:20-alpine')
+            .inside("-u 0 -v $WORKSPACE:/app -w /app") {
+              sh """
+              apk add --no-cache jq python3 make g++ curl
+              npm install -g pnpm
+
+              # Debug: Show available keys in secrets JSON
+              echo "=== Available keys in db-secrets.json ==="
+              cat db-secrets.json | jq -r 'keys[]' || echo "Failed to parse JSON"
+              echo ""
+
+              # Extract database credentials with fallback to alternative field names
+              export DB_HOST=\$(cat db-secrets.json | jq -r '.DB_HOST // .host // .database_host // .DATABASE_HOST // empty')
+              export DB_PORT=\$(cat db-secrets.json | jq -r '.DB_PORT // .port // .database_port // .DATABASE_PORT // "5432"')
+              export DB_USERNAME=\$(cat db-secrets.json | jq -r '.DB_USERNAME // .username // .database_username // .DATABASE_USERNAME // .user // .USER // empty')
+              export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD // .password // .database_password // .DATABASE_PASSWORD // empty')
+              export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME // .database_name // .DATABASE_NAME // .database // .DATABASE // empty')
+
+              # Validate required fields (fail if null or empty)
+              if [ -z "\$DB_HOST" ] || [ "\$DB_HOST" == "null" ]; then
+                echo "ERROR: DB_HOST is missing or null"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                echo "Full secrets (masked):"
+                cat db-secrets.json | jq 'with_entries(if .key | contains("PASS") or contains("SECRET") then .value = "***REDACTED***" else . end)'
+                exit 1
+              fi
+              if [ -z "\$DB_USERNAME" ] || [ "\$DB_USERNAME" == "null" ]; then
+                echo "ERROR: DB_USERNAME is missing or null"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                exit 1
+              fi
+              if [ -z "\$DB_PASSWORD" ] || [ "\$DB_PASSWORD" == "null" ]; then
+                echo "ERROR: DB_PASSWORD is missing or null"
+                exit 1
+              fi
+              if [ -z "\$DB_NAME" ] || [ "\$DB_NAME" == "null" ]; then
+                echo "ERROR: DB_NAME is missing or null"
+                exit 1
+              fi
+
+              # Debug: Show extracted values (mask password)
+              echo "=== Database configuration ==="
+              echo "DB_HOST: \$DB_HOST"
+              echo "DB_PORT: \$DB_PORT"
+              echo "DB_USERNAME: \$DB_USERNAME"
+              echo "DB_PASSWORD: [REDACTED]"
+              echo "DB_NAME: \$DB_NAME"
+              echo ""
+
+              # Download AWS RDS CA certificate bundle for SSL connections
+              echo "=== Downloading AWS RDS CA certificate ==="
+              curl -o /tmp/rds-ca-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem || {
+                echo "Failed to download RDS CA certificate, trying regional bundle..."
+                curl -o /tmp/rds-ca-bundle.pem https://truststore.pki.rds.amazonaws.com/us-east-1/us-east-1-bundle.pem || {
+                  echo "ERROR: Failed to download RDS CA certificate"
+                  exit 1
+                }
+              }
+              chmod 644 /tmp/rds-ca-bundle.pem
+              export DB_SSL=true
+              export DB_SSL_CA_PATH=/tmp/rds-ca-bundle.pem
+              echo "RDS CA certificate downloaded to /tmp/rds-ca-bundle.pem"
+              echo ""
+
+              echo "=== Installing dependencies ==="
+              pnpm install --frozen-lockfile
+              
+              echo "=== Building workspace packages ==="
+              pnpm build:packages
+              
+              echo "=== Running migrations ==="
+              pnpm migration:run
+              """
+            }
+        }
       }
     }
 
     stage('Deploy - Development') {
       when {
-        allOf {
-          branch 'development'
-          expression { env.SKIP_BUILD != 'true' }
-        }
+        branch 'dev'
       }
 
       steps
       {
-        git(url: 'https://bitbucket.org/exp-realty/exp-tf-dev.git', branch: 'master', credentialsId: 'exp-jenkins')
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-              credentialsId: 'Jenkins-Dev'
-            ]]) {
-            script
-            {
-              docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
-                .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
-                {
+        
+        script {
+          // Step 1: Login to ECR for pulling terraform image
+          loginHelpers.dockerLogin()
+          
+          // Step 2: Checkout terraform repository
+          loginHelpers.checkoutTerraformRepo('exp-tf-dev', 'master')
+          
+          // Step 3: Create AWS config file
+          loginHelpers.createRoleProfileConfig([
+            accountId: env.TARGET_ACCOUNT_DEV,
+            profileName: 'exp-dev',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID
+          ])
+          
+          def dockerArgs = loginHelpers.getTerragruntDockerArgs([awsProfile: 'exp-dev'])
+            docker.image(loginHelpers.getTerraformImage())
+                .inside(dockerArgs) {
                   sh """
-                  aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-dev
-                  aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-dev
-                  aws configure set region us-east-1 --profile exp-dev
+                  export AWS_PROFILE=exp-dev
 
+                                                      
+                  IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
                   cd account/exp-realty-dev/us-east-1/agent-service/dev/agent-service-dev/ecs
                   terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
-                  terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
+                  terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$IMAGE_TAG"
+                  terragrunt apply -auto-approve -input=false -var "image=\$IMAGE_TAG"
                   """
                 }
-            }
-          }
+          
+          // Step 5: Cleanup config file
+          sh 'sudo rm -rf .aws'
+        }
         }
     }
-    stage('Deploy - Test') {
+
+    stage('Run Migrations - Test') {
       when {
-        allOf {
-          branch 'test'
-          expression { env.SKIP_BUILD != 'true' }
-        }
+        branch 'test'
       }
 
-      steps
-      {
-        git(url: 'https://bitbucket.org/exp-realty/exp-tf-dev.git', branch: 'master', credentialsId: 'exp-jenkins')
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-              credentialsId: 'Jenkins-Dev'
-            ]]) {
-            script
-            {
-              docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
-                .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
-                {
-                  sh """
-                  aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-dev
-                  aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-dev
-                  aws configure set region us-east-1 --profile exp-dev
+      steps {
+        script {
+          docker.image('node:20-alpine')
+            .inside("-u 0 -v $WORKSPACE:/app -w /app") {
+              sh """
+              apk add --no-cache jq python3 make g++ curl
+              npm install -g pnpm
 
-                  cd account/exp-realty-dev/us-east-1/agent-service/test/agent-service-test/ecs
-                  terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
-                  terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
-                  """
-                }
-            }
-          }
-        }
-    }
-    stage('Deploy - QA/Acceptance') {
-      when {
-        allOf {
-          branch 'qa'
-          expression { env.SKIP_BUILD != 'true' }
-        }
-      }
+              # Debug: Show available keys in secrets JSON
+              echo "=== Available keys in db-secrets.json ==="
+              cat db-secrets.json | jq -r 'keys[]' || echo "Failed to parse JSON"
+              echo ""
 
-      steps
-      {
-        git(url: 'https://bitbucket.org/exp-realty/exp-tf-qa.git', branch: 'master', credentialsId: 'exp-jenkins')
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-              credentialsId: 'jenkins-qa-user'
-            ]]) {
-            script
-            {
-              docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
-                .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
-                {
-                  sh """
-                  aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-qa
-                  aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-qa
-                  aws configure set region us-east-1 --profile exp-qa
+              # Extract database credentials with fallback to alternative field names
+              export DB_HOST=\$(cat db-secrets.json | jq -r '.DB_HOST // .host // .database_host // .DATABASE_HOST // empty')
+              export DB_PORT=\$(cat db-secrets.json | jq -r '.DB_PORT // .port // .database_port // .DATABASE_PORT // "5432"')
+              export DB_USERNAME=\$(cat db-secrets.json | jq -r '.DB_USERNAME // .username // .database_username // .DATABASE_USERNAME // .user // .USER // empty')
+              export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD // .password // .database_password // .DATABASE_PASSWORD // empty')
+              export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME // .database_name // .DATABASE_NAME // .database // .DATABASE // empty')
 
-                  cd /data/account/exp-realty-qa/us-east-1/agent-service/accp/agent-service-accp/ecs
-                  terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
-                  terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
-                  """
+              # Validate required fields (fail if null or empty)
+              if [ -z "\$DB_HOST" ] || [ "\$DB_HOST" == "null" ]; then
+                echo "ERROR: DB_HOST is missing or null"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                echo "Full secrets (masked):"
+                cat db-secrets.json | jq 'with_entries(if .key | contains("PASS") or contains("SECRET") then .value = "***REDACTED***" else . end)'
+                exit 1
+              fi
+              if [ -z "\$DB_USERNAME" ] || [ "\$DB_USERNAME" == "null" ]; then
+                echo "ERROR: DB_USERNAME is missing or null"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                exit 1
+              fi
+              if [ -z "\$DB_PASSWORD" ] || [ "\$DB_PASSWORD" == "null" ]; then
+                echo "ERROR: DB_PASSWORD is missing or null"
+                exit 1
+              fi
+              if [ -z "\$DB_NAME" ] || [ "\$DB_NAME" == "null" ]; then
+                echo "ERROR: DB_NAME is missing or null"
+                exit 1
+              fi
+
+              # Debug: Show extracted values (mask password)
+              echo "=== Database configuration ==="
+              echo "DB_HOST: \$DB_HOST"
+              echo "DB_PORT: \$DB_PORT"
+              echo "DB_USERNAME: \$DB_USERNAME"
+              echo "DB_PASSWORD: [REDACTED]"
+              echo "DB_NAME: \$DB_NAME"
+              echo ""
+
+              # Download AWS RDS CA certificate bundle for SSL connections
+              echo "=== Downloading AWS RDS CA certificate ==="
+              curl -o /tmp/rds-ca-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem || {
+                echo "Failed to download RDS CA certificate, trying regional bundle..."
+                curl -o /tmp/rds-ca-bundle.pem https://truststore.pki.rds.amazonaws.com/us-east-1/us-east-1-bundle.pem || {
+                  echo "ERROR: Failed to download RDS CA certificate"
+                  exit 1
                 }
               }
+              chmod 644 /tmp/rds-ca-bundle.pem
+              export DB_SSL=true
+              export DB_SSL_CA_PATH=/tmp/rds-ca-bundle.pem
+              echo "RDS CA certificate downloaded to /tmp/rds-ca-bundle.pem"
+              echo ""
+
+              echo "=== Installing dependencies ==="
+              pnpm install --frozen-lockfile
+              
+              echo "=== Building workspace packages ==="
+              pnpm build:packages
+              
+              echo "=== Running migrations ==="
+              pnpm migration:run
+              """
             }
         }
       }
-    stage('Deploy - Prod') {
+    }
+
+    stage('Deploy - Test') {
       when {
-        allOf {
-          branch 'main'
-          expression { env.SKIP_BUILD != 'true' }
+        branch 'test'
+      }
+
+      steps
+      {
+        
+        script {
+          // Step 1: Login to ECR for pulling terraform image
+          loginHelpers.dockerLogin()
+          
+          // Step 2: Checkout terraform repository
+          loginHelpers.checkoutTerraformRepo('exp-tf-dev', 'master')
+          
+          // Step 3: Create AWS config file
+          loginHelpers.createRoleProfileConfig([
+            accountId: env.TARGET_ACCOUNT_DEV,
+            profileName: 'exp-dev',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID
+          ])
+          
+          def dockerArgs = loginHelpers.getTerragruntDockerArgs([awsProfile: 'exp-dev'])
+            docker.image(loginHelpers.getTerraformImage())
+                .inside(dockerArgs) {
+                  sh """
+                  export AWS_PROFILE=exp-dev
+
+                                                      
+                  IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
+                  cd account/exp-realty-dev/us-east-1/agent-service/test/agent-service-test/ecs
+                  terragrunt init -reconfigure
+                  terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$IMAGE_TAG"
+                  terragrunt apply -auto-approve -input=false -var "image=\$IMAGE_TAG"
+                  """
+                }
+          
+          // Step 5: Cleanup config file
+          sh 'sudo rm -rf .aws'
+        }
+        }
+    }
+
+    stage('Run Migrations - QA/Acceptance') {
+      when {
+        anyOf {
+          branch 'qa'
+          branch 'accp'
+        }
+      }
+
+      steps {
+        script {
+          docker.image('node:20-alpine')
+            .inside("-u 0 -v $WORKSPACE:/app -w /app") {
+              sh """
+              apk add --no-cache jq python3 make g++ curl
+              npm install -g pnpm
+
+              # Debug: Show available keys in secrets JSON
+              echo "=== Available keys in db-secrets.json ==="
+              cat db-secrets.json | jq -r 'keys[]' || echo "Failed to parse JSON"
+              echo ""
+
+              # Extract database credentials with fallback to alternative field names
+              export DB_HOST=\$(cat db-secrets.json | jq -r '.DB_HOST // .host // .database_host // .DATABASE_HOST // empty')
+              export DB_PORT=\$(cat db-secrets.json | jq -r '.DB_PORT // .port // .database_port // .DATABASE_PORT // "5432"')
+              export DB_USERNAME=\$(cat db-secrets.json | jq -r '.DB_USERNAME // .username // .database_username // .DATABASE_USERNAME // .user // .USER // empty')
+              export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD // .password // .database_password // .DATABASE_PASSWORD // empty')
+              export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME // .database_name // .DATABASE_NAME // .database // .DATABASE // empty')
+
+              # Validate required fields (fail if null or empty)
+              if [ -z "\$DB_HOST" ] || [ "\$DB_HOST" == "null" ]; then
+                echo "ERROR: DB_HOST is missing or null"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                echo "Full secrets (masked):"
+                cat db-secrets.json | jq 'with_entries(if .key | contains("PASS") or contains("SECRET") then .value = "***REDACTED***" else . end)'
+                exit 1
+              fi
+              if [ -z "\$DB_USERNAME" ] || [ "\$DB_USERNAME" == "null" ]; then
+                echo "ERROR: DB_USERNAME is missing or null"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                exit 1
+              fi
+              if [ -z "\$DB_PASSWORD" ] || [ "\$DB_PASSWORD" == "null" ]; then
+                echo "ERROR: DB_PASSWORD is missing or null"
+                exit 1
+              fi
+              if [ -z "\$DB_NAME" ] || [ "\$DB_NAME" == "null" ]; then
+                echo "ERROR: DB_NAME is missing or null"
+                exit 1
+              fi
+
+              # Debug: Show extracted values (mask password)
+              echo "=== Database configuration ==="
+              echo "DB_HOST: \$DB_HOST"
+              echo "DB_PORT: \$DB_PORT"
+              echo "DB_USERNAME: \$DB_USERNAME"
+              echo "DB_PASSWORD: [REDACTED]"
+              echo "DB_NAME: \$DB_NAME"
+              echo ""
+
+              # Download AWS RDS CA certificate bundle for SSL connections
+              echo "=== Downloading AWS RDS CA certificate ==="
+              curl -o /tmp/rds-ca-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem || {
+                echo "Failed to download RDS CA certificate, trying regional bundle..."
+                curl -o /tmp/rds-ca-bundle.pem https://truststore.pki.rds.amazonaws.com/us-east-1/us-east-1-bundle.pem || {
+                  echo "ERROR: Failed to download RDS CA certificate"
+                  exit 1
+                }
+              }
+              chmod 644 /tmp/rds-ca-bundle.pem
+              export DB_SSL=true
+              export DB_SSL_CA_PATH=/tmp/rds-ca-bundle.pem
+              echo "RDS CA certificate downloaded to /tmp/rds-ca-bundle.pem"
+              echo ""
+
+              echo "=== Installing dependencies ==="
+              pnpm install --frozen-lockfile
+              
+              echo "=== Building workspace packages ==="
+              pnpm build:packages
+              
+              echo "=== Running migrations ==="
+              pnpm migration:run
+              """
+            }
+        }
+      }
+    }
+
+    stage('Deploy - QA/Acceptance') {
+      when {
+        anyOf {
+          branch 'qa'
+          branch 'accp'
         }
       }
 
       steps
       {
-        git(url: 'https://bitbucket.org/exp-realty/exp-tf-prod.git', branch: 'master', credentialsId: 'exp-jenkins')
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-              credentialsId: '88caba18-4691-47c5-92a9-e66ee83da4e4'
-            ]]) {
-            script
-            {
-              docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
-                .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
-                {
-                  sh """
-                  aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-production
-                  aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-production
-                  aws configure set region us-east-1 --profile exp-production
+        
+        script {
+          // Step 1: Login to ECR for pulling terraform image
+          loginHelpers.dockerLogin()
+          
+          // Step 2: Checkout terraform repository
+          loginHelpers.checkoutTerraformRepo('exp-tf-qa', 'master')
+          
+          // Step 3: Create AWS config file
+          loginHelpers.createRoleProfileConfig([
+            accountId: env.TARGET_ACCOUNT_QA,
+            profileName: 'exp-qa',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID
+          ])
+          
+          def dockerArgs = loginHelpers.getTerragruntDockerArgs([awsProfile: 'exp-qa'])
+            docker.image(loginHelpers.getTerraformImage())
+                .inside(dockerArgs) {
+                sh """
+                  export AWS_PROFILE=exp-qa
 
-                  cd /data/account/exp-realty-prod/us-east-1/agent-service/prod/agent-service/ecs
-                  terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
-                  terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
-                  """
+                                                
+                IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
+                cd /data/account/exp-realty-qa/us-east-1/agent-service/accp/agent-service-accp/ecs
+                terragrunt init -reconfigure
+                terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$IMAGE_TAG"
+                terragrunt apply -auto-approve -input=false -var "image=\$IMAGE_TAG"
+                """
+              }
+          
+          // Step 5: Cleanup config file
+          sh 'sudo rm -rf .aws'
+        }
+      }
+    }
+
+    stage('Run Migrations - Prod') {
+      when {
+        branch 'main'
+      }
+
+      steps {
+        script {
+          docker.image('node:20-alpine')
+            .inside("-u 0 -v $WORKSPACE:/app -w /app") {
+              sh """
+              apk add --no-cache jq python3 make g++ curl
+              npm install -g pnpm
+
+              # Debug: Show available keys in secrets JSON
+              echo "=== Available keys in db-secrets.json ==="
+              cat db-secrets.json | jq -r 'keys[]' || echo "Failed to parse JSON"
+              echo ""
+
+              # Extract database credentials with fallback to alternative field names
+              export DB_HOST=\$(cat db-secrets.json | jq -r '.DB_HOST // .host // .database_host // .DATABASE_HOST // empty')
+              export DB_PORT=\$(cat db-secrets.json | jq -r '.DB_PORT // .port // .database_port // .DATABASE_PORT // "5432"')
+              export DB_USERNAME=\$(cat db-secrets.json | jq -r '.DB_USERNAME // .username // .database_username // .DATABASE_USERNAME // .user // .USER // empty')
+              export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD // .password // .database_password // .DATABASE_PASSWORD // empty')
+              export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME // .database_name // .DATABASE_NAME // .database // .DATABASE // empty')
+
+              # Validate required fields (fail if null or empty)
+              if [ -z "\$DB_HOST" ] || [ "\$DB_HOST" == "null" ]; then
+                echo "ERROR: DB_HOST is missing or null"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                echo "Full secrets (masked):"
+                cat db-secrets.json | jq 'with_entries(if .key | contains("PASS") or contains("SECRET") then .value = "***REDACTED***" else . end)'
+                exit 1
+              fi
+              if [ -z "\$DB_USERNAME" ] || [ "\$DB_USERNAME" == "null" ]; then
+                echo "ERROR: DB_USERNAME is missing or null"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                exit 1
+              fi
+              if [ -z "\$DB_PASSWORD" ] || [ "\$DB_PASSWORD" == "null" ]; then
+                echo "ERROR: DB_PASSWORD is missing or null"
+                exit 1
+              fi
+              if [ -z "\$DB_NAME" ] || [ "\$DB_NAME" == "null" ]; then
+                echo "ERROR: DB_NAME is missing or null"
+                exit 1
+              fi
+
+              # Debug: Show extracted values (mask password)
+              echo "=== Database configuration ==="
+              echo "DB_HOST: \$DB_HOST"
+              echo "DB_PORT: \$DB_PORT"
+              echo "DB_USERNAME: \$DB_USERNAME"
+              echo "DB_PASSWORD: [REDACTED]"
+              echo "DB_NAME: \$DB_NAME"
+              echo ""
+
+              # Download AWS RDS CA certificate bundle for SSL connections
+              echo "=== Downloading AWS RDS CA certificate ==="
+              curl -o /tmp/rds-ca-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem || {
+                echo "Failed to download RDS CA certificate, trying regional bundle..."
+                curl -o /tmp/rds-ca-bundle.pem https://truststore.pki.rds.amazonaws.com/us-east-1/us-east-1-bundle.pem || {
+                  echo "ERROR: Failed to download RDS CA certificate"
+                  exit 1
                 }
-          }
+              }
+              chmod 644 /tmp/rds-ca-bundle.pem
+              export DB_SSL=true
+              export DB_SSL_CA_PATH=/tmp/rds-ca-bundle.pem
+              echo "RDS CA certificate downloaded to /tmp/rds-ca-bundle.pem"
+              echo ""
+
+              echo "=== Installing dependencies ==="
+              pnpm install --frozen-lockfile
+              
+              echo "=== Building workspace packages ==="
+              pnpm build:packages
+              
+              echo "=== Running migrations ==="
+              pnpm migration:run
+              """
+            }
+        }
+      }
+    }
+
+    stage('Deploy - Prod') {
+      when {
+        branch 'main'
+      }
+
+      steps
+      {
+        
+        script {
+          // Step 1: Login to ECR for pulling terraform image
+          loginHelpers.dockerLogin()
+          
+          // Step 2: Checkout terraform repository
+          loginHelpers.checkoutTerraformRepo('exp-tf-prod', 'master')
+          
+          // Step 3: Create AWS config file
+          loginHelpers.createRoleProfileConfig([
+            accountId: env.TARGET_ACCOUNT_PROD,
+            profileName: 'exp-production',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID
+          ])
+          
+          def dockerArgs = loginHelpers.getTerragruntDockerArgs([awsProfile: 'exp-production'])
+            docker.image(loginHelpers.getTerraformImage())
+                .inside(dockerArgs) {
+                sh """
+                  export AWS_PROFILE=exp-production
+
+                                                
+                IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
+                cd /data/account/exp-realty-prod/us-east-1/agent-service/prod/agent-service/ecs
+                terragrunt init -reconfigure
+                terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$IMAGE_TAG"
+                terragrunt apply -auto-approve -input=false -var "image=\$IMAGE_TAG"
+                """
+              }
+          
+          // Step 5: Cleanup config file
+          sh 'sudo rm -rf .aws'
+        }
       }
     }
   }
-  }
   environment {
-    VERSION = 'latest'
+    // Target account IDs
+    TARGET_ACCOUNT_DEV = '125434132943'
+    TARGET_ACCOUNT_QA = '427827735592'
+    TARGET_ACCOUNT_PROD = '704132245682'
+    ROLE_NAME = 'jenkins-cross-account-role'
+    EXTERNAL_ID = 'jenkins-cross-account-access'
+    
+    AWS_DEFAULT_REGION = 'us-east-1'
+    BITBUCKET_USER = 'exp-jenkins'
+
     PROJECT = 'exp/agent-service'
-    IMAGE = 'exp/agent-service:latest'
     ECRURL = ''
     TF_VAR_app_image = '99'
     ECR = '204048894727.dkr.ecr.us-east-1.amazonaws.com/'
     TF_LOG = 'ERROR'
-    SKIP_BUILD = 'false'  // Default to false (build by default)
     // Job pass/fail email addresses
     RECIPIENT_LIST='''
-    david.hull@exprealty.net
+    devops@exprealty.net,
+    michael.gatewood@exprealty.net,
+    kyle.miller@exprealty.net,
+    messbah.uddin@exprealty.net
     '''
   }
   post {
