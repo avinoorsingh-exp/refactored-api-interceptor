@@ -88,7 +88,7 @@ pipeline
       }
       steps {
         script {
-          sh("aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR}")
+          loginHelpers.dockerLogin()
           ECRURL = "http://${ECR}"
           docker.withRegistry(ECRURL) {
             docker.image(env.IMAGE).push()
@@ -102,16 +102,6 @@ pipeline
     }
 
     stage('Fetch Database Secrets') {
-      when {
-        anyOf {
-          branch 'dev'
-          branch 'test'
-          branch 'qa'
-          branch 'accp'
-          branch 'main'
-        }
-      }
-
       steps {
         script {
           def secretName = ''
@@ -134,16 +124,21 @@ pipeline
             credentialsId = '88caba18-4691-47c5-92a9-e66ee83da4e4'
           }
 
-          withCredentials([[
-            $class: 'AmazonWebServicesCredentialsBinding',
-            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-            credentialsId: credentialsId
-          ]]) {
-            sh """
+          // Create AWS config file for Secrets Manager access
+          loginHelpers.createRoleProfileConfig([
+            accountId: env.TARGET_ACCOUNT_DEV,
+            profileName: 'exp-dev',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID
+          ])
+          
+          sh """
+            export AWS_PROFILE=exp-dev
             aws secretsmanager get-secret-value --secret-id "${secretName}" --region us-east-1 --query 'SecretString' --output text > db-secrets.json
             """
-          }
+          
+          // Cleanup config file
+          sh 'sudo rm -rf .aws'
         }
       }
     }
@@ -242,23 +237,29 @@ pipeline
 
       steps
       {
-        git(url: 'https://bitbucket.org/exp-realty/exp-tf-dev.git', branch: 'master', credentialsId: 'exp-jenkins')
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-              credentialsId: 'Jenkins-Dev'
-            ]]) {
-            script
-            {
-              docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
-                .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
-                {
+        
+        script {
+          // Step 1: Login to ECR for pulling terraform image
+          loginHelpers.dockerLogin()
+          
+          // Step 2: Checkout terraform repository
+          loginHelpers.checkoutTerraformRepo('exp-tf-dev', 'master')
+          
+          // Step 3: Create AWS config file
+          loginHelpers.createRoleProfileConfig([
+            accountId: env.TARGET_ACCOUNT_DEV,
+            profileName: 'exp-dev',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID
+          ])
+          
+          def dockerArgs = loginHelpers.getTerragruntDockerArgs([awsProfile: 'exp-dev'])
+            docker.image(loginHelpers.getTerraformImage())
+                .inside(dockerArgs) {
                   sh """
-                  aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-dev
-                  aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-dev
-                  aws configure set region us-east-1 --profile exp-dev
+                  export AWS_PROFILE=exp-dev
 
+                                                      
                   IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
                   cd account/exp-realty-dev/us-east-1/agent-service/dev/agent-service-dev/ecs
                   terragrunt init -reconfigure
@@ -266,8 +267,10 @@ pipeline
                   terragrunt apply -auto-approve -input=false -var "image=\$IMAGE_TAG"
                   """
                 }
-            }
-          }
+          
+          // Step 5: Cleanup config file
+          sh 'sudo rm -rf .aws'
+        }
         }
     }
 
@@ -365,23 +368,29 @@ pipeline
 
       steps
       {
-        git(url: 'https://bitbucket.org/exp-realty/exp-tf-dev.git', branch: 'master', credentialsId: 'exp-jenkins')
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-              credentialsId: 'Jenkins-Dev'
-            ]]) {
-            script
-            {
-              docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
-                .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
-                {
+        
+        script {
+          // Step 1: Login to ECR for pulling terraform image
+          loginHelpers.dockerLogin()
+          
+          // Step 2: Checkout terraform repository
+          loginHelpers.checkoutTerraformRepo('exp-tf-dev', 'master')
+          
+          // Step 3: Create AWS config file
+          loginHelpers.createRoleProfileConfig([
+            accountId: env.TARGET_ACCOUNT_DEV,
+            profileName: 'exp-dev',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID
+          ])
+          
+          def dockerArgs = loginHelpers.getTerragruntDockerArgs([awsProfile: 'exp-dev'])
+            docker.image(loginHelpers.getTerraformImage())
+                .inside(dockerArgs) {
                   sh """
-                  aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-dev
-                  aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-dev
-                  aws configure set region us-east-1 --profile exp-dev
+                  export AWS_PROFILE=exp-dev
 
+                                                      
                   IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
                   cd account/exp-realty-dev/us-east-1/agent-service/test/agent-service-test/ecs
                   terragrunt init -reconfigure
@@ -389,8 +398,10 @@ pipeline
                   terragrunt apply -auto-approve -input=false -var "image=\$IMAGE_TAG"
                   """
                 }
-            }
-          }
+          
+          // Step 5: Cleanup config file
+          sh 'sudo rm -rf .aws'
+        }
         }
     }
 
@@ -494,23 +505,29 @@ pipeline
 
       steps
       {
-        git(url: 'https://bitbucket.org/exp-realty/exp-tf-qa.git', branch: 'master', credentialsId: 'exp-jenkins')
-        withCredentials([[
-          $class: 'AmazonWebServicesCredentialsBinding',
-          accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-          secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-          credentialsId: 'jenkins-qa-user'
-        ]]) {
-          script
-          {
-            docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
-              .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
-              {
+        
+        script {
+          // Step 1: Login to ECR for pulling terraform image
+          loginHelpers.dockerLogin()
+          
+          // Step 2: Checkout terraform repository
+          loginHelpers.checkoutTerraformRepo('exp-tf-qa', 'master')
+          
+          // Step 3: Create AWS config file
+          loginHelpers.createRoleProfileConfig([
+            accountId: env.TARGET_ACCOUNT_QA,
+            profileName: 'exp-qa',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID
+          ])
+          
+          def dockerArgs = loginHelpers.getTerragruntDockerArgs([awsProfile: 'exp-qa'])
+            docker.image(loginHelpers.getTerraformImage())
+                .inside(dockerArgs) {
                 sh """
-                aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-qa
-                aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-qa
-                aws configure set region us-east-1 --profile exp-qa
+                  export AWS_PROFILE=exp-qa
 
+                                                
                 IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
                 cd /data/account/exp-realty-qa/us-east-1/agent-service/accp/agent-service-accp/ecs
                 terragrunt init -reconfigure
@@ -518,7 +535,9 @@ pipeline
                 terragrunt apply -auto-approve -input=false -var "image=\$IMAGE_TAG"
                 """
               }
-          }
+          
+          // Step 5: Cleanup config file
+          sh 'sudo rm -rf .aws'
         }
       }
     }
@@ -617,23 +636,29 @@ pipeline
 
       steps
       {
-        git(url: 'https://bitbucket.org/exp-realty/exp-tf-prod.git', branch: 'master', credentialsId: 'exp-jenkins')
-        withCredentials([[
-          $class: 'AmazonWebServicesCredentialsBinding',
-          accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-          secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-          credentialsId: '88caba18-4691-47c5-92a9-e66ee83da4e4'
-        ]]) {
-          script
-          {
-            docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
-              .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
-              {
+        
+        script {
+          // Step 1: Login to ECR for pulling terraform image
+          loginHelpers.dockerLogin()
+          
+          // Step 2: Checkout terraform repository
+          loginHelpers.checkoutTerraformRepo('exp-tf-prod', 'master')
+          
+          // Step 3: Create AWS config file
+          loginHelpers.createRoleProfileConfig([
+            accountId: env.TARGET_ACCOUNT_PROD,
+            profileName: 'exp-production',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID
+          ])
+          
+          def dockerArgs = loginHelpers.getTerragruntDockerArgs([awsProfile: 'exp-production'])
+            docker.image(loginHelpers.getTerraformImage())
+                .inside(dockerArgs) {
                 sh """
-                aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-production
-                aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-production
-                aws configure set region us-east-1 --profile exp-production
+                  export AWS_PROFILE=exp-production
 
+                                                
                 IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
                 cd /data/account/exp-realty-prod/us-east-1/agent-service/prod/agent-service/ecs
                 terragrunt init -reconfigure
@@ -641,12 +666,24 @@ pipeline
                 terragrunt apply -auto-approve -input=false -var "image=\$IMAGE_TAG"
                 """
               }
-          }
+          
+          // Step 5: Cleanup config file
+          sh 'sudo rm -rf .aws'
         }
       }
     }
   }
   environment {
+    // Target account IDs
+    TARGET_ACCOUNT_DEV = '125434132943'
+    TARGET_ACCOUNT_QA = '427827735592'
+    TARGET_ACCOUNT_PROD = '704132245682'
+    ROLE_NAME = 'jenkins-cross-account-role'
+    EXTERNAL_ID = 'jenkins-cross-account-access'
+    
+    AWS_DEFAULT_REGION = 'us-east-1'
+    BITBUCKET_USER = 'exp-jenkins'
+
     PROJECT = 'exp/agent-service'
     ECRURL = ''
     TF_VAR_app_image = '99'
@@ -654,7 +691,10 @@ pipeline
     TF_LOG = 'ERROR'
     // Job pass/fail email addresses
     RECIPIENT_LIST='''
-    david.hull@exprealty.net
+    devops@exprealty.net,
+    michael.gatewood@exprealty.net,
+    kyle.miller@exprealty.net,
+    messbah.uddin@exprealty.net
     '''
   }
   post {
