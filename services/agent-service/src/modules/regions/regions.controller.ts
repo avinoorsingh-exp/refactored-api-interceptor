@@ -96,7 +96,7 @@ export class RegionsController {
 		// Set Location header
 		res.setHeader('Location', `/v1/regions/${region.id}`)
 
-		return region as any
+		return region
 	}
 
 	/**
@@ -111,8 +111,8 @@ export class RegionsController {
 	@Get()
 	@HttpCode(HttpStatus.OK)
 	@ApiOperation({
-		summary: 'List regions with pagination',
-		description: 'Retrieves a paginated list of regions sorted by name (ascending). Returns X-Total-Count and Link headers for pagination.',
+		summary: 'List regions with pagination, filtering, sorting, and search',
+		description: 'Retrieves a paginated list of regions. Default sort: name ASC. Supports filtering, sorting, and search on name field.',
 	})
 	@ApiQuery({
 		name: 'offset',
@@ -145,23 +145,16 @@ export class RegionsController {
 	})
 	@ApiResponse({
 		status: 400,
-		description: 'Validation error - invalid offset or limit',
+		description: 'Validation error - invalid query parameters',
 	})
 	@UseInterceptors(PaginationInterceptor)
 	async findAll(
-		@Query() query: PaginationQueryDto,
+		@Query() query: any, // Accept all query params for filter, sort, search, pagination
 	): Promise<{ items: RegionResponseDto[]; total: number }> {
-		// The interceptor will handle pagination normalization and header setting
-		// Just return the data in the expected format
-		const { regions, total } = await this.regionsService.findPage(query as any)
+		// Pass query to service - QueryParamsSchema handles all parsing and validation
+		const { regions, total } = await this.regionsService.findPage(query)
 
-		// Map domain Region to RegionResponseDto with snake_case timestamps
-		const items = regions.map(r => ({
-			id: r.id,
-			name: r.name,
-			created_at: r.createdAt.toISOString(),
-			updated_at: r.updatedAt.toISOString(),
-		}))
+		const items = regions
 
 		return { items, total }
 	}
@@ -202,7 +195,9 @@ export class RegionsController {
 		@Param(new ZodValidationPipe(RegionIdParamSchema, 'agent.region.validation'))
 		params: RegionIdParamDto,
 	): Promise<RegionResponseDto> {
-		return this.regionsService.findById(params.id) as any
+		const region = await this.regionsService.findById(params.id)
+		
+		return region
 	}
 
 	/**
@@ -256,6 +251,7 @@ export class RegionsController {
 		body: UpdateRegionDto,
 	): Promise<RegionResponseDto> {
 		const region = await this.regionsService.update(id, body as any)
-		return region as any
+		
+		return region
 	}
 }

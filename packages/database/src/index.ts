@@ -8,6 +8,17 @@
  */
 
 // ============================================================================
+// Base Entities
+// ============================================================================
+
+/**
+ * Base auditable entity providing audit trail fields.
+ * All domain entities should extend this class.
+ * @public
+ */
+export { AuditableEntity } from './entities/core/auditable.entity.js'
+
+// ============================================================================
 // Entities
 // ============================================================================
 
@@ -298,6 +309,24 @@ export { FeesEntity } from './entities/core/fees.entity.js'
  * @beta - Experimental entity, subject to change
  */
 export { ApprovalEntity } from './entities/core/approval.entity.js'
+
+// ============================================================================
+// Query Decorators
+// ============================================================================
+
+/**
+ * Decorators for marking entity fields as filterable, sortable, or searchable.
+ * Used by QueryService to validate and process query parameters.
+ * @public
+ */
+export {
+	Searchable,
+	Filterable,
+	Sortable,
+	getSearchableFields,
+	getFilterableFields,
+	getSortableFields,
+} from './decorators/searchable-decorators.js'
 
 // ============================================================================
 // Data Source

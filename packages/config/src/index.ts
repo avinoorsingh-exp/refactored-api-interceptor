@@ -136,7 +136,8 @@ export async function loadConfig<TOutput>(
 		// This mapping is based on the AWS Secrets Manager naming convention
 		const secretNameMap: Record<string, string> = {
 			dev: 'dev/agent-service-dev',
-			test: 'qa/agent-service-accp',
+			test: 'dev/agent-service-test',
+			accp: 'qa/agent-service-accp',
 			prod: 'prod/agent-service-prod',
 		}
 		

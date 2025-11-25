@@ -96,16 +96,16 @@ export class CountriesController {
 	}
 
 	/**
-	 * GET /v1/countries - List countries with pagination
+	 * GET /v1/countries - List countries with pagination, filtering, sorting, and search
 	 * 
-	 * @param query - Pagination query parameters (offset, limit)
+	 * @param query - Query parameters (pagination, filter, sort, search)
 	 * @param req - Express request object for correlation ID
 	 * @returns Paginated list of countries with metadata
 	 */
 	@Get()
 	@ApiOperation({
-		summary: 'List countries with pagination',
-		description: 'Returns a paginated list of countries sorted by alpha-2 code ascending. Supports offset-based pagination with X-Total-Count and Link headers. Max limit is 50.',
+		summary: 'List countries with pagination, filtering, sorting, and search',
+		description: 'Returns a paginated list of countries. Default sort: name ASC. Supports filtering, sorting, and search across name, alpha2, alpha3 fields. Max limit is 50.',
 	})
 	@ApiResponse({
 		status: 200,
@@ -124,23 +124,24 @@ export class CountriesController {
 	})
 	@ApiResponse({
 		status: 400,
-		description: 'Validation error - invalid offset or limit',
+		description: 'Validation error - invalid query parameters',
 	})
 	@UseInterceptors(PaginationInterceptor)
 	async findAll(
-		@Query() query: PaginationQueryDto,
+		@Query() query: any, // Accept all query params for filter, sort, search, pagination
 		@Req() req: Request,
 	): Promise<{ items: CountryResponseDto[]; total: number }> {
 		const startTime = Date.now()
 		const correlationId = this.getCorrelationId(req)
 
 		this.logger.log(
-			`[${correlationId}] GET /v1/countries - List countries with pagination (offset=${query.offset || 0}, limit=${query.limit || 25})`,
+			`[${correlationId}] GET /v1/countries - List countries (offset=${query.offset || 0}, limit=${query.limit || 25}, ` +
+			`filter=${query.filter ? 'yes' : 'no'}, sort=${query.sort ? 'yes' : 'no'}, search=${query.search ? 'yes' : 'no'})`,
 		)
 
 		try {
-			// The PaginationInterceptor will handle normalization and header setting
-			const { countries, total } = await this.countriesService.findPage(query as any)
+			// Pass query to service - QueryParamsSchema handles all parsing and validation
+			const { countries, total } = await this.countriesService.findPage(query)
 
 			const items = countries
 

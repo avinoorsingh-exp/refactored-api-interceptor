@@ -3,7 +3,7 @@ import { ApiProperty } from '@nestjs/swagger'
 /**
  * DTO for company response.
  * Used for API responses.
- * Per AC7: includes id, name, legal_name (if present), is_active, created_at, updated_at
+ * Per AC7: includes id, name, email, created, last_modified, modified_by
  */
 export class CompanyResponseDto {
 	@ApiProperty({
@@ -28,14 +28,18 @@ export class CompanyResponseDto {
 	@ApiProperty({
 		description: 'Timestamp when the company was created',
 		example: '2024-01-15T08:30:00.000Z',
-		type: String,
 	})
-	created_at!: string
+	created!: Date
 
 	@ApiProperty({
-		description: 'Timestamp when the company was last updated',
+		description: 'Timestamp when the company was last modified',
 		example: '2024-01-20T14:45:00.000Z',
-		type: String,
 	})
-	updated_at!: string
+	lastModified!: Date
+
+	@ApiProperty({
+		description: 'User or system that last modified the company',
+		example: 'system',
+	})
+	modifiedBy!: string
 }

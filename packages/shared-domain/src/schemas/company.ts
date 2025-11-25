@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { EmailBranded, InstantUTC, NameBranded } from '../value-objects/index.js'
+import { EmailBranded, NameBranded } from '../value-objects/index.js'
+import { AuditableSchema } from './audit.js'
 
 /**
  * Base schema for Company entity.
@@ -16,9 +17,8 @@ export const CompanyBaseSchema = z
 			.describe('Primary key (bigint as string)'),
 		name: NameBranded.describe('Company name'),
 		email: EmailBranded.describe('Company email address'),
-		createdAt: InstantUTC.describe('Creation timestamp'),
-		updatedAt: InstantUTC.describe('Last update timestamp'),
 	})
+	.merge(AuditableSchema)
 	.describe('Base Company for list views')
 
 /**
@@ -73,8 +73,9 @@ export const CompanySchema = CompanyExpandedSchema
  */
 export const CreateCompanyInputSchema = CompanyBaseSchema.omit({
 	id: true,
-	createdAt: true,
-	updatedAt: true,
+	created: true,
+	lastModified: true,
+	modifiedBy: true,
 })
 	.extend({
 		name: z.string().trim().min(2).max(255).pipe(NameBranded),

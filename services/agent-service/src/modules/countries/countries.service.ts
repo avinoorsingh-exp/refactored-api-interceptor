@@ -1,7 +1,6 @@
 import { Injectable, ConflictException, Logger, Inject } from '@nestjs/common'
-import type { CreateCountryInput, Country } from '@exprealty/shared-domain'
+import type { CreateCountryInput, Country, QueryParams } from '@exprealty/shared-domain'
 import type { ICountriesRepository } from './ports/countries.repository.port.js'
-import type { NormalizedPagination } from '../../common/ports/pagination.types.js'
 import { CountryResponseDto } from './dto/country-response.dto.js'
 
 /**
@@ -41,7 +40,7 @@ export class CountriesService {
 
 			const duration = Date.now() - startTime
 			this.logger.log(
-				`Country created successfully: ${country.alpha2} (${country.countryId}) in ${duration}ms`,
+				`Country created successfully: ${country.alpha2} (${country.id}) in ${duration}ms`,
 			)
 
 			return country
@@ -78,7 +77,7 @@ export class CountriesService {
 			const duration = Date.now() - startTime
 			const operation = result.created ? 'created' : 'updated'
 			this.logger.log(
-				`Country ${operation}: ${result.country.alpha2} (${result.country.countryId}) in ${duration}ms`,
+				`Country ${operation}: ${result.country.alpha2} (${result.country.id}) in ${duration}ms`,
 			)
 
 			return result
@@ -108,7 +107,7 @@ export class CountriesService {
 			
 			if (country) {
 				this.logger.log(
-					`Country found: ${country.alpha2} (${country.countryId}) in ${duration}ms`,
+					`Country found: ${country.alpha2} (${country.id}) in ${duration}ms`,
 				)
 				return country
 			}
@@ -128,22 +127,22 @@ export class CountriesService {
 	}
 
 	/**
-	 * Retrieves a paginated list of countries sorted by alpha-2 code ascending.
+	 * Retrieves a paginated list of countries with optional filtering, sorting, and search.
+	 * Default sort: name ASC (AC-2)
 	 * 
-	 * @param pagination - Normalized pagination parameters (offset, limit)
+	 * @param query - Query parameters (pagination, filter, sort, search)
 	 * @returns Object containing array of countries and total count
 	 */
-	async findPage(pagination: NormalizedPagination): Promise<{ countries: Country[]; total: number }> {
+	async findPage(query: Partial<QueryParams>): Promise<{ countries: Country[]; total: number }> {
 		const startTime = Date.now()
 
 		try {
-			const { offset, limit } = pagination
-
-			const result = await this.countriesRepository.findPage(pagination)
+			const result = await this.countriesRepository.findPage(query)
 
 			const duration = Date.now() - startTime
 			this.logger.log(
-				`Countries page retrieved: ${result.items.length} items (offset=${offset}, limit=${limit}, total=${result.total}) in ${duration}ms`,
+				`Countries page retrieved: ${result.items.length} items (offset=${query.offset ?? 0}, limit=${query.limit ?? 10}, ` +
+				`filter: ${query.filter ? 'yes' : 'no'}, sort: ${query.sort ? 'yes' : 'no'}, search: ${query.search ? 'yes' : 'no'}, total=${result.total}) in ${duration}ms`,
 			)
 
 			return { countries: result.items, total: result.total }

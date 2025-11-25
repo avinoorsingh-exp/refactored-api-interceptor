@@ -3,21 +3,25 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, QueryFailedError } from 'typeorm';
 import { ConflictException } from '@nestjs/common';
 import type { ICountriesRepository } from './ports/countries.repository.port.js';
-import type { NormalizedPagination, PageResult } from '../../common/ports/pagination.types.js';
+import type { PageResult } from '../../common/ports/pagination.types.js';
 import { CountryEntity } from '@exprealty/database';
-import type { Country, CreateCountryInput } from '@exprealty/shared-domain';
+import type { Country, CreateCountryInput, QueryParams } from '@exprealty/shared-domain';
+import { QueryService } from '../../common/query/query.service.js';
 
 /**
  * Maps a CountryEntity (infrastructure) to Country domain type.
  * This keeps the domain pure and independent of database implementation.
  */
 const mapEntity = (e: CountryEntity): Country => ({
-  countryId: e.countryId,
+  id: e.id,
   name: e.name,
   alpha2: e.alpha2,
   alpha3: e.alpha3,
   number: e.number,
   dialingCode: e.dialingCode,
+  created: e.created,
+  lastModified: e.lastModified,
+  modifiedBy: e.modifiedBy,
 });
 
 /**
@@ -32,17 +36,18 @@ const mapEntity = (e: CountryEntity): Country => ({
  * - Unit tests can mock the interface without needing TypeORM
  */
 @Injectable()
-export class CountriesTypeOrmRepository implements ICountriesRepository {
+export class CountriesRepository implements ICountriesRepository {
   constructor(
     @InjectRepository(CountryEntity)
     private readonly repo: Repository<CountryEntity>,
+    private readonly queryService: QueryService,
   ) {}
 
   /**
    * Find a country by its numeric ID.
    */
   async findById(id: number): Promise<Country | null> {
-    const entity = await this.repo.findOne({ where: { countryId: id } });
+    const entity = await this.repo.findOne({ where: { id } });
     return entity ? mapEntity(entity) : null;
   }
 
@@ -55,14 +60,29 @@ export class CountriesTypeOrmRepository implements ICountriesRepository {
   }
 
   /**
-   * Retrieve a paginated list of countries sorted by alpha-2 code ascending.
+   * Retrieve a paginated list of countries with optional filtering, sorting, and search.
+   * Default sort: name ASC (AC-2)
    */
-  async findPage(p: NormalizedPagination): Promise<PageResult<Country>> {
-    const [entities, total] = await this.repo.findAndCount({
-      order: { alpha2: 'ASC' },
-      skip: p.offset,
-      take: p.limit,
-    });
+  async findPage(query: Partial<QueryParams>): Promise<PageResult<Country>> {
+    // Validate and normalize query params using entity decorators
+    const normalized = this.queryService.normalizeWithValidation(query, CountryEntity);
+
+    // Build query with TypeORM query builder
+    const qb = this.repo.createQueryBuilder('country');
+
+    // Apply filters, search, and sorting
+    this.queryService.applyAll(qb, normalized, 'country');
+
+    // Default sort by name ASC if no sort specified (AC-2)
+    if (!normalized.sort || normalized.sort.conditions.length === 0) {
+      qb.orderBy('country.name', 'ASC');
+    }
+
+    // Apply pagination
+    qb.skip(normalized.offset).take(normalized.limit);
+
+    // Execute query
+    const [entities, total] = await qb.getManyAndCount();
 
     return {
       items: entities.map(mapEntity),
@@ -117,10 +137,12 @@ export class CountriesTypeOrmRepository implements ICountriesRepository {
 
   /**
    * Update an existing country by ID.
+   * @throws ConflictException if alpha2, alpha3, or number already exists (via DatabaseExceptionFilter)
+   * @throws NotFoundException if country with given ID doesn't exist
    */
   async update(id: number, patch: Partial<Country>): Promise<Country> {
-    await this.repo.update({ countryId: id }, patch);
-    const updated = await this.repo.findOneOrFail({ where: { countryId: id } });
+    await this.repo.update({ id }, patch);
+    const updated = await this.repo.findOneOrFail({ where: { id } });
     return mapEntity(updated);
   }
 
@@ -128,7 +150,7 @@ export class CountriesTypeOrmRepository implements ICountriesRepository {
    * Delete a country by ID.
    */
   async delete(id: number): Promise<void> {
-    await this.repo.delete({ countryId: id });
+    await this.repo.delete({ id });
   }
 
   /**

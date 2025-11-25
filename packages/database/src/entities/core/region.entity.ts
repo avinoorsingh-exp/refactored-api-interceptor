@@ -1,21 +1,23 @@
-import { Entity, PrimaryGeneratedColumn, Column, OneToMany, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm'
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany, JoinColumn } from 'typeorm'
 import { StateEntity } from './state.entity.js'
+import { AuditableEntity } from './auditable.entity.js'
+import type { Region } from '@exprealty/shared-domain'
+import { Searchable, Filterable, Sortable } from '../../decorators/searchable-decorators.js';
 
 /**
  * TypeORM entity for Region table.
  * @public
  */
 @Entity({ name: 'region', schema: 'core' })
-export class RegionEntity {
+export class RegionEntity extends AuditableEntity implements Region {
 	@PrimaryGeneratedColumn('increment', { type: 'bigint' })
+	@Filterable()
+	@Sortable()
 	id!: string
 
 	@Column({ type: 'text' })
+	@Searchable()
+	@Filterable()
+	@Sortable()
 	name!: string
-
-	@CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
-	createdAt!: Date
-
-	@UpdateDateColumn({ name: 'updated_at', type: 'timestamp with time zone' })
-	updatedAt!: Date
 }

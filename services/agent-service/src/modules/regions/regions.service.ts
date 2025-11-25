@@ -1,6 +1,6 @@
 import { Injectable, ConflictException, Logger, NotFoundException, Inject } from '@nestjs/common'
 import type { IRegionsRepository } from './ports/regions.repository.port.js'
-import type { CreateRegionInput, UpdateRegionInput, Region, NormalizedPagination } from '@exprealty/shared-domain'
+import type { CreateRegionInput, UpdateRegionInput, Region, QueryParams } from '@exprealty/shared-domain'
 
 /**
  * Application service for managing Region aggregate.
@@ -194,21 +194,23 @@ export class RegionsService {
 	}
 
 	/**
-	 * Retrieves a paginated list of regions.
+	 * Retrieves a paginated list of regions with optional filtering, sorting, and search.
+	 * Default sort: name ASC (AC-2)
 	 *
-	 * @param p - Normalized pagination parameters (offset and limit)
+	 * @param query - Query parameters (pagination, filter, sort, search)
 	 * @returns Object containing regions array and total count
 	 */
-	async findPage(p: NormalizedPagination): Promise<{ regions: Region[]; total: number }> {
+	async findPage(query: Partial<QueryParams>): Promise<{ regions: Region[]; total: number }> {
 		const startTime = Date.now()
 
 		try {
-			// Execute count and data queries in parallel for performance
-			const result = await this.repository.findPage({ offset: p.offset, limit: p.limit })
+			// Repository validates and applies filters, sort, search
+			const result = await this.repository.findPage(query)
 
 			const duration = Date.now() - startTime
 			this.logger.log(
-				`Retrieved ${result.items.length} regions (offset: ${p.offset}, limit: ${p.limit}, total: ${result.total}) in ${duration}ms`,
+				`Retrieved ${result.items.length} regions (offset: ${query.offset ?? 0}, limit: ${query.limit ?? 10}, ` +
+				`filter: ${query.filter ? 'yes' : 'no'}, sort: ${query.sort ? 'yes' : 'no'}, search: ${query.search ? 'yes' : 'no'}, total: ${result.total}) in ${duration}ms`,
 			)
 
 			return {

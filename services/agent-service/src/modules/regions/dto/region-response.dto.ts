@@ -20,14 +20,18 @@ export class RegionResponseDto {
 	@ApiProperty({
 		description: 'Timestamp when the region was created',
 		example: '2024-01-15T08:30:00.000Z',
-		type: String,
 	})
-	created_at!: string
+	created!: Date
 
 	@ApiProperty({
-		description: 'Timestamp when the region was last updated',
+		description: 'Timestamp when the region was last modified',
 		example: '2024-01-20T14:45:00.000Z',
-		type: String,
 	})
-	updated_at!: string
+	lastModified!: Date
+
+	@ApiProperty({
+		description: 'User or system that last modified the region',
+		example: 'system',
+	})
+	modifiedBy!: string
 }

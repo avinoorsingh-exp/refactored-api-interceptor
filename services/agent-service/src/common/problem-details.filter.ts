@@ -1,12 +1,14 @@
 import { ExceptionFilter, Catch, ArgumentsHost, HttpException } from '@nestjs/common'
 import { Request, Response } from 'express'
 import { ZodError } from 'zod'
+import { QueryFailedError } from 'typeorm'
 import {
 	Problems,
 	type ProblemDetails,
 	type InvalidParam,
 } from '@exprealty/shared-domain'
 import { LoggerService } from '../core/logger.service.js'
+import { DatabaseErrorHandler } from '../errors/database-error.handler.js'
 
 /**
  * Global exception filter that transforms all errors into RFC 9457 Problem Details.
@@ -59,6 +61,48 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 				problem = this.createProblemFromStatus(status, message, instance, traceId, i18nType)
 			}
 		}
+		// 2. Handle TypeORM QueryFailedError (database constraint violations)
+		else if (exception instanceof QueryFailedError) {
+			const dbError = exception as any;
+			
+			// Log the database error
+			this.logger.error('Database error occurred', {
+				code: dbError.code,
+				constraint: dbError.constraint,
+				table: dbError.table,
+				detail: dbError.detail,
+				traceId,
+			});
+
+			// Transform to HTTP exception if it's a known constraint violation
+			if (DatabaseErrorHandler.isDatabaseError(dbError)) {
+				const httpException = DatabaseErrorHandler.toHttpException(dbError);
+				
+				if (httpException instanceof HttpException) {
+					const status = httpException.getStatus();
+					const exceptionResponse = httpException.getResponse();
+					const message = typeof exceptionResponse === 'object' && 'message' in exceptionResponse
+						? String(exceptionResponse.message)
+						: 'Database constraint violation';
+					
+					problem = this.createProblemFromStatus(status, message, instance, traceId);
+				} else {
+					// Unknown database error
+					problem = Problems.internal(
+						exception.message || 'Database error occurred',
+						instance,
+						traceId,
+					);
+				}
+			} else {
+				// Unknown database error
+				problem = Problems.internal(
+					exception.message || 'Database error occurred',
+					instance,
+					traceId,
+				);
+			}
+		}
 		// 3. Handle ZodError directly (shouldn't happen if validation pipe works, but just in case)
 		else if (exception instanceof ZodError) {
 			problem = this.handleZodError(exception, instance, traceId)
@@ -96,7 +140,7 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 
 	/**
 	 * Handle validation errors from ZodValidationPipe.
-	 * The pipe returns Zod's formatted error object with optional _i18nType.
+	 * The pipe returns Zod's issues array with optional _i18nType.
 	 */
 	private handleValidationError(
 		exceptionResponse: Record<string, unknown>,
@@ -108,31 +152,49 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 		// Extract custom i18n type if provided (e.g., 'agent.country.validation')
 		const i18nType = exceptionResponse._i18nType as string | undefined
 
-		// Zod's format() returns nested objects with _errors arrays
-		const extractErrors = (obj: Record<string, unknown>, path: string[] = []): void => {
-			if (typeof obj !== 'object') return
+		// Check if we have Zod issues array
+		const zodIssues = exceptionResponse._zodIssues as Array<{
+			path: (string | number)[]
+			message: string
+			code: string
+		}> | undefined
 
-			// Check for _errors array at this level
-			const errors = obj._errors as unknown[] | undefined
-			if (Array.isArray(errors) && errors.length > 0) {
-				for (const error of errors) {
-					invalidParams.push({
-						name: path.join('.') || 'request',
-						reason: String(error),
-						in: 'body',
-					})
+		if (zodIssues && Array.isArray(zodIssues)) {
+			// Convert Zod issues to InvalidParam format
+			for (const issue of zodIssues) {
+				invalidParams.push({
+					name: issue.path.length > 0 ? issue.path.join('.') : 'request',
+					reason: issue.message,
+					in: 'body',
+				})
+			}
+		} else {
+			// Fallback: extract from Zod's format() structure (legacy support)
+			const extractErrors = (obj: Record<string, unknown>, path: string[] = []): void => {
+				if (typeof obj !== 'object') return
+
+				// Check for _errors array at this level
+				const errors = obj._errors as unknown[] | undefined
+				if (Array.isArray(errors) && errors.length > 0) {
+					for (const error of errors) {
+						invalidParams.push({
+							name: path.join('.') || 'request',
+							reason: String(error),
+							in: 'body',
+						})
+					}
+				}
+
+				// Recursively check nested properties (skip internal fields)
+				for (const [key, value] of Object.entries(obj)) {
+					if (key !== '_errors' && key !== '_i18nType' && key !== '_zodIssues' && typeof value === 'object' && value !== null) {
+						extractErrors(value as Record<string, unknown>, [...path, key])
+					}
 				}
 			}
 
-			// Recursively check nested properties (skip internal _i18nType)
-			for (const [key, value] of Object.entries(obj)) {
-				if (key !== '_errors' && key !== '_i18nType' && typeof value === 'object' && value !== null) {
-					extractErrors(value as Record<string, unknown>, [...path, key])
-				}
-			}
+			extractErrors(exceptionResponse)
 		}
-
-		extractErrors(exceptionResponse)
 
 		// If i18nType is provided, use it; otherwise use default validation type
 		if (i18nType) {

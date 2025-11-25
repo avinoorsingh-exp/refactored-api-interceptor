@@ -10,8 +10,9 @@ const mapEntity = (e: CompanyEntity): Company => ({
   id: e.id,
   name: e.name,
   email: e.email,
-  createdAt: e.createdAt,
-  updatedAt: e.updatedAt,
+  created: e.created,
+  lastModified: e.lastModified,
+  modifiedBy: e.modifiedBy,
 });
 
 @Injectable()

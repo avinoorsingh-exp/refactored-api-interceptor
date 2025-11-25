@@ -12,6 +12,13 @@ export * from './common/capabilities.js'
 export * from './common/logging.js'
 export * from './common/paging.js'
 export * from './common/problem-details.js' // <-- NEW
+export * from './common/query/index.js'
+
+// --- Validation
+export { validationErrorMap } from './validation/error-map.js'
+
+// --- Audit
+export { AuditableSchema, type Auditable } from './schemas/audit.js'
 
 // ============================================================================
 // VALUE OBJECTS
@@ -680,6 +687,7 @@ export {
 	type Country,
 	type CountryBase,
 	type CountryExpanded,
+	type CountryApiResponse,
 	CreateCountryInputSchema,
 	type CreateCountryInput,
 	UpdateCountryInputSchema,
