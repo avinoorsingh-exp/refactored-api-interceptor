@@ -27,7 +27,7 @@ export class CompanyEntity extends AuditableEntity implements Company {
 	 * Company name.
 	 * @public
 	 */
-	@Column({ type: 'text' })
+	@Column({ type: 'text', unique: true })
 	@Searchable()
 	@Filterable()
 	@Sortable()

@@ -26,7 +26,7 @@ export class CompaniesTypeOrmRepository implements ICompaniesRepository {
 
   async findPage(p: NormalizedPagination): Promise<PageResult<Company>> {
     const qb = this.repo.createQueryBuilder('w')
-      .orderBy('w.createdAt', 'ASC').addOrderBy('w.id', 'ASC')
+      .orderBy('w.created', 'ASC').addOrderBy('w.id', 'ASC')
       .skip(p.offset).take(p.limit);
 
     const [rows, total] = await qb.getManyAndCount();
@@ -36,7 +36,7 @@ export class CompaniesTypeOrmRepository implements ICompaniesRepository {
   async searchByNameFragment(p: NormalizedPagination, q: string): Promise<PageResult<Company>> {
     const qb = this.repo.createQueryBuilder('w')
       .where('w.name ILIKE :q', { q: `%${q}%` })
-      .orderBy('w.createdAt', 'ASC').addOrderBy('w.id', 'ASC')
+      .orderBy('w.created', 'ASC').addOrderBy('w.id', 'ASC')
       .skip(p.offset).take(p.limit);
 
     const [rows, total] = await qb.getManyAndCount();
