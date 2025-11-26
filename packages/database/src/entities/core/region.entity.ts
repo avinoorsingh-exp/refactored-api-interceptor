@@ -15,7 +15,7 @@ export class RegionEntity extends AuditableEntity implements Region {
 	@Sortable()
 	id!: string
 
-	@Column({ type: 'text' })
+	@Column({ type: 'text', unique: true })
 	@Searchable()
 	@Filterable()
 	@Sortable()
