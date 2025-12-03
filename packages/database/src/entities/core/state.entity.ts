@@ -48,6 +48,6 @@ export class StateEntity extends AuditableEntity {
 	 * One-to-many relationship with StateProgram.
 	 * Uses string name to avoid circular dependency at module load time.
 	 */
-	@OneToMany('StateProgramEntity', 'statePrograms')
+	@OneToMany('StateProgramEntity', 'state')
 	statePrograms?: unknown[]
 }

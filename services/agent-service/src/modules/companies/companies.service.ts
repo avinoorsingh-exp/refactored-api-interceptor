@@ -5,7 +5,7 @@ import {
 	Logger,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository, QueryFailedError } from 'typeorm'
+import { Repository } from 'typeorm'
 import { CompanyEntity } from '@exprealty/database'
 import type { CreateCompanyInput, UpdateCompanyInput, Company, Name, NormalizedPagination, QueryParams } from '@exprealty/shared-domain'
 import { QueryService } from '../../common/query/query.service.js'
@@ -72,40 +72,6 @@ export class CompaniesService {
 			// Re-throw known exceptions
 			if (error instanceof ConflictException) {
 				throw error
-			}
-
-			// Handle unique constraint violation (if exists at DB level)
-			if (error instanceof QueryFailedError) {
-				const pgError = error as QueryFailedError & {
-					code?: string
-					constraint?: string
-					detail?: string
-				}
-
-				if (pgError.code === '23505') {
-					// Unique constraint violation
-					let conflictField = 'field'
-					let conflictValue = ''
-
-					const errorDetail = pgError.detail || ''
-
-					if (errorDetail.includes('(email)')) {
-						conflictField = 'email'
-						conflictValue = dto.email
-					} else if (errorDetail.includes('(name)')) {
-						conflictField = 'name'
-						conflictValue = dto.name
-					}
-
-					// TODO: Remove debug logging before PR
-					this.logger.warn(
-						`Duplicate company ${conflictField} attempted: ${conflictValue} (${duration}ms)`,
-					)
-					throw new ConflictException({
-						message: `A company with ${conflictField} '${conflictValue}' already exists`,
-						i18nType: 'agent.company.duplicate_name',
-					})
-				}
 			}
 
 			// TODO: Remove debug logging before PR
@@ -265,40 +231,6 @@ export class CompaniesService {
 				error instanceof ConflictException
 			) {
 				throw error
-			}
-
-			// Handle unique constraint violation
-			if (error instanceof QueryFailedError) {
-				const pgError = error as QueryFailedError & {
-					code?: string
-					constraint?: string
-					detail?: string
-				}
-
-				if (pgError.code === '23505') {
-					// Unique constraint violation
-					let conflictField = 'field'
-					let conflictValue = ''
-
-					const errorDetail = pgError.detail || ''
-
-					if (errorDetail.includes('(email)')) {
-						conflictField = 'email'
-						conflictValue = dto.email
-					} else if (errorDetail.includes('(name)')) {
-						conflictField = 'name'
-						conflictValue = dto.name
-					}
-
-					// TODO: Remove debug logging before PR
-					this.logger.warn(
-						`Duplicate company ${conflictField} attempted: ${conflictValue} (${duration}ms)`,
-					)
-					throw new ConflictException({
-						message: `A company with ${conflictField} '${conflictValue}' already exists`,
-						i18nType: 'agent.company.duplicate',
-					})
-				}
 			}
 
 			// TODO: Remove debug logging before PR

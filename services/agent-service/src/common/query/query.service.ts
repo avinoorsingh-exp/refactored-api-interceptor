@@ -160,7 +160,8 @@ export class QueryService {
   }
 
   /**
-   * Apply filters to TypeORM query builder
+   * Apply filters to TypeORM query builder.
+   * Handles reserved word column names by quoting them.
    */
   applyFilters<T>(
     qb: SelectQueryBuilder<T>,
@@ -183,7 +184,9 @@ export class QueryService {
           }
 
           const paramName = `filter_${condition.field}_${index}`;
-          const fieldPath = `${alias}.${condition.field}`;
+          // Quote the field name if it's a reserved word
+          const quotedField = this.quoteIfReserved(condition.field);
+          const fieldPath = `${alias}.${quotedField}`;
           const whereMethod = logicalOperator === 'OR' ? 'orWhere' : 'andWhere';
 
           this.applyFilterCondition(subQb, condition, fieldPath, paramName, whereMethod);
@@ -264,7 +267,36 @@ export class QueryService {
   }
 
   /**
-   * Apply sorting to TypeORM query builder
+   * PostgreSQL reserved words that need to be quoted in ORDER BY clauses.
+   * These are common reserved words that might be used as column names.
+   * @see https://www.postgresql.org/docs/current/sql-keywords-appendix.html
+   */
+  private static readonly RESERVED_WORDS = new Set([
+    'number', 'order', 'group', 'user', 'table', 'column', 'index',
+    'key', 'value', 'type', 'name', 'date', 'time', 'timestamp',
+    'year', 'month', 'day', 'hour', 'minute', 'second', 'position',
+    'row', 'rows', 'limit', 'offset', 'select', 'from', 'where',
+    'and', 'or', 'not', 'null', 'true', 'false', 'default', 'check',
+    'primary', 'foreign', 'references', 'unique', 'constraint',
+  ]);
+
+  /**
+   * Quote a field name if it's a reserved word in PostgreSQL.
+   * This prevents SQL syntax errors when sorting on columns with reserved names.
+   * 
+   * @param field - The field name to potentially quote
+   * @returns The field name, quoted if necessary
+   */
+  private quoteIfReserved(field: string): string {
+    if (QueryService.RESERVED_WORDS.has(field.toLowerCase())) {
+      return `"${field}"`;
+    }
+    return field;
+  }
+
+  /**
+   * Apply sorting to TypeORM query builder.
+   * Handles reserved word column names by quoting them.
    */
   applySorting<T>(
     qb: SelectQueryBuilder<T>,
@@ -282,14 +314,17 @@ export class QueryService {
         throw new Error(`Field '${condition.field}' is not allowed for sorting`);
       }
 
-      qb.addOrderBy(`${alias}.${condition.field}`, condition.direction);
+      // Quote the field name if it's a reserved word
+      const quotedField = this.quoteIfReserved(condition.field);
+      qb.addOrderBy(`${alias}.${quotedField}`, condition.direction);
     });
 
     return qb;
   }
 
   /**
-   * Apply search to TypeORM query builder
+   * Apply search to TypeORM query builder.
+   * Handles reserved word column names by quoting them.
    */
   applySearch<T>(
     qb: SelectQueryBuilder<T>,
@@ -310,7 +345,9 @@ export class QueryService {
           }
 
           const paramName = `search_${index}`;
-          subQb.orWhere(`${alias}.${field} ILIKE :${paramName}`, {
+          // Quote the field name if it's a reserved word
+          const quotedField = this.quoteIfReserved(field);
+          subQb.orWhere(`${alias}.${quotedField} ILIKE :${paramName}`, {
             [paramName]: `%${search.query}%`,
           });
         });
