@@ -1,5 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm'
 import { AuditableEntity } from './auditable.entity.js'
+import type { StateProgramEntity } from './state-program.entity.js'
 
 /**
  * TypeORM entity for Program table.
@@ -25,5 +26,5 @@ export class ProgramEntity extends AuditableEntity {
 	 * Uses string name to avoid circular dependency at module load time.
 	 */
 	@OneToMany('StateProgramEntity', 'program')
-	statePrograms?: unknown[]
+	statePrograms?: StateProgramEntity[]
 }
