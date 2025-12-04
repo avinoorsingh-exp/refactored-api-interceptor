@@ -736,6 +736,8 @@ export {
 	type CreateStateInput,
 	UpdateStateInputSchema,
 	type UpdateStateInput,
+	StateIdParamSchema,
+	type StateIdParam,
 } from './schemas/state.js'
 
 // ============================================================================

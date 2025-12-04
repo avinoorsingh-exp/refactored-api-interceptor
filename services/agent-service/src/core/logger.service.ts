@@ -20,6 +20,7 @@ export class LoggerService {
   // Ensure the logger reports the correct service name for containerized logs.
   private readonly service = 'agent-service'
   private readonly env: z.infer<typeof EnvEnum>
+  private context?: string
 
   constructor(private readonly configService: ConfigService) {
     this.env = this.configService.get('NODE_ENV') || 'dev'
@@ -55,20 +56,31 @@ export class LoggerService {
     })
   }
 
+  /**
+   * Set the context (e.g., class name) for subsequent log messages.
+   */
+  setContext(context: string): void {
+    this.context = context
+  }
+
+  private withContext(meta?: Record<string, unknown>): Record<string, unknown> {
+    return this.context ? { context: this.context, ...meta } : { ...meta }
+  }
+
   info(message: string, meta?: Record<string, unknown>) {
-    this.logger.info(message, meta)
+    this.logger.info(message, this.withContext(meta))
   }
 
   error(message: string, meta?: Record<string, unknown>) {
-    this.logger.error(message, meta)
+    this.logger.error(message, this.withContext(meta))
   }
 
   warn(message: string, meta?: Record<string, unknown>) {
-    this.logger.warn(message, meta)
+    this.logger.warn(message, this.withContext(meta))
   }
 
   debug(message: string, meta?: Record<string, unknown>) {
-    this.logger.debug(message, meta)
+    this.logger.debug(message, this.withContext(meta))
   }
 
     // -------------------------------------------------------------------------

@@ -7,6 +7,7 @@ import { AgentController } from './app.controller.js'
 import { CountriesModule } from './modules/countries/countries.module.js'
 import { CompaniesModule } from './modules/companies/companies.module.js'
 import { RegionsModule } from './modules/regions/regions.module.js'
+import { StatesModule } from './modules/states/states.module.js'
 import { CorrelationIdMiddleware } from './common/correlation-id.middleware.js'
 
 @Module({
@@ -17,6 +18,7 @@ import { CorrelationIdMiddleware } from './common/correlation-id.middleware.js'
     CountriesModule,
     CompaniesModule,
     RegionsModule,
+    StatesModule,
 	],
 	controllers: [AgentController],
 	providers: [],
