@@ -28,7 +28,7 @@ export class StateEntity extends AuditableEntity {
 	@Sortable()
 	name!: string
 
-	@Column({ type: 'text' })
+	@Column({ type: 'varchar', length: 2 })
 	@Searchable()
 	@Filterable()
 	@Sortable()

@@ -11,14 +11,17 @@ export const StateBaseSchema = z
 	.object({
 		id: z.string().uuid(),
 		name: z.string().min(1).max(255),
-		code: z.string().max(10),
+		code: z.string().length(2, { message: 'State code must be exactly 2 characters' }),
 		isActive: z.boolean(),
 		email: EmailBranded.optional(),
 		signatureDistributionEmail: EmailBranded.optional(),
 		created: InstantUTC,
 		lastModified: InstantUTC,
 		modifiedBy: z.string().max(255),
-		regionId: z.string(),
+		regionId: z
+			.string()
+			.regex(/^\d+$/, { message: 'errors.state.regionId.invalid' })
+			.describe('Foreign key to region (bigint as string)'),
 		countryId: z.number().int(),
 	})
 	.describe('Base State')

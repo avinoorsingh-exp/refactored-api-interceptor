@@ -15,9 +15,10 @@ export class CreateStateDto {
 	name!: string;
 
 	@ApiProperty({
-		description: 'State code (abbreviation)',
+		description: 'State code (2-letter abbreviation)',
 		example: 'TX',
-		maxLength: 10,
+		minLength: 2,
+		maxLength: 2,
 	})
 	code!: string;
 
