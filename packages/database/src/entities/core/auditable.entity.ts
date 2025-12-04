@@ -1,5 +1,6 @@
 import type { Auditable } from '@exprealty/shared-domain'
 import { CreateDateColumn, UpdateDateColumn, Column } from 'typeorm'
+import { Sortable, Filterable } from '../../decorators/searchable-decorators.js'
 
 /**
  * Base entity class providing audit fields for all domain entities.
@@ -13,12 +14,18 @@ import { CreateDateColumn, UpdateDateColumn, Column } from 'typeorm'
  */
 export abstract class AuditableEntity implements Auditable {
 	@CreateDateColumn({ name: 'created', type: 'timestamp with time zone' })
+	@Filterable()
+	@Sortable()
 	created!: Date
 
 	@UpdateDateColumn({ name: 'last_modified', type: 'timestamp with time zone' })
+	@Filterable()
+	@Sortable()
 	lastModified!: Date
 
 	@Column({ name: 'modified_by', type: 'text', default: 'system' })
+	@Filterable()
+	@Sortable()
 	modifiedBy!: string
 
 	/**

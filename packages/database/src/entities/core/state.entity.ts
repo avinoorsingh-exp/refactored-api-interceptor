@@ -20,6 +20,7 @@ import type { StateProgramEntity } from './state-program.entity.js'
 export class StateEntity extends AuditableEntity {
 	@PrimaryGeneratedColumn('uuid')
 	@Filterable()
+	@Sortable()
 	id!: string
 
 	@Column({ type: 'text' })
@@ -42,6 +43,7 @@ export class StateEntity extends AuditableEntity {
 	@Column({ type: 'text', nullable: true })
 	@Searchable()
 	@Filterable()
+	@Sortable()
 	email?: string
 
 	@Column({
@@ -50,10 +52,12 @@ export class StateEntity extends AuditableEntity {
 		nullable: true,
 	})
 	@Filterable()
+	@Sortable()
 	signatureDistributionEmail?: string
 
 	@Column({ name: 'region_id', type: 'bigint' })
 	@Filterable()
+	@Sortable()
 	regionId!: bigint
 
 	@ManyToOne(() => RegionEntity, (region) => region.id, { cascade: true, eager: false })
@@ -62,6 +66,7 @@ export class StateEntity extends AuditableEntity {
 
 	@Column({ name: 'country_id', type: 'integer' })
 	@Filterable()
+	@Sortable()
 	countryId!: number
 
 	@ManyToOne(() => CountryEntity, { eager: false })

@@ -31,6 +31,8 @@ export const STATES_PROJECTION_CONFIG: ProjectionConfig = {
     'name',
     'code',
     'isActive',
+    'email',
+    'signatureDistributionEmail',
     'regionId',
     'countryId',
     'created',
