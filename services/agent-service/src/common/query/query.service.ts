@@ -325,6 +325,7 @@ export class QueryService {
   /**
    * Apply search to TypeORM query builder.
    * Handles reserved word column names by quoting them.
+   * Casts all fields to text to support searching on numeric columns.
    */
   applySearch<T>(
     qb: SelectQueryBuilder<T>,
@@ -347,7 +348,8 @@ export class QueryService {
           const paramName = `search_${index}`;
           // Quote the field name if it's a reserved word
           const quotedField = this.quoteIfReserved(field);
-          subQb.orWhere(`${alias}.${quotedField} ILIKE :${paramName}`, {
+          // Cast to text to support searching on numeric columns (::text works on all types)
+          subQb.orWhere(`${alias}.${quotedField}::text ILIKE :${paramName}`, {
             [paramName]: `%${search.query}%`,
           });
         });

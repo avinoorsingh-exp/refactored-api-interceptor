@@ -19,6 +19,7 @@ export class CompanyEntity extends AuditableEntity implements Company {
 	 * @public
 	 */
 	@PrimaryGeneratedColumn('increment', { type: 'bigint' })
+	@Searchable()
 	@Filterable()
 	@Sortable()
 	id!: string

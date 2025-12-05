@@ -15,6 +15,7 @@ export class CountryEntity extends AuditableEntity implements Country {
 	 * @public
 	 */
 	@PrimaryGeneratedColumn('increment', { type: 'integer', name: 'id' })
+	@Searchable()
 	@Filterable()
 	@Sortable()
 	id!: number
@@ -54,6 +55,7 @@ export class CountryEntity extends AuditableEntity implements Country {
 	 * @public
 	 */
 	@Column({ name: 'number', type: 'integer', unique: true })
+	@Searchable()
 	@Filterable()
 	@Sortable()
 	number!: number
@@ -63,6 +65,7 @@ export class CountryEntity extends AuditableEntity implements Country {
 	 * @public
 	 */
 	@Column({ name: 'dialing_code', type: 'integer' })
+	@Searchable()
 	@Filterable()
 	@Sortable()
 	dialingCode!: number
