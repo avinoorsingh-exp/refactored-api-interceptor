@@ -23,13 +23,13 @@ export class StateEntity extends AuditableEntity {
 	@Sortable()
 	id!: string
 
-	@Column({ type: 'text' })
+	@Column({ type: 'text', unique: true })
 	@Searchable()
 	@Filterable()
 	@Sortable()
 	name!: string
 
-	@Column({ type: 'varchar', length: 2 })
+	@Column({ type: 'varchar', length: 2, unique: true })
 	@Searchable()
 	@Filterable()
 	@Sortable()
