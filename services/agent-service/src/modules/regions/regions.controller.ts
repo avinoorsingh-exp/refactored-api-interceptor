@@ -35,6 +35,8 @@ import { PaginationInterceptor } from '../../common/pagination/pagination.interc
 /**
  * Controller for Region entity endpoints.
  * Handles HTTP requests related to region operations.
+ * 
+ * Note: Metadata endpoint is handled by MetadataController at GET /v1/regions/metadata
  */
 @ApiTags('regions')
 @Controller('v1/regions')

@@ -35,6 +35,8 @@ import { PaginationInterceptor } from '../../common/pagination/pagination.interc
 /**
  * Controller for State entity endpoints.
  * Handles HTTP requests related to state operations.
+ * 
+ * Note: Metadata endpoint is handled by MetadataController at GET /v1/states/metadata
  */
 @ApiTags('states')
 @Controller('v1/states')

@@ -4,6 +4,7 @@ import { DatabaseModule } from './core/database.module.js'
 import { ConfigModule } from './core/config.module.js'
 import { LoggerModule } from './core/logger.module.js'
 import { QueryModule } from './common/query/query.module.js'
+import { MetadataModule } from './modules/metadata/metadata.module.js'
 import { AgentController } from './app.controller.js'
 import { CountriesModule } from './modules/countries/countries.module.js'
 import { CompaniesModule } from './modules/companies/companies.module.js'
@@ -17,6 +18,7 @@ import { CorrelationIdMiddleware } from './common/correlation-id.middleware.js'
     ConfigModule,
     DatabaseModule,
     QueryModule,  // Global module - provides QueryService and search strategies
+    MetadataModule,  // Global module - provides MetadataService for entity metadata
     CountriesModule,
     CompaniesModule,
     RegionsModule,

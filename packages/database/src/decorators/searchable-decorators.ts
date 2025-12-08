@@ -7,18 +7,25 @@ const FILTERABLE_FIELDS_KEY = Symbol('filterableFields');
 const SORTABLE_FIELDS_KEY = Symbol('sortableFields');
 
 /**
+ * Searchable field type for metadata
+ */
+export type SearchableFieldType = 'string' | 'text' | 'numeric' | 'integer' | 'decimal' | 'date' | 'datetime' | 'boolean';
+
+/**
  * Searchable decorator options for advanced search configuration
  */
 export interface SearchableOptions {
   /**
    * Search weight for relevance ranking (1-10)
    * Higher weight = more important field
+   * @default 5
    */
   weight?: number;
 
   /**
    * Search behavior override
    * If not specified, inferred from column type
+   * @default 'partial' for strings, 'exact' for others
    */
   behavior?: 'exact' | 'partial' | 'range' | 'prefix' | 'suffix';
 
@@ -26,7 +33,12 @@ export interface SearchableOptions {
    * Custom field type override
    * If not specified, inferred from TypeORM column type
    */
-  type?: 'string' | 'text' | 'numeric' | 'integer' | 'decimal' | 'date' | 'datetime' | 'boolean';
+  type?: SearchableFieldType;
+
+  /**
+   * Human-readable field description for metadata/documentation
+   */
+  description?: string;
 }
 
 /**

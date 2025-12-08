@@ -40,6 +40,8 @@ import { LoggerService } from '../../core/logger.service.js'
 /**
  * Controller for Company entity endpoints.
  * Handles HTTP requests related to company operations.
+ * 
+ * Note: Metadata endpoint is handled by MetadataController at GET /v1/companies/metadata
  */
 @ApiTags('companies')
 @Controller('v1/companies')

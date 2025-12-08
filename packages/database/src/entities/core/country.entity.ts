@@ -15,7 +15,7 @@ export class CountryEntity extends AuditableEntity implements Country {
 	 * @public
 	 */
 	@PrimaryGeneratedColumn('increment', { type: 'integer', name: 'id' })
-	@Searchable({ type: 'integer' })
+	@Searchable({ type: 'integer', weight: 3, behavior: 'exact', description: 'Unique country identifier' })
 	@Filterable()
 	@Sortable()
 	id!: number
@@ -25,7 +25,7 @@ export class CountryEntity extends AuditableEntity implements Country {
 	 * @public
 	 */
 	@Column({ type: 'text' })
-	@Searchable()
+	@Searchable({ weight: 10, behavior: 'partial', description: 'Country display name' })
 	@Filterable()
 	@Sortable()
 	name!: string
@@ -35,7 +35,7 @@ export class CountryEntity extends AuditableEntity implements Country {
 	 * @public
 	 */
 	@Column({ name: 'alpha_2', type: 'varchar', length: 2, unique: true })
-	@Searchable()
+	@Searchable({ weight: 8, behavior: 'exact', description: 'ISO 3166-1 alpha-2 code (e.g., US, CA)' })
 	@Filterable()
 	@Sortable()
 	alpha2!: string
@@ -45,7 +45,7 @@ export class CountryEntity extends AuditableEntity implements Country {
 	 * @public
 	 */
 	@Column({ name: 'alpha_3', type: 'varchar', length: 3, unique: true })
-	@Searchable()
+	@Searchable({ weight: 8, behavior: 'exact', description: 'ISO 3166-1 alpha-3 code (e.g., USA, CAN)' })
 	@Filterable()
 	@Sortable()
 	alpha3!: string
@@ -55,7 +55,7 @@ export class CountryEntity extends AuditableEntity implements Country {
 	 * @public
 	 */
 	@Column({ name: 'number', type: 'integer', unique: true })
-	@Searchable({ type: 'integer' })
+	@Searchable({ type: 'integer', weight: 6, behavior: 'exact', description: 'ISO 3166-1 numeric code (e.g., 840, 124)' })
 	@Filterable()
 	@Sortable()
 	number!: number
@@ -65,7 +65,7 @@ export class CountryEntity extends AuditableEntity implements Country {
 	 * @public
 	 */
 	@Column({ name: 'dialing_code', type: 'integer' })
-	@Searchable({ type: 'integer' })
+	@Searchable({ type: 'integer', weight: 5, behavior: 'exact', description: 'International dialing code (e.g., 1, 44)' })
 	@Filterable()
 	@Sortable()
 	dialingCode!: number

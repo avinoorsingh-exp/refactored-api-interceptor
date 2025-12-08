@@ -19,7 +19,7 @@ export class CompanyEntity extends AuditableEntity implements Company {
 	 * @public
 	 */
 	@PrimaryGeneratedColumn('increment', { type: 'bigint' })
-	@Searchable({ type: 'integer' })
+	@Searchable({ type: 'integer', weight: 3, behavior: 'exact', description: 'Unique company identifier' })
 	@Filterable()
 	@Sortable()
 	id!: string
@@ -29,7 +29,7 @@ export class CompanyEntity extends AuditableEntity implements Company {
 	 * @public
 	 */
 	@Column({ type: 'text', unique: true })
-	@Searchable()
+	@Searchable({ weight: 10, behavior: 'partial', description: 'Company/brokerage name' })
 	@Filterable()
 	@Sortable()
 	name!: Name
@@ -39,7 +39,7 @@ export class CompanyEntity extends AuditableEntity implements Company {
 	 * @public
 	 */
 	@Column({ type: 'text', unique: true })
-	@Searchable()
+	@Searchable({ weight: 7, behavior: 'partial', description: 'Company email address' })
 	@Filterable()
 	@Sortable()
 	email!: Email

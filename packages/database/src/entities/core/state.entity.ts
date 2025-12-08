@@ -24,13 +24,13 @@ export class StateEntity extends AuditableEntity {
 	id!: string
 
 	@Column({ type: 'text', unique: true })
-	@Searchable()
+	@Searchable({ weight: 10, behavior: 'partial', description: 'State/province display name' })
 	@Filterable()
 	@Sortable()
 	name!: string
 
 	@Column({ type: 'varchar', length: 2, unique: true })
-	@Searchable()
+	@Searchable({ weight: 8, behavior: 'exact', description: 'Two-letter state code (e.g., CA, TX)' })
 	@Filterable()
 	@Sortable()
 	code!: string
@@ -41,7 +41,7 @@ export class StateEntity extends AuditableEntity {
 	isActive!: boolean
 
 	@Column({ type: 'text', nullable: true })
-	@Searchable()
+	@Searchable({ weight: 5, behavior: 'partial', description: 'State contact email' })
 	@Filterable()
 	@Sortable()
 	email?: string
@@ -56,7 +56,7 @@ export class StateEntity extends AuditableEntity {
 	signatureDistributionEmail?: string
 
 	@Column({ name: 'region_id', type: 'bigint' })
-	@Searchable({ type: 'integer' })
+	@Searchable({ type: 'integer', weight: 4, behavior: 'exact', description: 'Associated region ID' })
 	@Filterable()
 	@Sortable()
 	regionId!: bigint
@@ -66,7 +66,7 @@ export class StateEntity extends AuditableEntity {
 	region?: RegionEntity
 
 	@Column({ name: 'country_id', type: 'integer' })
-	@Searchable({ type: 'integer' })
+	@Searchable({ type: 'integer', weight: 4, behavior: 'exact', description: 'Associated country ID' })
 	@Filterable()
 	@Sortable()
 	countryId!: number
