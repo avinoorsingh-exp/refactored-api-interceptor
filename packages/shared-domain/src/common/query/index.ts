@@ -1,4 +1,3 @@
-// packages/@trupryce/shared-domain/src/query/schemas/index.ts
 
 // Export all schemas
 export {

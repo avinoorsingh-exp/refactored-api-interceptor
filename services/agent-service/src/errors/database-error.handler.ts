@@ -1,4 +1,3 @@
-// packages/@trupryce/shared-domain/src/errors/database-error.handler.ts
 
 import { ConflictException, BadRequestException } from '@nestjs/common';
 

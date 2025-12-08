@@ -26,7 +26,13 @@ export interface BaseQueryConfig {
     projectionConfig?: ProjectionConfig
 	/** Default sort field and direction */
 	defaultSort?: { field: string; direction: 'ASC' | 'DESC' }
-    
+	/**
+	 * Enable strategy-based search for type-aware searching.
+	 * When true, uses SearchMetadataReader and type-specific strategies
+	 * to handle numeric, date, and boolean fields in search.
+	 * @default false (uses simple ILIKE search)
+	 */
+	useStrategySearch?: boolean
 }
 
 /**
@@ -148,7 +154,13 @@ export abstract class BaseTypeOrmRepository<
 		}
 
 		// Apply filters, search, and sorting via QueryService
-		this.queryService.applyAll(qb, normalized, alias)
+		if (config.useStrategySearch) {
+			// Use strategy-based search for type-aware searching (numeric, date, boolean)
+			this.queryService.applyAllWithStrategies(qb, normalized, entityClass, alias)
+		} else {
+			// Use simple ILIKE search (backward compatible)
+			this.queryService.applyAll(qb, normalized, alias)
+		}
 
 		// Apply default sort if no sort specified
 		if ((!normalized.sort || normalized.sort.conditions.length === 0) && config.defaultSort) {
@@ -213,7 +225,13 @@ export abstract class BaseTypeOrmRepository<
 		}
 
 		// Apply filters, sort, search
-		this.queryService.applyAll(qb, params, entityAlias)
+		if (config.useStrategySearch) {
+			// Use strategy-based search for type-aware searching (numeric, date, boolean)
+			this.queryService.applyAllWithStrategies(qb, params, this.getEntityClass(), entityAlias)
+		} else {
+			// Use simple ILIKE search (backward compatible)
+			this.queryService.applyAll(qb, params, entityAlias)
+		}
 
 		// Order by cursor field for consistent pagination
 		qb.orderBy(`${entityAlias}.${cursorField}`, 'ASC')

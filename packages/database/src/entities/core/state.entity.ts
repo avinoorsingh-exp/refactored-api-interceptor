@@ -56,6 +56,7 @@ export class StateEntity extends AuditableEntity {
 	signatureDistributionEmail?: string
 
 	@Column({ name: 'region_id', type: 'bigint' })
+	@Searchable({ type: 'integer' })
 	@Filterable()
 	@Sortable()
 	regionId!: bigint
@@ -65,6 +66,7 @@ export class StateEntity extends AuditableEntity {
 	region?: RegionEntity
 
 	@Column({ name: 'country_id', type: 'integer' })
+	@Searchable({ type: 'integer' })
 	@Filterable()
 	@Sortable()
 	countryId!: number

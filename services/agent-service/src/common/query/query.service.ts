@@ -1,11 +1,13 @@
 
 
-import { Injectable } from '@nestjs/common';
-import { SelectQueryBuilder, Brackets } from 'typeorm';
+import { Injectable, Inject, Optional } from '@nestjs/common';
+import { SelectQueryBuilder, Brackets, ObjectLiteral } from 'typeorm';
 import {
 	getFilterableFields,
 	getSortableFields,
 	getSearchableFields,
+	ISearchStrategy,
+	SearchableFieldType,
 } from '@exprealty/database'
 import {
   QueryParamsSchema,
@@ -20,9 +22,22 @@ import type {
   FilterOperator,
   LogicalOperator,
 } from '@exprealty/shared-domain';
+import { SEARCH_STRATEGIES } from './query.tokens.js';
+import { SearchMetadataReader } from './search-metadata-reader.service.js';
+import { ColumnResolverService } from './column-resolver.service.js';
+
+/**
+ * Map of field types to search strategies
+ */
+type StrategyMap = Record<string, ISearchStrategy>;
 
 @Injectable()
 export class QueryService {
+  constructor(
+    @Optional() @Inject(SEARCH_STRATEGIES) private readonly strategies?: StrategyMap,
+    @Optional() private readonly searchMetadataReader?: SearchMetadataReader,
+    @Optional() private readonly columnResolver?: ColumnResolverService,
+  ) {}
   /**
    * Parse and normalize query params with entity field validation
    */
@@ -325,7 +340,8 @@ export class QueryService {
   /**
    * Apply search to TypeORM query builder.
    * Handles reserved word column names by quoting them.
-   * Casts all fields to text to support searching on numeric columns.
+   * Note: @Searchable() should only be applied to text/string columns since ILIKE is used.
+   * @deprecated Use applyStrategySearch for type-aware search
    */
   applySearch<T>(
     qb: SelectQueryBuilder<T>,
@@ -348,10 +364,56 @@ export class QueryService {
           const paramName = `search_${index}`;
           // Quote the field name if it's a reserved word
           const quotedField = this.quoteIfReserved(field);
-          // Cast to text to support searching on numeric columns (::text works on all types)
-          subQb.orWhere(`${alias}.${quotedField}::text ILIKE :${paramName}`, {
+          subQb.orWhere(`${alias}.${quotedField} ILIKE :${paramName}`, {
             [paramName]: `%${search.query}%`,
           });
+        });
+      }),
+    );
+
+    return qb;
+  }
+
+  /**
+   * Apply type-aware search using registered strategies.
+   * Supports searching across string, numeric, date, and boolean fields.
+   * 
+   * Uses the hybrid approach:
+   * - For simple operations: Uses property name (TypeORM resolves)
+   * - For raw SQL fragments (CAST, EXTRACT): Uses actual column name via ColumnResolver
+   * 
+   * @param qb - TypeORM SelectQueryBuilder
+   * @param searchQuery - The search term
+   * @param entityClass - Entity class for metadata lookup
+   * @param alias - Query builder alias
+   * @returns The modified query builder
+   */
+  applyStrategySearch<T extends ObjectLiteral>(
+    qb: SelectQueryBuilder<T>,
+    searchQuery: string | undefined,
+    entityClass: new (...args: any[]) => T,
+    alias: string,
+  ): SelectQueryBuilder<T> {
+    if (!searchQuery || !this.strategies || !this.searchMetadataReader) {
+      return qb;
+    }
+
+    // Get searchable field configurations from metadata
+    const fieldConfigs = this.searchMetadataReader.getSearchableFieldsConfig(entityClass);
+    
+    if (fieldConfigs.length === 0) {
+      return qb;
+    }
+
+    qb.andWhere(
+      new Brackets((subQb) => {
+        fieldConfigs.forEach((config, index) => {
+          const strategy = this.strategies![config.type];
+          
+          if (strategy && strategy.canHandle(searchQuery, config)) {
+            const paramName = `search_${config.field}_${index}`;
+            strategy.applySearch(qb, alias, config.field, searchQuery, paramName);
+          }
         });
       }),
     );
@@ -377,6 +439,32 @@ export class QueryService {
 
     // Apply search
     this.applySearch(qb, params.search, alias, options?.allowedSearchFields);
+
+    // Apply sorting
+    this.applySorting(qb, params.sort, alias, options?.allowedSortFields);
+
+    return qb;
+  }
+
+  /**
+   * Apply all query operations with strategy-based search.
+   * Use this for entities that have numeric/date @Searchable fields.
+   */
+  applyAllWithStrategies<T extends ObjectLiteral>(
+    qb: SelectQueryBuilder<T>,
+    params: NormalizedQueryParams,
+    entityClass: new (...args: any[]) => T,
+    alias: string,
+    options?: {
+      allowedFilterFields?: Set<string>;
+      allowedSortFields?: Set<string>;
+    },
+  ): SelectQueryBuilder<T> {
+    // Apply filters
+    this.applyFilters(qb, params.filter, alias, options?.allowedFilterFields);
+
+    // Apply strategy-based search
+    this.applyStrategySearch(qb, params.search?.query, entityClass, alias);
 
     // Apply sorting
     this.applySorting(qb, params.sort, alias, options?.allowedSortFields);

@@ -11,7 +11,7 @@ import { Searchable, Filterable, Sortable } from '../../decorators/searchable-de
 @Entity({ name: 'region', schema: 'core' })
 export class RegionEntity extends AuditableEntity implements Region {
 	@PrimaryGeneratedColumn('increment', { type: 'bigint' })
-	@Searchable()
+	@Searchable({ type: 'integer' })
 	@Filterable()
 	@Sortable()
 	id!: string

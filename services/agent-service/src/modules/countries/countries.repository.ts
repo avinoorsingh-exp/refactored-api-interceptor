@@ -62,6 +62,7 @@ export class CountriesRepository implements ICountriesRepository {
   /**
    * Retrieve a paginated list of countries with optional filtering, sorting, and search.
    * Default sort: name ASC (AC-2)
+   * Uses strategy-based search for type-aware searching on numeric fields.
    */
   async findPage(query: Partial<QueryParams>): Promise<PageResult<Country>> {
     // Validate and normalize query params using entity decorators
@@ -70,8 +71,8 @@ export class CountriesRepository implements ICountriesRepository {
     // Build query with TypeORM query builder
     const qb = this.repo.createQueryBuilder('country');
 
-    // Apply filters, search, and sorting
-    this.queryService.applyAll(qb, normalized, 'country');
+    // Apply filters, search, and sorting with strategy-based search
+    this.queryService.applyAllWithStrategies(qb, normalized, CountryEntity, 'country');
 
     // Default sort by name ASC if no sort specified (AC-2)
     if (!normalized.sort || normalized.sort.conditions.length === 0) {

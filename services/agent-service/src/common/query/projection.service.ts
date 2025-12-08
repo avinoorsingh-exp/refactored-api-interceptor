@@ -1,4 +1,3 @@
-// packages/@trupryce/shared-domain/src/query/services/projection.service.ts
 
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { SelectQueryBuilder } from 'typeorm';

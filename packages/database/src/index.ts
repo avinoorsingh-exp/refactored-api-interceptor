@@ -324,9 +324,27 @@ export {
 	Filterable,
 	Sortable,
 	getSearchableFields,
+	getSearchableFieldsConfig,
 	getFilterableFields,
 	getSortableFields,
 } from './decorators/searchable-decorators.js'
+
+export type { SearchableOptions } from './decorators/searchable-decorators.js'
+
+// ============================================================================
+// Search Strategy Types
+// ============================================================================
+
+/**
+ * Types and interfaces for search strategies.
+ * Used by agent-service to implement type-specific search logic.
+ * @public
+ */
+export {
+	SearchableFieldType,
+	SearchableFieldConfig,
+	ISearchStrategy,
+} from './query/types/search-strategy.types.js'
 
 // ============================================================================
 // Data Source
