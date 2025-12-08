@@ -5,7 +5,6 @@ import { PaginationModule } from '../../common/pagination/pagination.module.js';
 import { CountriesController } from './countries.controller.js';
 import { CountriesService } from './countries.service.js';
 import { CountriesRepository } from './countries.repository.js';
-import { QueryService } from '../../common/query/query.service.js';
 
 /**
  * Module for Country aggregate.
@@ -13,6 +12,8 @@ import { QueryService } from '../../common/query/query.service.js';
  * - CountriesService depends on ICountriesRepository PORT
  * - CountriesRepository is the ADAPTER (infrastructure)
  * - This module wires them together via dependency injection
+ * 
+ * Note: QueryService is provided by QueryModule (imported globally in AppModule)
  */
 @Module({
 imports: [
@@ -22,7 +23,6 @@ imports: [
 controllers: [CountriesController],
 providers: [
 	CountriesService,
-	QueryService,
 	// Provide the repository adapter under the port token
 	{
 		provide: 'ICountriesRepository',

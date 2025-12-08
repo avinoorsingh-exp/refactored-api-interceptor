@@ -5,7 +5,6 @@ import { StatesController } from './states.controller.js';
 import { StatesService } from './states.service.js';
 import { StatesTypeOrmRepository } from './states.repository.js';
 import { PaginationModule } from '../../common/pagination/pagination.module.js';
-import { QueryService } from '../../common/query/query.service.js';
 import { ProjectionService } from '../../common/query/projection.service.js';
 
 /**
@@ -14,6 +13,8 @@ import { ProjectionService } from '../../common/query/projection.service.js';
  * - StatesService depends on IStatesRepository PORT
  * - StatesTypeOrmRepository is the ADAPTER (infrastructure)
  * - This module wires them together via dependency injection
+ * 
+ * Note: QueryService is provided by QueryModule (imported globally in AppModule)
  */
 @Module({
 	imports: [
@@ -24,7 +25,6 @@ import { ProjectionService } from '../../common/query/projection.service.js';
 	controllers: [StatesController],
 	providers: [
 		StatesService,
-		QueryService,
 		ProjectionService,
 		// Provide the repository adapter under the port token
 		{
