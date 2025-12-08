@@ -339,7 +339,7 @@ export class MetadataService {
   private getFilterExamples(field: string, columnType: string): string[] {
     const type = columnType.toLowerCase();
     
-    if (type.includes('int') || type.includes('numeric') || type.includes('decimal') || type.includes('float') || type.includes('double')) {
+    if (type.includes('int') || type.includes('numeric')) {
       return [
         `${field}:eq:100`,
         `${field}:gte:50`,
@@ -355,12 +355,6 @@ export class MetadataService {
       return [
         `${field}:gte:2024-01-01`,
         `${field}:lte:2024-12-31`,
-      ];
-    }
-    
-    if (type.includes('uuid')) {
-      return [
-        `${field}:eq:550e8400-e29b-41d4-a716-446655440000`,
       ];
     }
     

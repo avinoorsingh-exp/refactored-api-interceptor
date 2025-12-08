@@ -330,7 +330,7 @@ export {
 	SearchValidators,
 } from './decorators/searchable-decorators.js'
 
-export type { SearchableOptions, SearchValidator, SearchValidationResult, SearchValidationOptions } from './decorators/searchable-decorators.js'
+export type { SearchableOptions } from './decorators/searchable-decorators.js'
 
 // ============================================================================
 // Search Strategy Types
