@@ -7,6 +7,8 @@ import compression from 'compression'
 import { ProblemDetailsFilter } from './common/problem-details.filter.js'
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
 import configuration from './core/configuration.js'
+import { QueryPerformanceInterceptor } from './common/interceptors/query-performance.interceptor.js'
+import { PerformanceInterceptor } from './common/interceptors/performance.interceptor.js'
 
 async function bootstrap() {
 	// CRITICAL: Load configuration BEFORE creating NestJS app
@@ -37,6 +39,32 @@ async function bootstrap() {
 		origin: config.ALLOWED_ORIGINS.split(','),
 		credentials: true,
 	})
+
+	// Configure interceptors based on environment
+	// Use ConfigService for environment detection (NODE_ENV: 'local', 'dev', 'staging', 'prod')
+	const environment = configService.get('NODE_ENV')
+	const includeQueryMetadata = environment === 'local' || environment === 'dev'
+
+	if (includeQueryMetadata) {
+		// Local/Dev: Include full query metadata in response for debugging
+		app.useGlobalInterceptors(
+			new QueryPerformanceInterceptor({
+				slowQueryThresholdMs: 1000,
+				logAllQueries: true,
+			}),
+		)
+		logger.info(`Query metadata enabled for environment: ${environment}`)
+	} else {
+		// Staging/Production: Only performance headers, no body metadata
+		app.useGlobalInterceptors(
+			new PerformanceInterceptor({
+				slowQueryThresholdMs: 2000,
+				includeInBody: false,
+				logAllQueries: false,
+			}),
+		)
+		logger.info(`Performance-only interceptor enabled for environment: ${environment}`)
+	}
 
 	// Register global exception filter (handles all exceptions including database errors)
 	app.useGlobalFilters(new ProblemDetailsFilter(logger))
