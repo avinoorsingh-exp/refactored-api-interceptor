@@ -42,43 +42,41 @@ GET /v1/states?offset=0&limit=10
 
 Filters allow you to narrow down results based on field values.
 
-#### Filter Syntax (Simplified)
+#### Filter Syntax (JSON)
 
-Filters use a simple `field:operator:value` format:
+Filters use a JSON object with `conditions` array and `logicalOperator`:
 
 ```
-GET /v1/states?filter=isActive:eq:true
-GET /v1/countries?filter=name:contains:United
-GET /v1/countries?filter=dialingCode:eq:1
+GET /v1/states?filter={"conditions":[{"field":"isActive","operator":"eq","value":true}],"logicalOperator":"AND"}
 ```
 
-**Multiple filters (AND logic):**
+**Multiple conditions (AND logic):**
 ```
-GET /v1/states?filter=isActive:eq:true&filter=code:in:CA,TX,FL
+GET /v1/states?filter={"conditions":[{"field":"isActive","operator":"eq","value":true},{"field":"code","operator":"in","value":["CA","TX","FL"]}],"logicalOperator":"AND"}
 ```
 
 #### Filter Operators
 
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `eq` | Equal to | `name:eq:California` |
-| `neq` | Not equal to | `code:neq:TX` |
-| `gt` | Greater than | `id:gt:100` |
-| `gte` | Greater than or equal | `dialingCode:gte:1` |
-| `lt` | Less than | `number:lt:500` |
-| `lte` | Less than or equal | `id:lte:100` |
-| `contains` | Contains (case-insensitive) | `name:contains:united` |
-| `in` | In array (comma-separated) | `code:in:CA,TX,FL` |
+| Operator | Description | Example Value |
+|----------|-------------|---------------|
+| `eq` | Equal to | `"California"` or `true` |
+| `neq` | Not equal to | `"TX"` |
+| `gt` | Greater than | `100` |
+| `gte` | Greater than or equal | `1` |
+| `lt` | Less than | `500` |
+| `lte` | Less than or equal | `100` |
+| `like` | SQL LIKE pattern | `"%United%"` |
+| `in` | In array | `["CA","TX","FL"]` |
 
 ### Sorting
 
-Sort results by one or more fields using `field:direction` format.
+Sort results using JSON format with `conditions` array.
 
-**Example:**
+**Examples:**
 ```
-GET /v1/states?sort=name:ASC
-GET /v1/countries?sort=name:DESC
-GET /v1/states?sort=isActive:DESC&sort=name:ASC
+GET /v1/states?sort={"conditions":[{"field":"name","direction":"ASC"}]}
+GET /v1/states?sort={"conditions":[{"field":"name","direction":"DESC"}]}
+GET /v1/states?sort={"conditions":[{"field":"isActive","direction":"DESC"},{"field":"name","direction":"ASC"}]}
 ```
 
 #### Sort Directions

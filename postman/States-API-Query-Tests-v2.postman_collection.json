@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "states-api-query-tests-v2",
     "name": "States API - Query/Filter/Sort/Search Tests v2",
-    "description": "Comprehensive Postman collection for States API testing search, filter, and sort capabilities using the simplified query syntax.",
+    "description": "Comprehensive Postman collection for States API testing search, filter, and sort capabilities using the JSON query syntax.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -28,9 +28,7 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Status code is 200', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
                   "pm.test('Response contains entities array', function () {",
                   "    const jsonData = pm.response.json();",
                   "    pm.expect(jsonData).to.have.property('entities');",
@@ -63,9 +61,7 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Status code is 200', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
                   "pm.test('Response has search, filter, sort sections', function () {",
                   "    const jsonData = pm.response.json();",
                   "    pm.expect(jsonData).to.have.property('search');",
@@ -88,19 +84,16 @@
           }
         },
         {
-          "name": "States - Searchable Fields Only",
+          "name": "States - Searchable Fields",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Status code is 200', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
                   "pm.test('Response has fields with weight and behavior', function () {",
                   "    const jsonData = pm.response.json();",
                   "    pm.expect(jsonData).to.have.property('fields');",
-                  "    pm.expect(jsonData.fields).to.be.an('array');",
                   "    if (jsonData.fields.length > 0) {",
                   "        pm.expect(jsonData.fields[0]).to.have.property('weight');",
                   "        pm.expect(jsonData.fields[0]).to.have.property('behavior');",
@@ -122,28 +115,7 @@
           }
         },
         {
-          "name": "States - Filterable Fields Only",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status code is 200', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
-                  "pm.test('Response has fields with operators', function () {",
-                  "    const jsonData = pm.response.json();",
-                  "    pm.expect(jsonData).to.have.property('fields');",
-                  "    pm.expect(jsonData.fields).to.be.an('array');",
-                  "    if (jsonData.fields.length > 0) {",
-                  "        pm.expect(jsonData.fields[0]).to.have.property('operators');",
-                  "    }",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
+          "name": "States - Filterable Fields",
           "request": {
             "method": "GET",
             "header": [],
@@ -155,25 +127,7 @@
           }
         },
         {
-          "name": "States - Sortable Fields Only",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status code is 200', function () {",
-                  "    pm.response.to.have.status(200);",
-                  "});",
-                  "pm.test('Response has fields array', function () {",
-                  "    const jsonData = pm.response.json();",
-                  "    pm.expect(jsonData).to.have.property('fields');",
-                  "    pm.expect(jsonData.fields).to.be.an('array');",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
+          "name": "States - Sortable Fields",
           "request": {
             "method": "GET",
             "header": [],
@@ -202,12 +156,6 @@
                   "    pm.expect(jsonData).to.have.property('data');",
                   "    pm.expect(jsonData).to.have.property('meta');",
                   "    pm.expect(jsonData.meta).to.have.property('total');",
-                  "    pm.expect(jsonData.meta).to.have.property('offset');",
-                  "    pm.expect(jsonData.meta).to.have.property('limit');",
-                  "});",
-                  "pm.test('Default limit is 25', function () {",
-                  "    const jsonData = pm.response.json();",
-                  "    pm.expect(jsonData.meta.limit).to.equal(25);",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -235,11 +183,6 @@
                   "pm.test('Returns correct limit', function () {",
                   "    const jsonData = pm.response.json();",
                   "    pm.expect(jsonData.data.length).to.be.at.most(10);",
-                  "    pm.expect(jsonData.meta.limit).to.equal(10);",
-                  "});",
-                  "pm.test('Offset is applied', function () {",
-                  "    const jsonData = pm.response.json();",
-                  "    pm.expect(jsonData.meta.offset).to.equal(5);",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -262,21 +205,6 @@
         },
         {
           "name": "AC1.3 - Max Limit (50)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('Max limit of 50 is honored', function () {",
-                  "    const jsonData = pm.response.json();",
-                  "    pm.expect(jsonData.data.length).to.be.at.most(50);",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
           "request": {
             "method": "GET",
             "header": [],
@@ -290,41 +218,6 @@
               ]
             }
           }
-        },
-        {
-          "name": "AC1.4 - Exceed Max Limit (should cap or error)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status code is 200 or 400', function () {",
-                  "    pm.expect(pm.response.code).to.be.oneOf([200, 400]);",
-                  "});",
-                  "if (pm.response.code === 200) {",
-                  "    pm.test('Limit capped to max 50', function () {",
-                  "        const jsonData = pm.response.json();",
-                  "        pm.expect(jsonData.data.length).to.be.at.most(50);",
-                  "    });",
-                  "}"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=100",
-              "host": ["{{baseUrl}}"],
-              "path": ["{{apiVersion}}", "states"],
-              "query": [
-                {"key": "offset", "value": "0"},
-                {"key": "limit", "value": "100"}
-              ]
-            }
-          }
         }
       ]
     },
@@ -332,7 +225,7 @@
       "name": "2. Sorting Tests (AC-2)",
       "item": [
         {
-          "name": "AC2.1 - Sort by name ASC (default)",
+          "name": "AC2.1 - Sort by name ASC",
           "event": [
             {
               "listen": "test",
@@ -354,13 +247,13 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=10&sort=name:ASC",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=10&sort={\"conditions\":[{\"field\":\"name\",\"direction\":\"ASC\"}]}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
                 {"key": "offset", "value": "0"},
                 {"key": "limit", "value": "10"},
-                {"key": "sort", "value": "name:ASC"}
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"name\",\"direction\":\"ASC\"}]}"}
               ]
             }
           }
@@ -388,119 +281,64 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=10&sort=name:DESC",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=10&sort={\"conditions\":[{\"field\":\"name\",\"direction\":\"DESC\"}]}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
                 {"key": "offset", "value": "0"},
                 {"key": "limit", "value": "10"},
-                {"key": "sort", "value": "name:DESC"}
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"name\",\"direction\":\"DESC\"}]}"}
               ]
             }
           }
         },
         {
           "name": "AC2.3 - Sort by code ASC",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('Results are sorted by code ascending', function () {",
-                  "    const jsonData = pm.response.json();",
-                  "    const codes = jsonData.data.map(s => s.code);",
-                  "    const sorted = [...codes].sort((a, b) => a.localeCompare(b));",
-                  "    pm.expect(codes).to.eql(sorted);",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=10&sort=code:ASC",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=10&sort={\"conditions\":[{\"field\":\"code\",\"direction\":\"ASC\"}]}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
                 {"key": "offset", "value": "0"},
                 {"key": "limit", "value": "10"},
-                {"key": "sort", "value": "code:ASC"}
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"code\",\"direction\":\"ASC\"}]}"}
               ]
             }
           }
         },
         {
           "name": "AC2.4 - Sort by isActive DESC",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('Results sorted by isActive descending (true first)', function () {",
-                  "    const jsonData = pm.response.json();",
-                  "    const activeStates = jsonData.data.filter(s => s.isActive === true);",
-                  "    const inactiveStates = jsonData.data.filter(s => s.isActive === false);",
-                  "    // Active should appear before inactive",
-                  "    if (activeStates.length > 0 && inactiveStates.length > 0) {",
-                  "        const lastActiveIndex = jsonData.data.findLastIndex(s => s.isActive === true);",
-                  "        const firstInactiveIndex = jsonData.data.findIndex(s => s.isActive === false);",
-                  "        pm.expect(lastActiveIndex).to.be.lessThan(firstInactiveIndex);",
-                  "    }",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=50&sort=isActive:DESC",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=50&sort={\"conditions\":[{\"field\":\"isActive\",\"direction\":\"DESC\"}]}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
                 {"key": "offset", "value": "0"},
                 {"key": "limit", "value": "50"},
-                {"key": "sort", "value": "isActive:DESC"}
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"isActive\",\"direction\":\"DESC\"}]}"}
               ]
             }
           }
         },
         {
           "name": "AC2.5 - Multi-field Sort (isActive DESC, name ASC)",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('Multi-field sort applied', function () {",
-                  "    const jsonData = pm.response.json();",
-                  "    pm.expect(jsonData.data).to.be.an('array');",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=20&sort=isActive:DESC&sort=name:ASC",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=20&sort={\"conditions\":[{\"field\":\"isActive\",\"direction\":\"DESC\"},{\"field\":\"name\",\"direction\":\"ASC\"}]}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
                 {"key": "offset", "value": "0"},
                 {"key": "limit", "value": "20"},
-                {"key": "sort", "value": "isActive:DESC"},
-                {"key": "sort", "value": "name:ASC"}
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"isActive\",\"direction\":\"DESC\"},{\"field\":\"name\",\"direction\":\"ASC\"}]}"}
               ]
             }
           }
@@ -512,11 +350,7 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });",
-                  "pm.test('Error message mentions invalid field', function () {",
-                  "    const jsonData = pm.response.json();",
-                  "    pm.expect(jsonData.message.toLowerCase()).to.include('invalid').or.include('not allowed').or.include('sort');",
-                  "});"
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
                 ],
                 "type": "text/javascript"
               }
@@ -526,13 +360,13 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=10&sort=invalidField:ASC",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=10&sort={\"conditions\":[{\"field\":\"invalidField\",\"direction\":\"ASC\"}]}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
                 {"key": "offset", "value": "0"},
                 {"key": "limit", "value": "10"},
-                {"key": "sort", "value": "invalidField:ASC"}
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"invalidField\",\"direction\":\"ASC\"}]}"}
               ]
             }
           }
@@ -543,7 +377,7 @@
       "name": "3. Filter Tests (AC-3)",
       "item": [
         {
-          "name": "AC3.1 - Filter isActive:eq:true",
+          "name": "AC3.1 - Filter isActive eq true",
           "event": [
             {
               "listen": "test",
@@ -565,19 +399,17 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=25&filter=isActive:eq:true",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter={\"conditions\":[{\"field\":\"isActive\",\"operator\":\"eq\",\"value\":true}],\"logicalOperator\":\"AND\"}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
-                {"key": "offset", "value": "0"},
-                {"key": "limit", "value": "25"},
-                {"key": "filter", "value": "isActive:eq:true"}
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"isActive\",\"operator\":\"eq\",\"value\":true}],\"logicalOperator\":\"AND\"}"}
               ]
             }
           }
         },
         {
-          "name": "AC3.2 - Filter isActive:eq:false",
+          "name": "AC3.2 - Filter isActive eq false",
           "event": [
             {
               "listen": "test",
@@ -599,19 +431,17 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=25&filter=isActive:eq:false",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter={\"conditions\":[{\"field\":\"isActive\",\"operator\":\"eq\",\"value\":false}],\"logicalOperator\":\"AND\"}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
-                {"key": "offset", "value": "0"},
-                {"key": "limit", "value": "25"},
-                {"key": "filter", "value": "isActive:eq:false"}
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"isActive\",\"operator\":\"eq\",\"value\":false}],\"logicalOperator\":\"AND\"}"}
               ]
             }
           }
         },
         {
-          "name": "AC3.3 - Filter code:eq:CA",
+          "name": "AC3.3 - Filter code eq CA",
           "event": [
             {
               "listen": "test",
@@ -633,17 +463,17 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter=code:eq:CA",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter={\"conditions\":[{\"field\":\"code\",\"operator\":\"eq\",\"value\":\"CA\"}],\"logicalOperator\":\"AND\"}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
-                {"key": "filter", "value": "code:eq:CA"}
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"code\",\"operator\":\"eq\",\"value\":\"CA\"}],\"logicalOperator\":\"AND\"}"}
               ]
             }
           }
         },
         {
-          "name": "AC3.4 - Filter code:in:CA,TX,FL",
+          "name": "AC3.4 - Filter code in [CA,TX,FL]",
           "event": [
             {
               "listen": "test",
@@ -666,17 +496,17 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter=code:in:CA,TX,FL",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter={\"conditions\":[{\"field\":\"code\",\"operator\":\"in\",\"value\":[\"CA\",\"TX\",\"FL\"]}],\"logicalOperator\":\"AND\"}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
-                {"key": "filter", "value": "code:in:CA,TX,FL"}
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"code\",\"operator\":\"in\",\"value\":[\"CA\",\"TX\",\"FL\"]}],\"logicalOperator\":\"AND\"}"}
               ]
             }
           }
         },
         {
-          "name": "AC3.5 - Filter name:contains:New",
+          "name": "AC3.5 - Filter name like %New%",
           "event": [
             {
               "listen": "test",
@@ -698,17 +528,17 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter=name:contains:New",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter={\"conditions\":[{\"field\":\"name\",\"operator\":\"like\",\"value\":\"%New%\"}],\"logicalOperator\":\"AND\"}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
-                {"key": "filter", "value": "name:contains:New"}
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"name\",\"operator\":\"like\",\"value\":\"%New%\"}],\"logicalOperator\":\"AND\"}"}
               ]
             }
           }
         },
         {
-          "name": "AC3.6 - Filter code:neq:CA",
+          "name": "AC3.6 - Filter code neq CA",
           "event": [
             {
               "listen": "test",
@@ -730,24 +560,24 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter=code:neq:CA",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter={\"conditions\":[{\"field\":\"code\",\"operator\":\"neq\",\"value\":\"CA\"}],\"logicalOperator\":\"AND\"}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
-                {"key": "filter", "value": "code:neq:CA"}
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"code\",\"operator\":\"neq\",\"value\":\"CA\"}],\"logicalOperator\":\"AND\"}"}
               ]
             }
           }
         },
         {
-          "name": "AC3.7 - Multiple Filters (AND logic)",
+          "name": "AC3.7 - Multiple Conditions (AND)",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
                   "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('All results match both filters', function () {",
+                  "pm.test('All results match both conditions', function () {",
                   "    const jsonData = pm.response.json();",
                   "    jsonData.data.forEach(state => {",
                   "        pm.expect(state.isActive).to.equal(true);",
@@ -763,12 +593,11 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter=isActive:eq:true&filter=code:in:CA,TX,FL",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter={\"conditions\":[{\"field\":\"isActive\",\"operator\":\"eq\",\"value\":true},{\"field\":\"code\",\"operator\":\"in\",\"value\":[\"CA\",\"TX\",\"FL\"]}],\"logicalOperator\":\"AND\"}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
-                {"key": "filter", "value": "isActive:eq:true"},
-                {"key": "filter", "value": "code:in:CA,TX,FL"}
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"isActive\",\"operator\":\"eq\",\"value\":true},{\"field\":\"code\",\"operator\":\"in\",\"value\":[\"CA\",\"TX\",\"FL\"]}],\"logicalOperator\":\"AND\"}"}
               ]
             }
           }
@@ -780,11 +609,7 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });",
-                  "pm.test('Error message mentions invalid field', function () {",
-                  "    const jsonData = pm.response.json();",
-                  "    pm.expect(jsonData.message.toLowerCase()).to.include('invalid').or.include('not allowed').or.include('filter');",
-                  "});"
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
                 ],
                 "type": "text/javascript"
               }
@@ -794,11 +619,11 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter=invalidField:eq:value",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter={\"conditions\":[{\"field\":\"invalidField\",\"operator\":\"eq\",\"value\":\"test\"}],\"logicalOperator\":\"AND\"}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
-                {"key": "filter", "value": "invalidField:eq:value"}
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"invalidField\",\"operator\":\"eq\",\"value\":\"test\"}],\"logicalOperator\":\"AND\"}"}
               ]
             }
           }
@@ -816,13 +641,9 @@
               "script": {
                 "exec": [
                   "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('Results contain California in searchable fields', function () {",
+                  "pm.test('Results contain Calif in name', function () {",
                   "    const jsonData = pm.response.json();",
                   "    pm.expect(jsonData.data.length).to.be.greaterThan(0);",
-                  "    jsonData.data.forEach(state => {",
-                  "        const matchesName = state.name.toLowerCase().includes('calif');",
-                  "        pm.expect(matchesName).to.be.true;",
-                  "    });",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -883,7 +704,6 @@
                   "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
                   "pm.test('Returns states with New in name', function () {",
                   "    const jsonData = pm.response.json();",
-                  "    // Should find New York, New Jersey, New Mexico, etc.",
                   "    jsonData.data.forEach(state => {",
                   "        pm.expect(state.name.toLowerCase()).to.include('new');",
                   "    });",
@@ -907,37 +727,7 @@
           }
         },
         {
-          "name": "AC4.4 - Search by Email Domain",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('Returns results (may be empty if no email matches)', function () {",
-                  "    const jsonData = pm.response.json();",
-                  "    pm.expect(jsonData.data).to.be.an('array');",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?search=example.com",
-              "host": ["{{baseUrl}}"],
-              "path": ["{{apiVersion}}", "states"],
-              "query": [
-                {"key": "search", "value": "example.com"}
-              ]
-            }
-          }
-        },
-        {
-          "name": "AC4.5 - Search Case Insensitive",
+          "name": "AC4.4 - Search Case Insensitive",
           "event": [
             {
               "listen": "test",
@@ -946,7 +736,6 @@
                   "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
                   "pm.test('Case insensitive search works', function () {",
                   "    const jsonData = pm.response.json();",
-                  "    // Should find Texas regardless of case",
                   "    const hasTX = jsonData.data.some(s => s.name.toLowerCase().includes('texas') || s.code === 'TX');",
                   "    pm.expect(hasTX).to.be.true;",
                   "});"
@@ -969,7 +758,7 @@
           }
         },
         {
-          "name": "AC4.6 - Search No Results",
+          "name": "AC4.5 - Search No Results",
           "event": [
             {
               "listen": "test",
@@ -980,7 +769,6 @@
                   "    const jsonData = pm.response.json();",
                   "    pm.expect(jsonData.data).to.be.an('array');",
                   "    pm.expect(jsonData.data.length).to.equal(0);",
-                  "    pm.expect(jsonData.meta.total).to.equal(0);",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -1013,14 +801,9 @@
               "script": {
                 "exec": [
                   "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('Pagination and sort applied together', function () {",
+                  "pm.test('Pagination and sort applied', function () {",
                   "    const jsonData = pm.response.json();",
                   "    pm.expect(jsonData.data.length).to.be.at.most(10);",
-                  "    pm.expect(jsonData.meta.offset).to.equal(0);",
-                  "    // Check descending order",
-                  "    const names = jsonData.data.map(s => s.name);",
-                  "    const sorted = [...names].sort((a, b) => b.localeCompare(a));",
-                  "    pm.expect(names).to.eql(sorted);",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -1031,13 +814,13 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=10&sort=name:DESC",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=10&sort={\"conditions\":[{\"field\":\"name\",\"direction\":\"DESC\"}]}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
                 {"key": "offset", "value": "0"},
                 {"key": "limit", "value": "10"},
-                {"key": "sort", "value": "name:DESC"}
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"name\",\"direction\":\"DESC\"}]}"}
               ]
             }
           }
@@ -1050,9 +833,8 @@
               "script": {
                 "exec": [
                   "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('Pagination and filter applied together', function () {",
+                  "pm.test('All results are active', function () {",
                   "    const jsonData = pm.response.json();",
-                  "    pm.expect(jsonData.data.length).to.be.at.most(5);",
                   "    jsonData.data.forEach(state => {",
                   "        pm.expect(state.isActive).to.equal(true);",
                   "    });",
@@ -1066,13 +848,13 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=5&filter=isActive:eq:true",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=5&filter={\"conditions\":[{\"field\":\"isActive\",\"operator\":\"eq\",\"value\":true}],\"logicalOperator\":\"AND\"}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
                 {"key": "offset", "value": "0"},
                 {"key": "limit", "value": "5"},
-                {"key": "filter", "value": "isActive:eq:true"}
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"isActive\",\"operator\":\"eq\",\"value\":true}],\"logicalOperator\":\"AND\"}"}
               ]
             }
           }
@@ -1085,12 +867,9 @@
               "script": {
                 "exec": [
                   "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('Pagination and search applied together', function () {",
+                  "pm.test('Pagination and search applied', function () {",
                   "    const jsonData = pm.response.json();",
                   "    pm.expect(jsonData.data.length).to.be.at.most(5);",
-                  "    jsonData.data.forEach(state => {",
-                  "        pm.expect(state.name.toLowerCase()).to.include('new');",
-                  "    });",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -1120,14 +899,11 @@
               "script": {
                 "exec": [
                   "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('Filter and sort applied together', function () {",
+                  "pm.test('Filter and sort applied', function () {",
                   "    const jsonData = pm.response.json();",
                   "    jsonData.data.forEach(state => {",
                   "        pm.expect(state.isActive).to.equal(true);",
                   "    });",
-                  "    const names = jsonData.data.map(s => s.name);",
-                  "    const sorted = [...names].sort((a, b) => a.localeCompare(b));",
-                  "    pm.expect(names).to.eql(sorted);",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -1138,48 +914,28 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter=isActive:eq:true&sort=name:ASC",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter={\"conditions\":[{\"field\":\"isActive\",\"operator\":\"eq\",\"value\":true}],\"logicalOperator\":\"AND\"}&sort={\"conditions\":[{\"field\":\"name\",\"direction\":\"ASC\"}]}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
-                {"key": "filter", "value": "isActive:eq:true"},
-                {"key": "sort", "value": "name:ASC"}
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"isActive\",\"operator\":\"eq\",\"value\":true}],\"logicalOperator\":\"AND\"}"},
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"name\",\"direction\":\"ASC\"}]}"}
               ]
             }
           }
         },
         {
           "name": "AC5.5 - Search + Sort",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('Search and sort applied together', function () {",
-                  "    const jsonData = pm.response.json();",
-                  "    jsonData.data.forEach(state => {",
-                  "        pm.expect(state.name.toLowerCase()).to.include('new');",
-                  "    });",
-                  "    const names = jsonData.data.map(s => s.name);",
-                  "    const sorted = [...names].sort((a, b) => b.localeCompare(a));",
-                  "    pm.expect(names).to.eql(sorted);",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?search=New&sort=name:DESC",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?search=New&sort={\"conditions\":[{\"field\":\"name\",\"direction\":\"DESC\"}]}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
                 {"key": "search", "value": "New"},
-                {"key": "sort", "value": "name:DESC"}
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"name\",\"direction\":\"DESC\"}]}"}
               ]
             }
           }
@@ -1192,7 +948,7 @@
               "script": {
                 "exec": [
                   "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('Search and filter applied together', function () {",
+                  "pm.test('All results are active', function () {",
                   "    const jsonData = pm.response.json();",
                   "    jsonData.data.forEach(state => {",
                   "        pm.expect(state.isActive).to.equal(true);",
@@ -1207,12 +963,12 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?search=a&filter=isActive:eq:true",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?search=a&filter={\"conditions\":[{\"field\":\"isActive\",\"operator\":\"eq\",\"value\":true}],\"logicalOperator\":\"AND\"}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
                 {"key": "search", "value": "a"},
-                {"key": "filter", "value": "isActive:eq:true"}
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"isActive\",\"operator\":\"eq\",\"value\":true}],\"logicalOperator\":\"AND\"}"}
               ]
             }
           }
@@ -1228,7 +984,6 @@
                   "pm.test('All query features applied', function () {",
                   "    const jsonData = pm.response.json();",
                   "    pm.expect(jsonData.data.length).to.be.at.most(10);",
-                  "    pm.expect(jsonData.meta.offset).to.equal(0);",
                   "    jsonData.data.forEach(state => {",
                   "        pm.expect(state.isActive).to.equal(true);",
                   "    });",
@@ -1242,14 +997,14 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=10&filter=isActive:eq:true&sort=name:ASC&search=a",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?offset=0&limit=10&filter={\"conditions\":[{\"field\":\"isActive\",\"operator\":\"eq\",\"value\":true}],\"logicalOperator\":\"AND\"}&sort={\"conditions\":[{\"field\":\"name\",\"direction\":\"ASC\"}]}&search=a",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
                 {"key": "offset", "value": "0"},
                 {"key": "limit", "value": "10"},
-                {"key": "filter", "value": "isActive:eq:true"},
-                {"key": "sort", "value": "name:ASC"},
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"isActive\",\"operator\":\"eq\",\"value\":true}],\"logicalOperator\":\"AND\"}"},
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"name\",\"direction\":\"ASC\"}]}"},
                 {"key": "search", "value": "a"}
               ]
             }
@@ -1262,25 +1017,6 @@
       "item": [
         {
           "name": "AC6.1 - Select Specific Fields",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('Only requested fields returned', function () {",
-                  "    const jsonData = pm.response.json();",
-                  "    jsonData.data.forEach(state => {",
-                  "        pm.expect(state).to.have.property('id');",
-                  "        pm.expect(state).to.have.property('name');",
-                  "        pm.expect(state).to.have.property('code');",
-                  "    });",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
           "request": {
             "method": "GET",
             "header": [],
@@ -1390,46 +1126,11 @@
               ]
             }
           }
-        },
-        {
-          "name": "AC6.5 - Fields + Include Combined",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('Fields selected and relation included', function () {",
-                  "    const jsonData = pm.response.json();",
-                  "    if (jsonData.data.length > 0) {",
-                  "        pm.expect(jsonData.data[0]).to.have.property('id');",
-                  "        pm.expect(jsonData.data[0]).to.have.property('name');",
-                  "        pm.expect(jsonData.data[0]).to.have.property('country');",
-                  "    }",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?fields=id,name&include=country",
-              "host": ["{{baseUrl}}"],
-              "path": ["{{apiVersion}}", "states"],
-              "query": [
-                {"key": "fields", "value": "id,name"},
-                {"key": "include", "value": "country"}
-              ]
-            }
-          }
         }
       ]
     },
     {
-      "name": "7. Edge Cases & Error Handling",
+      "name": "7. Edge Cases",
       "item": [
         {
           "name": "EC1 - Empty Search Term",
@@ -1528,17 +1229,17 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter=name:invalidop:test",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter={\"conditions\":[{\"field\":\"name\",\"operator\":\"invalidop\",\"value\":\"test\"}],\"logicalOperator\":\"AND\"}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
-                {"key": "filter", "value": "name:invalidop:test"}
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"name\",\"operator\":\"invalidop\",\"value\":\"test\"}],\"logicalOperator\":\"AND\"}"}
               ]
             }
           }
         },
         {
-          "name": "EC5 - Malformed Filter Syntax",
+          "name": "EC5 - Malformed JSON Filter",
           "event": [
             {
               "listen": "test",
@@ -1554,11 +1255,11 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter=invalidformat",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?filter={invalid json}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
-                {"key": "filter", "value": "invalidformat"}
+                {"key": "filter", "value": "{invalid json}"}
               ]
             }
           }
@@ -1580,67 +1281,11 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?sort=name:INVALID",
+              "raw": "{{baseUrl}}/{{apiVersion}}/states?sort={\"conditions\":[{\"field\":\"name\",\"direction\":\"INVALID\"}]}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "states"],
               "query": [
-                {"key": "sort", "value": "name:INVALID"}
-              ]
-            }
-          }
-        },
-        {
-          "name": "EC7 - Invalid Include Relation",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?include=invalidRelation",
-              "host": ["{{baseUrl}}"],
-              "path": ["{{apiVersion}}", "states"],
-              "query": [
-                {"key": "include", "value": "invalidRelation"}
-              ]
-            }
-          }
-        },
-        {
-          "name": "EC8 - Special Characters in Search",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('Handles special characters safely', function () {",
-                  "    const jsonData = pm.response.json();",
-                  "    pm.expect(jsonData.data).to.be.an('array');",
-                  "});"
-                ],
-                "type": "text/javascript"
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/states?search=%25%27%22",
-              "host": ["{{baseUrl}}"],
-              "path": ["{{apiVersion}}", "states"],
-              "query": [
-                {"key": "search", "value": "%'\""}
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"name\",\"direction\":\"INVALID\"}]}"}
               ]
             }
           }

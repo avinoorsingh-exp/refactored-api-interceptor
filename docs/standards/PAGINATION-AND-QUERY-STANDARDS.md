@@ -134,72 +134,66 @@ interface PaginationMeta {
 
 ## Filtering
 
-### Simple Filter Syntax
+### JSON Filter Syntax
 
-Filters use a clean `field:operator:value` format:
-
-```
-GET /v1/states?filter=isActive:eq:true
-GET /v1/countries?filter=name:contains:United
-GET /v1/countries?filter=dialingCode:eq:1
-```
-
-### Multiple Filters
-
-Multiple filters are combined with AND logic:
+Filters use a JSON object with `conditions` array and `logicalOperator`:
 
 ```
-GET /v1/states?filter=isActive:eq:true&filter=code:in:CA,TX,FL
+GET /v1/states?filter={"conditions":[{"field":"isActive","operator":"eq","value":true}],"logicalOperator":"AND"}
+```
+
+### Multiple Conditions
+
+Multiple conditions are combined within the `conditions` array:
+
+```
+GET /v1/states?filter={"conditions":[{"field":"isActive","operator":"eq","value":true},{"field":"code","operator":"in","value":["CA","TX","FL"]}],"logicalOperator":"AND"}
 ```
 
 ### Supported Operators
 
-| Operator | Description | Example |
-|----------|-------------|---------|
-| `eq` | Equal to | `name:eq:California` |
-| `neq` | Not equal to | `code:neq:TX` |
-| `gt` | Greater than | `id:gt:100` |
-| `gte` | Greater than or equal | `dialingCode:gte:1` |
-| `lt` | Less than | `number:lt:500` |
-| `lte` | Less than or equal | `id:lte:100` |
-| `contains` | Contains (case-insensitive) | `name:contains:united` |
-| `in` | In array (comma-separated) | `code:in:CA,TX,FL` |
+| Operator | Description | Example Value |
+|----------|-------------|---------------|
+| `eq` | Equal to | `"California"` or `true` |
+| `neq` | Not equal to | `"TX"` |
+| `gt` | Greater than | `100` |
+| `gte` | Greater than or equal | `1` |
+| `lt` | Less than | `500` |
+| `lte` | Less than or equal | `100` |
+| `like` | SQL LIKE pattern | `"%United%"` |
+| `ilike` | Case-insensitive LIKE | `"%united%"` |
+| `in` | In array | `["CA","TX","FL"]` |
 
-### Legacy JSON Filter Syntax (Deprecated)
-
-The JSON filter format is still supported for backward compatibility:
+### Filter Schema
 
 ```json
 {
   "conditions": [
-    { "field": "name", "operator": "ilike", "value": "test" },
+    { "field": "name", "operator": "like", "value": "%test%" },
     { "field": "id", "operator": "gt", "value": 100 }
   ],
   "logicalOperator": "AND"
 }
 ```
 
-**Note:** The simple `field:operator:value` syntax is preferred for new integrations.
-
 ---
 
 ## Sorting
 
-### Simple Sort Syntax
+### JSON Sort Syntax
 
-Sorting uses a `field:direction` format:
-
-```
-GET /v1/countries?sort=name:ASC
-GET /v1/states?sort=created:DESC
-```
-
-### Multiple Sorts
-
-Multiple sort conditions can be chained:
+Sorting uses a JSON object with `conditions` array:
 
 ```
-GET /v1/states?sort=isActive:DESC&sort=name:ASC
+GET /v1/countries?sort={"conditions":[{"field":"name","direction":"ASC"}]}
+```
+
+### Multiple Sort Fields
+
+Multiple sort conditions are specified in the `conditions` array:
+
+```
+GET /v1/states?sort={"conditions":[{"field":"isActive","direction":"DESC"},{"field":"name","direction":"ASC"}]}
 ```
 
 ### Sort Directions
