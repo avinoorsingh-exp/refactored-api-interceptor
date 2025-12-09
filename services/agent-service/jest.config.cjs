@@ -16,6 +16,7 @@ module.exports = {
     '^@exprealty/shared-domain$': '<rootDir>/../../packages/shared-domain/src/index.ts',
     '^@exprealty/database$': '<rootDir>/../../packages/database/src/index.ts',
     '^@exprealty/logger$': '<rootDir>/../../packages/logger/src/index.ts',
+    '^@exprealty/logger/metrics$': '<rootDir>/../../packages/logger/src/metrics.ts',
     '^@exprealty/config$': '<rootDir>/../../packages/config/src/index.ts',
     '^@exprealty/cache$': '<rootDir>/../../packages/cache/src/index.ts',
   },
