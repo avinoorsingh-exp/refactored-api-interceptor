@@ -18,9 +18,10 @@ import { PAY_PLANS_PROJECTION_CONFIG } from './config/pay-plans-projection.confi
 const PAY_PLANS_QUERY_CONFIG: BaseQueryConfig = {
 	allowedFilterFields: ['id', 'name', 'active', 'agentPercentage', 'cap'],
 	allowedSortFields: ['name', 'active', 'agentPercentage', 'cap', 'created', 'lastModified'],
-	allowedSearchFields: ['name'],
+	allowedSearchFields: ['name', 'active', 'agentPercentage', 'cap'],
 	defaultSort: { field: 'name', direction: 'ASC' },
 	projectionConfig: PAY_PLANS_PROJECTION_CONFIG,
+	useStrategySearch: true, // Enable type-aware search for numeric/boolean fields
 };
 
 /**
