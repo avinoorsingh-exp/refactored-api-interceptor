@@ -387,3 +387,100 @@ describe('StatesController', () => {
     });
   });
 });
+
+/**
+ * UUID Validation Tests for States Controller
+ * Tests AC3 for GET /states/{id}: Invalid UUID format returns 400 Bad Request
+ * Validates: Requirements 1.7
+ */
+describe('StatesController UUID Validation', () => {
+  const { StateIdParamSchema } = require('@exprealty/shared-domain');
+  const { ZodValidationPipe } = require('../../common/zod-validation.pipe.js');
+
+  const validationPipe = new ZodValidationPipe(StateIdParamSchema, 'agent.state.validation');
+
+  describe('GET /v1/states/:id - UUID format validation (AC3)', () => {
+    /**
+     * Test valid UUID format passes validation
+     */
+    it('should accept valid UUID format', async () => {
+      const validUuids = [
+        '550e8400-e29b-41d4-a716-446655440000',
+        '123e4567-e89b-12d3-a456-426614174000',
+        'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+      ];
+
+      for (const uuid of validUuids) {
+        const result = await validationPipe.transform({ id: uuid }, { type: 'param' });
+        expect(result.id).toBe(uuid);
+      }
+    });
+
+    /**
+     * Test invalid UUID format throws BadRequestException
+     * AC3: Given {id} is not a valid UUID format, Then return 400 Bad Request
+     */
+    it('should reject invalid UUID format with BadRequestException', async () => {
+      const invalidUuids = [
+        'not-a-uuid',
+        '12345',
+        'invalid-uuid-format',
+        '550e8400-e29b-41d4-a716', // incomplete
+        '550e8400e29b41d4a716446655440000', // missing dashes
+        'ZZZZZZZZ-ZZZZ-ZZZZ-ZZZZ-ZZZZZZZZZZZZ', // invalid characters
+        '', // empty string
+      ];
+
+      for (const invalidUuid of invalidUuids) {
+        await expect(
+          validationPipe.transform({ id: invalidUuid }, { type: 'param' })
+        ).rejects.toThrow();
+      }
+    });
+
+    /**
+     * Test that validation error includes machine-readable error details
+     * AC3: Return 400 Bad Request with a machine-readable error
+     */
+    it('should include machine-readable error details for invalid UUID', async () => {
+      try {
+        await validationPipe.transform({ id: 'not-a-uuid' }, { type: 'param' });
+        fail('Expected validation to throw');
+      } catch (error: any) {
+        expect(error.getStatus()).toBe(400);
+        const response = error.getResponse();
+        expect(response._zodIssues).toBeDefined();
+        expect(response._i18nType).toBe('agent.state.validation');
+      }
+    });
+
+    /**
+     * Test missing id parameter
+     */
+    it('should reject missing id parameter', async () => {
+      await expect(
+        validationPipe.transform({}, { type: 'param' })
+      ).rejects.toThrow();
+    });
+
+    /**
+     * Test null id parameter
+     */
+    it('should reject null id parameter', async () => {
+      await expect(
+        validationPipe.transform({ id: null }, { type: 'param' })
+      ).rejects.toThrow();
+    });
+  });
+
+  describe('PUT /v1/states/:id - UUID format validation (AC3)', () => {
+    /**
+     * Test that PUT endpoint also validates UUID format
+     */
+    it('should reject invalid UUID format on update endpoint', async () => {
+      await expect(
+        validationPipe.transform({ id: 'invalid-uuid' }, { type: 'param' })
+      ).rejects.toThrow();
+    });
+  });
+});
