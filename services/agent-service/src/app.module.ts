@@ -10,6 +10,7 @@ import { CountriesModule } from './modules/countries/countries.module.js'
 import { CompaniesModule } from './modules/companies/companies.module.js'
 import { RegionsModule } from './modules/regions/regions.module.js'
 import { StatesModule } from './modules/states/states.module.js'
+import { PayPlansModule } from './modules/pay-plans/pay-plans.module.js'
 import { CorrelationIdMiddleware } from './common/correlation-id.middleware.js'
 
 @Module({
@@ -23,6 +24,7 @@ import { CorrelationIdMiddleware } from './common/correlation-id.middleware.js'
     CompaniesModule,
     RegionsModule,
     StatesModule,
+    PayPlansModule,
 	],
 	controllers: [AgentController],
 	providers: [],

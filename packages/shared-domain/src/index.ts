@@ -779,6 +779,28 @@ export {
 } from './schemas/state-program.js'
 
 // ============================================================================
+// ENTITIES - PAY PLAN
+// ============================================================================
+
+/**
+ * PayPlan entity schemas and types.
+ * @public
+ */
+export {
+	PayPlanBaseSchema,
+	PayPlanExpandedSchema,
+	type PayPlan,
+	type PayPlanBase,
+	type PayPlanExpanded,
+	CreatePayPlanInputSchema,
+	type CreatePayPlanInput,
+	UpdatePayPlanInputSchema,
+	type UpdatePayPlanInput,
+	PayPlanIdParamSchema,
+	type PayPlanIdParam,
+} from './schemas/pay-plan.js'
+
+// ============================================================================
 // ENTITIES - ORGANIZATION CONTACT
 // ============================================================================
 

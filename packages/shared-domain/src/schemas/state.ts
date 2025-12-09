@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { InstantUTC } from '../value-objects/dates.js'
+import { AuditableSchema } from './audit.js'
 import { EmailBranded } from '../value-objects/email.js'
 
 /**
@@ -15,15 +15,13 @@ export const StateBaseSchema = z
 		isActive: z.boolean(),
 		email: EmailBranded.optional(),
 		signatureDistributionEmail: EmailBranded.optional(),
-		created: InstantUTC,
-		lastModified: InstantUTC,
-		modifiedBy: z.string().max(255),
 		regionId: z
 			.string()
 			.regex(/^\d+$/, { message: 'errors.state.regionId.invalid' })
 			.describe('Foreign key to region (bigint as string)'),
 		countryId: z.number().int(),
 	})
+	.merge(AuditableSchema)
 	.describe('Base State')
 
 /**
