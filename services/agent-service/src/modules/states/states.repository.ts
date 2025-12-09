@@ -18,9 +18,10 @@ import { STATES_PROJECTION_CONFIG } from './config/states-projection.config.js';
 const STATES_QUERY_CONFIG: BaseQueryConfig = {
 	allowedFilterFields: ['id', 'name', 'code', 'isActive', 'regionId', 'countryId'],
 	allowedSortFields: ['name', 'code', 'created', 'lastModified'],
-	allowedSearchFields: ['name', 'code'],
+	allowedSearchFields: ['name', 'code', 'regionId', 'countryId'],
 	defaultSort: { field: 'name', direction: 'ASC' },
 	projectionConfig: STATES_PROJECTION_CONFIG,
+	useStrategySearch: true, // Enable type-aware search for numeric fields (regionId, countryId)
 };
 
 /**
