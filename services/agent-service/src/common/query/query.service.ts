@@ -1,6 +1,6 @@
 
 
-import { Injectable, Inject, Optional } from '@nestjs/common';
+import { Injectable, Inject, Optional, BadRequestException } from '@nestjs/common';
 import { SelectQueryBuilder, Brackets, ObjectLiteral } from 'typeorm';
 import {
 	getFilterableFields,
@@ -403,6 +403,25 @@ export class QueryService {
     
     if (fieldConfigs.length === 0) {
       return qb;
+    }
+
+    // Validate search term against all field validators
+    const validationErrors: string[] = [];
+    fieldConfigs.forEach((config) => {
+      if (config.validate) {
+        const result = config.validate(searchQuery, config.field, config.type);
+        if (!result.valid && result.error) {
+          validationErrors.push(`${config.field}: ${result.error}`);
+        }
+      }
+    });
+
+    // If any validation failed, throw BadRequestException
+    if (validationErrors.length > 0) {
+      throw new BadRequestException({
+        message: 'Search validation failed',
+        errors: validationErrors,
+      });
     }
 
     qb.andWhere(

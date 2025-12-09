@@ -1,4 +1,5 @@
 import { Brackets, ObjectLiteral, SelectQueryBuilder } from 'typeorm';
+import type { SearchValidator, SearchValidationOptions } from '../../decorators/searchable-decorators.js';
 
 /**
  * Field type for search strategy selection
@@ -30,6 +31,12 @@ export interface SearchableFieldConfig {
   
   // Optional: Boost relevance score (for ranking)
   weight?: number;
+
+  // Optional: Custom validation function for search values
+  validate?: SearchValidator;
+
+  // Optional: Validation options for declarative validation
+  validationOptions?: SearchValidationOptions;
 }
 
 /**

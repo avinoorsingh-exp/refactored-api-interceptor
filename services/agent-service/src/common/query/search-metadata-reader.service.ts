@@ -7,6 +7,7 @@ import {
   SearchableOptions,
   SearchableFieldType,
   SearchableFieldConfig,
+  SearchValidators,
 } from '@exprealty/database';
 
 /**
@@ -71,11 +72,15 @@ export class SearchMetadataReader {
         ? this.mapStringToFieldType(options.type)
         : this.inferFieldTypeFromColumn(column.type as string, column.propertyName);
 
+      // Auto-assign validator based on type if not provided
+      const validate = options.validate ?? this.getDefaultValidator(fieldType, column.type as string);
+
       const config: SearchableFieldConfig = {
         field: propertyName,
         type: fieldType,
         weight: options.weight || 5, // Default weight
         searchBehavior: options.behavior,
+        validate,
       };
 
       configs.push(config);
@@ -197,5 +202,29 @@ export class SearchMetadataReader {
     };
 
     return typeMap[type.toLowerCase()] || SearchableFieldType.STRING;
+  }
+
+  /**
+   * Get default validator based on field type and column type
+   * Automatically assigns range validators for integer/bigint columns
+   */
+  private getDefaultValidator(
+    fieldType: SearchableFieldType,
+    columnType: string,
+  ): ((value: any, field: string, fieldType: string) => { valid: boolean; error?: string; sanitized?: any }) | undefined {
+    const typeStr = String(columnType).toLowerCase();
+
+    // Integer types get integer range validator
+    if (fieldType === SearchableFieldType.INTEGER) {
+      if (typeStr.includes('bigint')) {
+        return SearchValidators.bigint;
+      }
+      if (typeStr.includes('int') && !typeStr.includes('bigint')) {
+        return SearchValidators.integer;
+      }
+    }
+
+    // Numeric/decimal types don't need range validation (very large range)
+    return undefined;
   }
 }

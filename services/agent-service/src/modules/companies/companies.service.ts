@@ -101,8 +101,8 @@ export class CompaniesService {
 		// Build query with TypeORM query builder
 		const qb = this.companyRepository.createQueryBuilder('company')
 
-		// Apply filters, search, and sorting
-		this.queryService.applyAll(qb, normalized, 'company')
+		// Apply filters, search, and sorting with strategy-based search for numeric fields
+		this.queryService.applyAllWithStrategies(qb, normalized, CompanyEntity, 'company')
 
 		// Default sort by name ASC if no sort specified (AC-2)
 		if (!normalized.sort || normalized.sort.conditions.length === 0) {
