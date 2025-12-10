@@ -11,6 +11,18 @@ module.exports = {
     '!src/**/*.e2e-spec.ts',
     '!src/main.ts',
   ],
+  coveragePathIgnorePatterns: [
+    '/node_modules/',
+    '/dist/',
+    '\\.dto\\.ts$',              // Exclude simple DTOs
+    '\\.interface\\.ts$',         // Exclude interfaces
+    '\\.types\\.ts$',             // Exclude type definitions
+    '\\.constants\\.ts$',         // Exclude constants
+    '/migrations/',              // Exclude DB migrations
+    'main\\.ts$',                // Exclude bootstrap file
+  ],
+  coverageReporters: ['text', 'text-summary', 'lcov', 'json-summary', 'cobertura'],
+  coverageDirectory: '<rootDir>/coverage',
   moduleNameMapper: {
     ...unitPreset.moduleNameMapper,
     '^@exprealty/shared-domain$': '<rootDir>/../../packages/shared-domain/src/index.ts',

@@ -46,11 +46,53 @@ pipeline
       when {
         anyOf {
           branch 'dev'
+          branch 'test'
           expression { env.BRANCH_NAME.startsWith('feature/') }
         }
       }
       steps {
         script {
+          // Run local tests with coverage
+          try {
+            sh '''
+              cd services/agent-service
+              npm ci --legacy-peer-deps
+              npx jest --coverage --ci --reporters=default --reporters=jest-junit || true
+            '''
+            
+            // Archive coverage artifacts
+            archiveArtifacts artifacts: 'services/agent-service/coverage/**/*', allowEmptyArchive: true
+            
+            // Publish coverage report
+            publishHTML(target: [
+              allowMissing: true,
+              alwaysLinkToLastBuild: true,
+              keepAll: true,
+              reportDir: 'services/agent-service/coverage/lcov-report',
+              reportFiles: 'index.html',
+              reportName: 'Coverage Report'
+            ])
+            
+            // Parse and display coverage summary
+            def coverageSummary = readJSON file: 'services/agent-service/coverage/coverage-summary.json'
+            def total = coverageSummary.total
+            echo "=============================="
+            echo "CODE COVERAGE SUMMARY"
+            echo "=============================="
+            echo "Statements: ${total.statements.pct}% (${total.statements.covered}/${total.statements.total})"
+            echo "Branches:   ${total.branches.pct}% (${total.branches.covered}/${total.branches.total})"
+            echo "Functions:  ${total.functions.pct}% (${total.functions.covered}/${total.functions.total})"
+            echo "Lines:      ${total.lines.pct}% (${total.lines.covered}/${total.lines.total})"
+            echo "=============================="
+            
+            // Set build description with coverage
+            currentBuild.description = "Coverage: ${total.lines.pct}% lines, ${total.branches.pct}% branches"
+            
+          } catch (Exception e) {
+            echo "Coverage collection failed: ${e.message}"
+          }
+          
+          // Also trigger centralized coverage job
           try {
             build job: 'Transaction Calculator/centralized-coverage/main',
               wait: false,
