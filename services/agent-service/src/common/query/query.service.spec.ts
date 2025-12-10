@@ -35,6 +35,7 @@ describe('QueryService', () => {
     mockQueryBuilder = {
       andWhere: jest.fn().mockReturnThis(),
       orWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
       addOrderBy: jest.fn().mockReturnThis(),
     } as unknown as jest.Mocked<SelectQueryBuilder<MockEntity>>;
   });
@@ -240,6 +241,7 @@ describe('QueryService', () => {
     it('should not modify query builder when no sort provided', () => {
       service.applySorting(mockQueryBuilder, undefined, 'entity');
 
+      expect(mockQueryBuilder.orderBy).not.toHaveBeenCalled();
       expect(mockQueryBuilder.addOrderBy).not.toHaveBeenCalled();
     });
 
@@ -248,10 +250,11 @@ describe('QueryService', () => {
 
       service.applySorting(mockQueryBuilder, sort, 'entity');
 
+      expect(mockQueryBuilder.orderBy).not.toHaveBeenCalled();
       expect(mockQueryBuilder.addOrderBy).not.toHaveBeenCalled();
     });
 
-    it('should apply single sort condition with reserved word quoting', () => {
+    it('should use orderBy for single sort condition with reserved word quoting', () => {
       const sort: Sort = {
         conditions: [{ field: 'name', direction: 'ASC' }],
       };
@@ -259,10 +262,12 @@ describe('QueryService', () => {
       service.applySorting(mockQueryBuilder, sort, 'entity');
 
       // 'name' is a reserved word and should be quoted
-      expect(mockQueryBuilder.addOrderBy).toHaveBeenCalledWith('entity."name"', 'ASC');
+      // First (and only) condition uses orderBy, not addOrderBy
+      expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith('entity."name"', 'ASC');
+      expect(mockQueryBuilder.addOrderBy).not.toHaveBeenCalled();
     });
 
-    it('should apply multiple sort conditions with proper quoting', () => {
+    it('should use orderBy for first condition and addOrderBy for subsequent conditions', () => {
       const sort: Sort = {
         conditions: [
           { field: 'status', direction: 'ASC' },    // not a reserved word
@@ -272,8 +277,11 @@ describe('QueryService', () => {
 
       service.applySorting(mockQueryBuilder, sort, 'entity');
 
-      expect(mockQueryBuilder.addOrderBy).toHaveBeenCalledTimes(2);
-      expect(mockQueryBuilder.addOrderBy).toHaveBeenCalledWith('entity.status', 'ASC');
+      // First condition uses orderBy
+      expect(mockQueryBuilder.orderBy).toHaveBeenCalledTimes(1);
+      expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith('entity.status', 'ASC');
+      // Second condition uses addOrderBy
+      expect(mockQueryBuilder.addOrderBy).toHaveBeenCalledTimes(1);
       expect(mockQueryBuilder.addOrderBy).toHaveBeenCalledWith('entity.createdAt', 'DESC');
     });
 
@@ -296,7 +304,9 @@ describe('QueryService', () => {
       service.applySorting(mockQueryBuilder, sort, 'country');
 
       // 'number' is a reserved word and should be quoted
-      expect(mockQueryBuilder.addOrderBy).toHaveBeenCalledWith('country."number"', 'ASC');
+      // Single condition uses orderBy
+      expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith('country."number"', 'ASC');
+      expect(mockQueryBuilder.addOrderBy).not.toHaveBeenCalled();
     });
 
     it('should not quote non-reserved word column (dialingCode) when sorting', () => {
@@ -307,7 +317,9 @@ describe('QueryService', () => {
       service.applySorting(mockQueryBuilder, sort, 'country');
 
       // 'dialingCode' is not a reserved word, should not be quoted
-      expect(mockQueryBuilder.addOrderBy).toHaveBeenCalledWith('country.dialingCode', 'DESC');
+      // Single condition uses orderBy
+      expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith('country.dialingCode', 'DESC');
+      expect(mockQueryBuilder.addOrderBy).not.toHaveBeenCalled();
     });
 
     it('should handle mixed reserved and non-reserved columns in sort', () => {
@@ -321,8 +333,11 @@ describe('QueryService', () => {
 
       service.applySorting(mockQueryBuilder, sort, 'country');
 
-      expect(mockQueryBuilder.addOrderBy).toHaveBeenCalledTimes(3);
-      expect(mockQueryBuilder.addOrderBy).toHaveBeenCalledWith('country."name"', 'ASC');
+      // First condition uses orderBy
+      expect(mockQueryBuilder.orderBy).toHaveBeenCalledTimes(1);
+      expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith('country."name"', 'ASC');
+      // Subsequent conditions use addOrderBy
+      expect(mockQueryBuilder.addOrderBy).toHaveBeenCalledTimes(2);
       expect(mockQueryBuilder.addOrderBy).toHaveBeenCalledWith('country."number"', 'DESC');
       expect(mockQueryBuilder.addOrderBy).toHaveBeenCalledWith('country.dialingCode', 'ASC');
     });
@@ -388,7 +403,7 @@ describe('QueryService', () => {
 
       // Filter, search, and sort should all be applied
       expect(mockQueryBuilder.andWhere).toHaveBeenCalled();
-      expect(mockQueryBuilder.addOrderBy).toHaveBeenCalled();
+      expect(mockQueryBuilder.orderBy).toHaveBeenCalled(); // Single sort uses orderBy
     });
 
     it('should handle empty params', () => {
@@ -689,7 +704,7 @@ describe('QueryService', () => {
       service.applyAllWithStrategies(mockQueryBuilder, params, MockEntity, 'entity');
 
       expect(mockQueryBuilder.andWhere).toHaveBeenCalled();
-      expect(mockQueryBuilder.addOrderBy).toHaveBeenCalled();
+      expect(mockQueryBuilder.orderBy).toHaveBeenCalled(); // Single sort uses orderBy
     });
 
     it('should handle empty params', () => {
@@ -720,6 +735,7 @@ describe('QueryService - Property-Based Tests', () => {
     mockQueryBuilder = {
       andWhere: jest.fn().mockReturnThis(),
       orWhere: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
       addOrderBy: jest.fn().mockReturnThis(),
     } as unknown as jest.Mocked<SelectQueryBuilder<MockEntity>>;
   });
@@ -850,12 +866,13 @@ describe('QueryService - Property-Based Tests', () => {
               conditions: [{ field, direction: direction as 'ASC' | 'DESC' }],
             };
 
+            mockQueryBuilder.orderBy.mockClear();
             mockQueryBuilder.addOrderBy.mockClear();
 
             service.applySorting(mockQueryBuilder, sort, 'entity');
 
-            // Invariant: reserved words are quoted
-            expect(mockQueryBuilder.addOrderBy).toHaveBeenCalledWith(
+            // Invariant: reserved words are quoted, single condition uses orderBy
+            expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith(
               expect.stringContaining(`"${field}"`),
               direction,
             );
@@ -875,12 +892,13 @@ describe('QueryService - Property-Based Tests', () => {
               conditions: [{ field, direction: direction as 'ASC' | 'DESC' }],
             };
 
+            mockQueryBuilder.orderBy.mockClear();
             mockQueryBuilder.addOrderBy.mockClear();
 
             service.applySorting(mockQueryBuilder, sort, 'entity');
 
-            // Invariant: non-reserved words are not quoted
-            expect(mockQueryBuilder.addOrderBy).toHaveBeenCalledWith(
+            // Invariant: non-reserved words are not quoted, single condition uses orderBy
+            expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith(
               `entity.${field}`,
               direction,
             );
