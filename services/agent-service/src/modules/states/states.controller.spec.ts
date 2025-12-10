@@ -420,7 +420,7 @@ describe('StatesController UUID Validation', () => {
      * Test invalid UUID format throws BadRequestException
      * AC3: Given {id} is not a valid UUID format, Then return 400 Bad Request
      */
-    it('should reject invalid UUID format with BadRequestException', async () => {
+    it('should reject invalid UUID format with BadRequestException', () => {
       const invalidUuids = [
         'not-a-uuid',
         '12345',
@@ -432,9 +432,9 @@ describe('StatesController UUID Validation', () => {
       ];
 
       for (const invalidUuid of invalidUuids) {
-        await expect(
+        expect(() =>
           validationPipe.transform({ id: invalidUuid }, { type: 'param' })
-        ).rejects.toThrow();
+        ).toThrow();
       }
     });
 
@@ -457,19 +457,19 @@ describe('StatesController UUID Validation', () => {
     /**
      * Test missing id parameter
      */
-    it('should reject missing id parameter', async () => {
-      await expect(
+    it('should reject missing id parameter', () => {
+      expect(() =>
         validationPipe.transform({}, { type: 'param' })
-      ).rejects.toThrow();
+      ).toThrow();
     });
 
     /**
      * Test null id parameter
      */
-    it('should reject null id parameter', async () => {
-      await expect(
+    it('should reject null id parameter', () => {
+      expect(() =>
         validationPipe.transform({ id: null }, { type: 'param' })
-      ).rejects.toThrow();
+      ).toThrow();
     });
   });
 
@@ -477,10 +477,10 @@ describe('StatesController UUID Validation', () => {
     /**
      * Test that PUT endpoint also validates UUID format
      */
-    it('should reject invalid UUID format on update endpoint', async () => {
-      await expect(
+    it('should reject invalid UUID format on update endpoint', () => {
+      expect(() =>
         validationPipe.transform({ id: 'invalid-uuid' }, { type: 'param' })
-      ).rejects.toThrow();
+      ).toThrow();
     });
   });
 });
