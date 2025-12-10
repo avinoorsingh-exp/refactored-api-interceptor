@@ -323,7 +323,7 @@ export class QueryService {
       return qb;
     }
 
-    sort.conditions.forEach((condition) => {
+    sort.conditions.forEach((condition, index) => {
       // Validate field is allowed
       if (allowedFields && allowedFields.size > 0 && !allowedFields.has(condition.field)) {
         throw new Error(`Field '${condition.field}' is not allowed for sorting`);
@@ -331,7 +331,13 @@ export class QueryService {
 
       // Quote the field name if it's a reserved word
       const quotedField = this.quoteIfReserved(condition.field);
-      qb.addOrderBy(`${alias}.${quotedField}`, condition.direction);
+      
+      // First condition uses orderBy (sets primary sort), subsequent use addOrderBy
+      if (index === 0) {
+        qb.orderBy(`${alias}.${quotedField}`, condition.direction);
+      } else {
+        qb.addOrderBy(`${alias}.${quotedField}`, condition.direction);
+      }
     });
 
     return qb;

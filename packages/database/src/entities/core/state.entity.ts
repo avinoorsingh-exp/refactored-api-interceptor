@@ -51,6 +51,7 @@ export class StateEntity extends AuditableEntity {
 		type: 'text',
 		nullable: true,
 	})
+	@Searchable({ weight: 5, behavior: 'partial', description: 'Signature distribution email' })
 	@Filterable()
 	@Sortable()
 	signatureDistributionEmail?: string
