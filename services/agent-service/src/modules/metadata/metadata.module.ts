@@ -4,6 +4,7 @@ import {
   CompanyEntity,
   RegionEntity,
   StateEntity,
+  OfficeEntity,
 } from '@exprealty/database';
 import { MetadataService } from './metadata.service.js';
 import { MetadataController } from './metadata.controller.js';
@@ -34,6 +35,7 @@ import { EntityRegistry } from '../../common/database/entity-registry.service.js
         registry.register('companies', CompanyEntity);
         registry.register('regions', RegionEntity);
         registry.register('states', StateEntity);
+        registry.register('offices', OfficeEntity);
         return registry;
       },
       inject: [EntityRegistry],
