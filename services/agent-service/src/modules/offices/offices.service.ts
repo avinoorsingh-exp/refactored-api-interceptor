@@ -49,7 +49,7 @@ export class OfficesService {
 			const savedOffice = await this.repository.create(dto as any);
 
 			const duration = Date.now() - startTime;
-			this.logger.log(
+			this.logger.info(
 				`Office created successfully: ${savedOffice.id} (${savedOffice.name}) in ${duration}ms`,
 			);
 
@@ -65,7 +65,7 @@ export class OfficesService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to create office ${dto.name}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			// Re-throw for controller to handle
@@ -110,7 +110,7 @@ export class OfficesService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to retrieve office ${id}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			throw error;
@@ -154,7 +154,7 @@ export class OfficesService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to retrieve office ${name}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			throw error;
@@ -184,7 +184,7 @@ export class OfficesService {
 
 			this.logger.error(
 				`Failed to retrieve offices for company ${companyId}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			throw error;
@@ -215,7 +215,7 @@ export class OfficesService {
 
 			this.logger.error(
 				`Failed to retrieve offices: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			throw error;
@@ -259,7 +259,7 @@ export class OfficesService {
 			const updatedOffice = await this.repository.update(id, dto as any);
 
 			const duration = Date.now() - startTime;
-			this.logger.log(
+			this.logger.info(
 				`Office updated successfully: ${updatedOffice.id} (${updatedOffice.name}) in ${duration}ms`,
 			);
 
@@ -275,7 +275,7 @@ export class OfficesService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to update office ${id}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			throw error;

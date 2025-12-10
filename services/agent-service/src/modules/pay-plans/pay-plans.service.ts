@@ -47,7 +47,7 @@ export class PayPlansService {
 			const savedPayPlan = await this.repository.create(dto as any);
 
 			const duration = Date.now() - startTime;
-			this.logger.log(
+			this.logger.info(
 				`Pay plan created successfully: ${savedPayPlan.id} (${savedPayPlan.name}) in ${duration}ms`,
 			);
 
@@ -63,7 +63,7 @@ export class PayPlansService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to create pay plan ${dto.name}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			// Re-throw for controller to handle
@@ -108,7 +108,7 @@ export class PayPlansService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to retrieve pay plan ${id}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			throw error;
@@ -152,7 +152,7 @@ export class PayPlansService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to retrieve pay plan ${name}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			throw error;
@@ -197,7 +197,7 @@ export class PayPlansService {
 			const updatedPayPlan = await this.repository.update(id, dto as any);
 
 			const duration = Date.now() - startTime;
-			this.logger.log(
+			this.logger.info(
 				`Pay plan updated successfully: ${updatedPayPlan.id} (${updatedPayPlan.name}) in ${duration}ms`,
 			);
 
@@ -213,7 +213,7 @@ export class PayPlansService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to update pay plan ${id}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			throw error;
@@ -244,7 +244,7 @@ export class PayPlansService {
 
 			this.logger.error(
 				`Failed to retrieve pay plans: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			throw error;

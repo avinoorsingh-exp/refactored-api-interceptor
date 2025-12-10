@@ -4,7 +4,11 @@ import {
 	OfficeEntity, 
 	CompanyEntity,
 	AgentOfficeEntity,
+	AgentEntity,
 	OfficeExternalReferenceEntity,
+	ExternalReferenceEntity,
+	AgentExternalReferenceEntity,
+	CompanyExternalReferenceEntity,
 } from '@exprealty/database';
 import { OfficesController } from './offices.controller.js';
 import { OfficesService } from './offices.service.js';
@@ -21,19 +25,28 @@ import { ProjectionService } from '../../common/query/projection.service.js';
  * 
  * Note: QueryService is provided by QueryModule (imported globally in AppModule)
  * 
- * Entity Registration Chain (TypeORM requires all related entities):
- * OfficeEntity → CompanyEntity
- *              → AgentOfficeEntity
- *              → OfficeExternalReferenceEntity
+ * Entity Registration (full graph for TypeORM metadata resolution):
+ * - OfficeEntity: Main entity for this module
+ * - CompanyEntity: Required for ManyToOne company relation
+ * - AgentOfficeEntity: Junction table for Office-Agent relation
+ * - AgentEntity: Required by AgentOfficeEntity ManyToOne
+ * - OfficeExternalReferenceEntity: Junction table for Office-ExternalReference
+ * - ExternalReferenceEntity: Required by OfficeExternalReferenceEntity ManyToOne
+ * - AgentExternalReferenceEntity: Required by ExternalReferenceEntity OneToMany
+ * - CompanyExternalReferenceEntity: Required by ExternalReferenceEntity OneToMany
  */
 @Module({
 	imports: [
-		// Register OfficeEntity and all related entities for TypeORM metadata resolution
+		// Register OfficeEntity and full entity graph for TypeORM metadata resolution
 		TypeOrmModule.forFeature([
 			OfficeEntity,
 			CompanyEntity,
 			AgentOfficeEntity,
+			AgentEntity,
 			OfficeExternalReferenceEntity,
+			ExternalReferenceEntity,
+			AgentExternalReferenceEntity,
+			CompanyExternalReferenceEntity,
 		]),
 		PaginationModule,
 	],

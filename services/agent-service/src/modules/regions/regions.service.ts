@@ -53,7 +53,7 @@ export class RegionsService {
 			})
 
 			const duration = Date.now() - startTime
-			this.logger.log(
+			this.logger.info(
 				`Region created successfully: ${savedRegion.id} (${savedRegion.name}) in ${duration}ms`,
 			)
 
@@ -69,7 +69,7 @@ export class RegionsService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to create region ${dto.name}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			)
 
 			// Re-throw for controller to handle
@@ -114,7 +114,7 @@ export class RegionsService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to retrieve region ${id}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			)
 
 			// Re-throw for controller to handle
@@ -168,7 +168,7 @@ export class RegionsService {
 			})
 
 			const duration = Date.now() - startTime
-			this.logger.log(
+			this.logger.info(
 				`Region updated successfully: ${updatedRegion.id} in ${duration}ms`,
 			)
 
@@ -187,7 +187,7 @@ export class RegionsService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to update region ${id}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			)
 
 			// Re-throw for controller to handle
@@ -210,7 +210,7 @@ export class RegionsService {
 			const result = await this.repository.findPage(query)
 
 			const duration = Date.now() - startTime
-			this.logger.log(
+			this.logger.info(
 				`Retrieved ${result.items.length} regions (offset: ${query.offset ?? 0}, limit: ${query.limit ?? 10}, ` +
 				`filter: ${query.filter ? 'yes' : 'no'}, sort: ${query.sort ? 'yes' : 'no'}, search: ${query.search ? 'yes' : 'no'}, total: ${result.total}) in ${duration}ms`,
 			)
@@ -223,7 +223,7 @@ export class RegionsService {
 			const duration = Date.now() - startTime
 			this.logger.error(
 				`Failed to retrieve regions page: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			)
 			throw error
 		}
