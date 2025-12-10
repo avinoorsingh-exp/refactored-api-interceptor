@@ -1,6 +1,7 @@
-import { Injectable, ConflictException, Logger, NotFoundException, Inject } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, Inject } from '@nestjs/common';
 import type { IStatesRepository } from './ports/states.repository.port.js';
 import type { CreateStateInput, UpdateStateInput, State, QueryParams, FieldSelection } from '@exprealty/shared-domain';
+import { LoggerService } from '../../core/logger.service.js';
 
 /**
  * Application service for managing State aggregate.
@@ -14,12 +15,13 @@ import type { CreateStateInput, UpdateStateInput, State, QueryParams, FieldSelec
  */
 @Injectable()
 export class StatesService {
-	private readonly logger = new Logger(StatesService.name);
-
 	constructor(
 		@Inject('IStatesRepository')
 		private readonly repository: IStatesRepository,
-	) {}
+		private readonly logger: LoggerService,
+	) {
+		this.logger.setContext(StatesService.name)
+	}
 
 	/**
 	 * Creates a new state record.

@@ -1,6 +1,7 @@
-import { Injectable, ConflictException, Logger, NotFoundException, Inject } from '@nestjs/common'
+import { Injectable, ConflictException, NotFoundException, Inject } from '@nestjs/common'
 import type { IRegionsRepository } from './ports/regions.repository.port.js'
 import type { CreateRegionInput, UpdateRegionInput, Region, QueryParams } from '@exprealty/shared-domain'
+import { LoggerService } from '../../core/logger.service.js'
 
 /**
  * Application service for managing Region aggregate.
@@ -14,12 +15,13 @@ import type { CreateRegionInput, UpdateRegionInput, Region, QueryParams } from '
  */
 @Injectable()
 export class RegionsService {
-	private readonly logger = new Logger(RegionsService.name)
-
 	constructor(
 		@Inject('IRegionsRepository')
 		private readonly repository: IRegionsRepository,
-	) {}
+		private readonly logger: LoggerService,
+	) {
+		this.logger.setContext(RegionsService.name)
+	}
 
 	/**
 	 * Creates a new region record.

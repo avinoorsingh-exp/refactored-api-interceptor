@@ -1,6 +1,7 @@
 import { Injectable, ConflictException, Logger, NotFoundException, Inject } from '@nestjs/common';
 import type { IPayPlansRepository } from './ports/pay-plans.repository.port.js';
 import type { CreatePayPlanInput, UpdatePayPlanInput, PayPlan, QueryParams, FieldSelection } from '@exprealty/shared-domain';
+import { LoggerService } from '../../core/logger.service.js';
 
 /**
  * Application service for managing PayPlan aggregate.
@@ -14,12 +15,12 @@ import type { CreatePayPlanInput, UpdatePayPlanInput, PayPlan, QueryParams, Fiel
  */
 @Injectable()
 export class PayPlansService {
-	private readonly logger = new Logger(PayPlansService.name);
-
 	constructor(
 		@Inject('IPayPlansRepository')
-		private readonly repository: IPayPlansRepository,
-	) {}
+		private readonly repository: IPayPlansRepository,private readonly logger: LoggerService
+	) {
+		this.logger.setContext(PayPlansService.name);
+	}
 
 	/**
 	 * Creates a new pay plan record.

@@ -1,7 +1,8 @@
-import { Injectable, ConflictException, Logger, Inject } from '@nestjs/common'
+import { Injectable, ConflictException, Inject } from '@nestjs/common'
 import type { CreateCountryInput, Country, QueryParams } from '@exprealty/shared-domain'
 import type { ICountriesRepository } from './ports/countries.repository.port.js'
 import { CountryResponseDto } from './dto/country-response.dto.js'
+import { LoggerService } from '../../core/logger.service.js'
 
 /**
  * Service for managing Country entities.
@@ -17,12 +18,13 @@ import { CountryResponseDto } from './dto/country-response.dto.js'
  */
 @Injectable()
 export class CountriesService {
-	private readonly logger = new Logger(CountriesService.name)
-
 	constructor(
 		@Inject('ICountriesRepository')
 		private readonly countriesRepository: ICountriesRepository,
-	) {}
+		private readonly logger: LoggerService,
+	) {
+		this.logger.setContext(CountriesService.name)
+	}
 
 	/**
 	 * Creates a new country record.
