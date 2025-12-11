@@ -45,6 +45,7 @@ export class OfficeEntity extends AuditableEntity {
 	@Column({ type: 'text', nullable: true })
 	@Searchable({ weight: 4, behavior: 'partial', description: 'Office website URL' })
 	@Filterable()
+	@Sortable()
 	website?: string
 
 	/**
@@ -72,6 +73,7 @@ export class OfficeEntity extends AuditableEntity {
 	 * @public
 	 */
 	@Column({ name: 'lifecycle_status', type: 'text' })
+	@Searchable({ weight: 6, behavior: 'exact', description: 'Office lifecycle status (new, active, pending_*, withdrawn, missing_broker_agent)' })
 	@Filterable()
 	@Sortable()
 	lifecycleStatus!: OfficeLifecycleStatus
