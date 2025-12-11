@@ -35,6 +35,7 @@ export const OFFICES_PROJECTION_CONFIG: ProjectionConfig = {
 		'created',
 		'lastModified',
 		'modifiedBy',
+		'company',
 	],
 
 	// Available relations
