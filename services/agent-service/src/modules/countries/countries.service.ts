@@ -1,7 +1,8 @@
-import { Injectable, ConflictException, Logger, Inject } from '@nestjs/common'
+import { Injectable, ConflictException, Inject } from '@nestjs/common'
 import type { CreateCountryInput, Country, QueryParams } from '@exprealty/shared-domain'
 import type { ICountriesRepository } from './ports/countries.repository.port.js'
 import { CountryResponseDto } from './dto/country-response.dto.js'
+import { LoggerService } from '../../core/logger.service.js'
 
 /**
  * Service for managing Country entities.
@@ -17,12 +18,13 @@ import { CountryResponseDto } from './dto/country-response.dto.js'
  */
 @Injectable()
 export class CountriesService {
-	private readonly logger = new Logger(CountriesService.name)
-
 	constructor(
 		@Inject('ICountriesRepository')
 		private readonly countriesRepository: ICountriesRepository,
-	) {}
+		private readonly logger: LoggerService,
+	) {
+		this.logger.setContext(CountriesService.name)
+	}
 
 	/**
 	 * Creates a new country record.
@@ -39,7 +41,7 @@ export class CountriesService {
 			const country = await this.countriesRepository.create(createCountryDto)
 
 			const duration = Date.now() - startTime
-			this.logger.log(
+			this.logger.info(
 				`Country created successfully: ${country.alpha2} (${country.id}) in ${duration}ms`,
 			)
 
@@ -50,7 +52,7 @@ export class CountriesService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to create country ${createCountryDto.alpha2}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			)
 
 			// Re-throw for controller to handle
@@ -76,7 +78,7 @@ export class CountriesService {
 
 			const duration = Date.now() - startTime
 			const operation = result.created ? 'created' : 'updated'
-			this.logger.log(
+			this.logger.info(
 				`Country ${operation}: ${result.country.alpha2} (${result.country.id}) in ${duration}ms`,
 			)
 
@@ -85,7 +87,7 @@ export class CountriesService {
 			const duration = Date.now() - startTime
 			this.logger.error(
 				`Failed to upsert country ${dto.alpha2}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			)
 			throw error
 		}
@@ -106,13 +108,13 @@ export class CountriesService {
 			const duration = Date.now() - startTime
 			
 			if (country) {
-				this.logger.log(
+				this.logger.info(
 					`Country found: ${country.alpha2} (${country.id}) in ${duration}ms`,
 				)
 				return country
 			}
 
-			this.logger.log(
+			this.logger.info(
 				`Country not found: ${code} in ${duration}ms`,
 			)
 			return null
@@ -120,7 +122,7 @@ export class CountriesService {
 			const duration = Date.now() - startTime
 			this.logger.error(
 				`Failed to find country ${code}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			)
 			throw error
 		}
@@ -140,7 +142,7 @@ export class CountriesService {
 			const result = await this.countriesRepository.findPage(query)
 
 			const duration = Date.now() - startTime
-			this.logger.log(
+			this.logger.info(
 				`Countries page retrieved: ${result.items.length} items (offset=${query.offset ?? 0}, limit=${query.limit ?? 10}, ` +
 				`filter: ${query.filter ? 'yes' : 'no'}, sort: ${query.sort ? 'yes' : 'no'}, search: ${query.search ? 'yes' : 'no'}, total=${result.total}) in ${duration}ms`,
 			)
@@ -150,7 +152,7 @@ export class CountriesService {
 			const duration = Date.now() - startTime
 			this.logger.error(
 				`Failed to retrieve countries page: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			)
 			throw error
 		}

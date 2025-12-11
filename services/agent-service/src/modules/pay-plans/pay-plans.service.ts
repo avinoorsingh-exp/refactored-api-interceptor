@@ -1,6 +1,7 @@
 import { Injectable, ConflictException, Logger, NotFoundException, Inject } from '@nestjs/common';
 import type { IPayPlansRepository } from './ports/pay-plans.repository.port.js';
 import type { CreatePayPlanInput, UpdatePayPlanInput, PayPlan, QueryParams, FieldSelection } from '@exprealty/shared-domain';
+import { LoggerService } from '../../core/logger.service.js';
 
 /**
  * Application service for managing PayPlan aggregate.
@@ -14,12 +15,12 @@ import type { CreatePayPlanInput, UpdatePayPlanInput, PayPlan, QueryParams, Fiel
  */
 @Injectable()
 export class PayPlansService {
-	private readonly logger = new Logger(PayPlansService.name);
-
 	constructor(
 		@Inject('IPayPlansRepository')
-		private readonly repository: IPayPlansRepository,
-	) {}
+		private readonly repository: IPayPlansRepository,private readonly logger: LoggerService
+	) {
+		this.logger.setContext(PayPlansService.name);
+	}
 
 	/**
 	 * Creates a new pay plan record.
@@ -46,7 +47,7 @@ export class PayPlansService {
 			const savedPayPlan = await this.repository.create(dto as any);
 
 			const duration = Date.now() - startTime;
-			this.logger.log(
+			this.logger.info(
 				`Pay plan created successfully: ${savedPayPlan.id} (${savedPayPlan.name}) in ${duration}ms`,
 			);
 
@@ -62,7 +63,7 @@ export class PayPlansService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to create pay plan ${dto.name}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			// Re-throw for controller to handle
@@ -107,7 +108,7 @@ export class PayPlansService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to retrieve pay plan ${id}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			throw error;
@@ -151,7 +152,7 @@ export class PayPlansService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to retrieve pay plan ${name}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			throw error;
@@ -196,7 +197,7 @@ export class PayPlansService {
 			const updatedPayPlan = await this.repository.update(id, dto as any);
 
 			const duration = Date.now() - startTime;
-			this.logger.log(
+			this.logger.info(
 				`Pay plan updated successfully: ${updatedPayPlan.id} (${updatedPayPlan.name}) in ${duration}ms`,
 			);
 
@@ -212,7 +213,7 @@ export class PayPlansService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to update pay plan ${id}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			throw error;
@@ -243,7 +244,7 @@ export class PayPlansService {
 
 			this.logger.error(
 				`Failed to retrieve pay plans: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			throw error;

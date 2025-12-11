@@ -1,6 +1,7 @@
-import { Injectable, ConflictException, Logger, NotFoundException, Inject } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, Inject } from '@nestjs/common';
 import type { IStatesRepository } from './ports/states.repository.port.js';
 import type { CreateStateInput, UpdateStateInput, State, QueryParams, FieldSelection } from '@exprealty/shared-domain';
+import { LoggerService } from '../../core/logger.service.js';
 
 /**
  * Application service for managing State aggregate.
@@ -14,12 +15,13 @@ import type { CreateStateInput, UpdateStateInput, State, QueryParams, FieldSelec
  */
 @Injectable()
 export class StatesService {
-	private readonly logger = new Logger(StatesService.name);
-
 	constructor(
 		@Inject('IStatesRepository')
 		private readonly repository: IStatesRepository,
-	) {}
+		private readonly logger: LoggerService,
+	) {
+		this.logger.setContext(StatesService.name)
+	}
 
 	/**
 	 * Creates a new state record.
@@ -46,7 +48,7 @@ export class StatesService {
 			const savedState = await this.repository.create(dto as any);
 
 			const duration = Date.now() - startTime;
-			this.logger.log(
+			this.logger.info(
 				`State created successfully: ${savedState.id} (${savedState.code}) in ${duration}ms`,
 			);
 
@@ -62,7 +64,7 @@ export class StatesService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to create state ${dto.code}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			// Re-throw for controller to handle
@@ -107,7 +109,7 @@ export class StatesService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to retrieve state ${id}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			// Re-throw for controller to handle
@@ -152,7 +154,7 @@ export class StatesService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to retrieve state by code ${code}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			// Re-throw for controller to handle
@@ -203,7 +205,7 @@ export class StatesService {
 			const updatedState = await this.repository.update(id, dto as any);
 
 			const duration = Date.now() - startTime;
-			this.logger.log(
+			this.logger.info(
 				`State updated successfully: ${updatedState.id} in ${duration}ms`,
 			);
 
@@ -222,7 +224,7 @@ export class StatesService {
 			// Log unexpected errors
 			this.logger.error(
 				`Failed to update state ${id}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 
 			// Re-throw for controller to handle
@@ -246,7 +248,7 @@ export class StatesService {
 			const result = await this.repository.findPage(query, selection);
 
 			const duration = Date.now() - startTime;
-			this.logger.log(
+			this.logger.info(
 				`Retrieved ${result.items.length} states (offset: ${query.offset ?? 0}, limit: ${query.limit ?? 25}, ` +
 				`filter: ${query.filter ? 'yes' : 'no'}, sort: ${query.sort ? 'yes' : 'no'}, search: ${query.search ? 'yes' : 'no'}, total: ${result.total}) in ${duration}ms`,
 			);
@@ -259,7 +261,7 @@ export class StatesService {
 			const duration = Date.now() - startTime;
 			this.logger.error(
 				`Failed to retrieve states page: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
-				error instanceof Error ? error.stack : undefined,
+				{ stack: error instanceof Error ? error.stack : undefined },
 			);
 			throw error;
 		}

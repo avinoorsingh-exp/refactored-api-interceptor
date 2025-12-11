@@ -185,6 +185,30 @@ export {
 } from './schemas/company.js'
 
 // ============================================================================
+// ENTITIES - OFFICE
+// ============================================================================
+
+/**
+ * Office entity schemas and types.
+ * @public
+ */
+export {
+	OfficeLifecycleStatus,
+	OfficeBaseSchema,
+	OfficeExpandedSchema,
+	OfficeSchema,
+	type OfficeBase,
+	type OfficeExpanded,
+	type Office,
+	CreateOfficeInputSchema,
+	type CreateOfficeInput,
+	UpdateOfficeInputSchema,
+	type UpdateOfficeInput,
+	OfficeIdParamSchema,
+	type OfficeIdParam,
+} from './schemas/office.js'
+
+// ============================================================================
 // ENTITIES - AGENT COMPANY
 // ============================================================================
 

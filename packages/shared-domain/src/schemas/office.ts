@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { UrlBranded } from '../value-objects/index.js'
+import { AuditableSchema } from './audit.js'
 
 /**
  * Office lifecycle status.
@@ -8,8 +9,7 @@ import { UrlBranded } from '../value-objects/index.js'
 export const OfficeLifecycleStatus = z
 	.enum([
 		'new',
-		'pending',
-		'due_diligence',
+		'pending_due_diligence',
 		'pending_payment',
 		'active',
 		'withdrawn',
@@ -25,14 +25,21 @@ export const OfficeLifecycleStatus = z
  */
 export const OfficeBaseSchema = z
 	.object({
-		id: z.string().uuid(),
-		officeId: z.bigint(),
-		website: UrlBranded.nullable(),
+		id: z
+			.string()
+			.regex(/^\d+$/, { message: 'errors.office.id.invalid' })
+			.describe('Primary key (bigint as string)'),
+		website: UrlBranded.nullable().optional(),
 		name: z.string().max(255),
 		phone: z.string().max(20),
 		lifecycleStatus: OfficeLifecycleStatus,
 		primaryState: z.string().max(200),
+		companyId: z
+			.string()
+			.regex(/^\d+$/, { message: 'errors.office.companyId.invalid' })
+			.describe('Foreign key to company (bigint as string)'),
 	})
+	.merge(AuditableSchema)
 	.describe('Base Office for list views')
 
 /**
@@ -42,7 +49,8 @@ export const OfficeBaseSchema = z
  * @public
  */
 export const OfficeExpandedSchema = OfficeBaseSchema.extend({
-	agentOffices: z.lazy(() => z.array(z.any())).optional(), // AgentOfficeBaseSchema[]
+	company: z.lazy(() => z.any()).optional().describe('Parent company relationship'),
+	agentOffices: z.lazy(() => z.array(z.any())).optional(),
 	officeExternalReferences: z.lazy(() => z.array(z.any())).optional(),
 }).describe('Expanded Office with relationships')
 
@@ -60,3 +68,66 @@ export type OfficeExpanded = z.infer<typeof OfficeExpandedSchema>
  * @public
  */
 export type Office = OfficeExpanded
+
+/**
+ * Legacy schema for backward compatibility.
+ * @deprecated Use OfficeExpandedSchema instead
+ * @public
+ */
+export const OfficeSchema = OfficeExpandedSchema
+
+/**
+ * Zod schema for creating a new office.
+ * Omits system-generated fields (id, timestamps).
+ *
+ * @public
+ */
+export const CreateOfficeInputSchema = OfficeBaseSchema.omit({
+	id: true,
+	created: true,
+	lastModified: true,
+	modifiedBy: true,
+})
+	.extend({
+		name: z.string().min(1).max(255).trim(),
+		phone: z.string().min(1).max(20).trim(),
+		primaryState: z.string().min(1).max(200).trim(),
+	})
+	.describe('Input schema for creating a new office')
+
+/**
+ * Zod schema for updating an office.
+ * All fields optional for partial updates.
+ *
+ * @public
+ */
+export const UpdateOfficeInputSchema = CreateOfficeInputSchema.partial().describe(
+	'Input schema for updating an office'
+)
+
+/**
+ * @public
+ */
+export type CreateOfficeInput = z.infer<typeof CreateOfficeInputSchema>
+
+/**
+ * @public
+ */
+export type UpdateOfficeInput = z.infer<typeof UpdateOfficeInputSchema>
+
+/**
+ * Zod schema for validating office id path parameter.
+ * Reuses validation from OfficeBaseSchema.shape.id.
+ *
+ * @public
+ */
+export const OfficeIdParamSchema = z.object({
+	id: OfficeBaseSchema.shape.id,
+})
+
+/**
+ * TypeScript type for office id path parameter.
+ *
+ * @public
+ */
+export type OfficeIdParam = z.infer<typeof OfficeIdParamSchema>

@@ -133,20 +133,25 @@ export abstract class BaseTypeOrmRepository<
 		const qb = this.repo.createQueryBuilder(alias)
 
         if(config.projectionConfig && selection){
-            
-            this.projectionService.applyProjection(
-                qb,
-                alias,
-                selection,
-                config.projectionConfig
-            );
-
+			// IMPORTANT: Apply relations FIRST, then projection
+			// TypeORM's select() can break metadata resolution if called before leftJoinAndSelect
             this.projectionService.applyRelations(
                 qb,
                 alias,
                 selection,
                 config.projectionConfig
             );
+
+			// Only apply field projection if NO relations are being loaded
+			// When relations are included, we need all entity fields for proper join resolution
+			if (!selection.include || selection.include.length === 0) {
+				this.projectionService.applyProjection(
+					qb,
+					alias,
+					selection,
+					config.projectionConfig
+				);
+			}
         }
 		// Apply custom query modifications if provided
 		if (customizeQuery) {
@@ -204,19 +209,25 @@ export abstract class BaseTypeOrmRepository<
 
 		// Apply projection if configured
 		if (config.projectionConfig && selection) {
-			this.projectionService.applyProjection(
-				qb,
-				entityAlias,
-				selection,
-				config.projectionConfig,
-			)
-
+			// IMPORTANT: Apply relations FIRST, then projection
+			// TypeORM's select() can break metadata resolution if called before leftJoinAndSelect
 			this.projectionService.applyRelations(
 				qb,
 				entityAlias,
 				selection,
 				config.projectionConfig,
 			)
+
+			// Only apply field projection if NO relations are being loaded
+			// When relations are included, we need all entity fields for proper join resolution
+			if (!selection.include || selection.include.length === 0) {
+				this.projectionService.applyProjection(
+					qb,
+					entityAlias,
+					selection,
+					config.projectionConfig,
+				)
+			}
 		}
 
 		// Apply cursor condition
