@@ -26,6 +26,7 @@ export const OFFICES_PROJECTION_CONFIG: ProjectionConfig = {
 	// This is your "summary" view
 	default: [
 		'id',
+		'website',
 		'name',
 		'phone',
 		'lifecycleStatus',

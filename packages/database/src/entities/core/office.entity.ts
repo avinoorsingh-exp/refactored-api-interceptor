@@ -64,6 +64,7 @@ export class OfficeEntity extends AuditableEntity {
 	@Column({ type: 'text' })
 	@Searchable({ weight: 5, behavior: 'partial', description: 'Office phone number' })
 	@Filterable()
+	@Sortable()
 	phone!: string
 
 	/**
