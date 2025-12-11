@@ -72,7 +72,11 @@ export class OfficesTypeOrmRepository
 			created: entity.created as Office['created'],
 			lastModified: entity.lastModified as Office['lastModified'],
 			modifiedBy: entity.modifiedBy,
-			company: entity.company,
+			// Map company relation - spread all fields, override BigInt id for JSON serialization
+			company: entity.company ? {
+				...entity.company,
+				id: String(entity.company.id),
+			} : undefined,
 			agentOffices: entity.agentOffices,
 			officeExternalReferences: entity.officeExternalReferences,
 		};

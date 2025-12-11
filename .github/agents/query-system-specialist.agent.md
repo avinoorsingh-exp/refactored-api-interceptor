@@ -106,3 +106,43 @@ GET /v1/states?offset=0&limit=10&filter=...&sort=...&search=test
 ```
 
 When working with queries, always ensure fields are decorated with @Filterable, @Sortable, or @Searchable in the entity.
+
+### Repository Domain Mapping Best Practices
+
+When reviewing or implementing `mapToDomain` methods in repositories, follow these patterns to minimize maintenance burden:
+
+**✅ Correct - Use spread operator, override only what needs transformation:**
+```typescript
+protected mapToDomain(entity: OfficeEntity): Office {
+  return {
+    id: entity.id,
+    name: entity.name,
+    // ... direct mappings for scalar fields
+    
+    // Relations: spread all fields, transform only what's needed
+    company: entity.company ? {
+      ...entity.company,
+      id: String(entity.company.id),  // Only transform BigInt → string
+    } : undefined,
+  };
+}
+```
+
+**❌ Avoid - Explicit field-by-field mapping creates maintenance burden:**
+```typescript
+// BAD: Every field must be updated when entity changes
+company: entity.company ? {
+  id: String(entity.company.id),
+  name: entity.company.name,
+  email: entity.company.email,
+  status: entity.company.status,
+  // ... N more fields that break when entity changes
+} : undefined,
+```
+
+**Review Checklist for `mapToDomain` Methods:**
+1. Use spread operator (`...entity.relation`) to auto-map all fields
+2. Only explicitly specify fields that need transformation (type conversion, formatting)
+3. Flag any explicit field-by-field mapping as a maintenance risk
+4. Apply same pattern to nested relations and array mappings
+5. Ensure BigInt primary keys are converted to strings for JSON serialization
