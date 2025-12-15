@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { UrlBranded } from '../value-objects/index.js'
 import { AuditableSchema } from './audit.js'
+import { trimmedStringMinMax } from './base-schemas.js'
 
 /**
  * Office lifecycle status.
@@ -30,7 +31,7 @@ export const OfficeBaseSchema = z
 			.regex(/^\d+$/, { message: 'errors.office.id.invalid' })
 			.describe('Primary key (bigint as string)'),
 		website: UrlBranded.nullable().optional(),
-		name: z.string().max(255),
+		name: trimmedStringMinMax(1, 255, 'Office name must be between 1 and 255 characters'),
 		phone: z.string().max(20),
 		lifecycleStatus: OfficeLifecycleStatus,
 		primaryState: z.string().max(200),
@@ -89,9 +90,8 @@ export const CreateOfficeInputSchema = OfficeBaseSchema.omit({
 	modifiedBy: true,
 })
 	.extend({
-		name: z.string().min(1).max(255).trim(),
-		phone: z.string().min(1).max(20).trim(),
-		primaryState: z.string().min(1).max(200).trim(),
+		phone: trimmedStringMinMax(1, 20, 'Phone must be between 1 and 20 characters'),
+		primaryState: trimmedStringMinMax(1, 200, 'Primary state must be between 1 and 200 characters'),
 	})
 	.describe('Input schema for creating a new office')
 

@@ -1,5 +1,3 @@
-// packages/@trupryce/shared-domain/src/database/services/entity-registry.service.ts
-
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { DataSource } from 'typeorm';

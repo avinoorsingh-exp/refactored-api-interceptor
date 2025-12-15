@@ -1004,7 +1004,13 @@ describe('QueryService - Property-Based Tests', () => {
     it('should throw error for invalid search fields during validation', () => {
       fc.assert(
         fc.property(
-          fc.string({ minLength: 1, maxLength: 20 }).filter((s) => s !== 'name'),
+          // Filter out 'name' (the valid field) and strings that become empty after trim
+          // because searchFields schema transforms comma-separated, trims, and filters empty
+          fc.string({ minLength: 1, maxLength: 20 }).filter((s) => {
+            const trimmed = s.trim();
+            // Must have non-whitespace content AND not be the valid 'name' field
+            return trimmed.length > 0 && s !== 'name' && trimmed !== 'name';
+          }),
           (invalidField) => {
             expect(() =>
               service.normalizeWithValidation({ search: 'test', searchFields: invalidField }, MockEntity),

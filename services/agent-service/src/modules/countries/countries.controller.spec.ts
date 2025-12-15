@@ -7,6 +7,7 @@ import type { ICountriesRepository } from './ports/countries.repository.port.js'
 import type { Country, CreateCountryInput } from '@exprealty/shared-domain';
 import type { Request, Response } from 'express';
 import { AsyncContextStorage, CorrelationIdHelper } from '@exprealty/cache';
+import { LoggerService } from '../../core/logger.service.js';
 
 describe('CountriesController', () => {
   let controller: CountriesController;
@@ -58,6 +59,16 @@ describe('CountriesController', () => {
         {
           provide: 'ICountriesRepository',
           useValue: repository,
+        },
+        {
+          provide: LoggerService,
+          useValue: {
+            setContext: jest.fn(),
+            info: jest.fn(),
+            debug: jest.fn(),
+            warn: jest.fn(),
+            error: jest.fn(),
+          },
         },
       ],
     }).compile();

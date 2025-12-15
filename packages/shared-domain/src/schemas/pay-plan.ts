@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { AuditableSchema } from './audit.js'
+import { trimmedStringMinMax } from './base-schemas.js'
 
 /**
  * Base schema for PayPlan entity.
@@ -9,7 +10,7 @@ import { AuditableSchema } from './audit.js'
 export const PayPlanBaseSchema = z
 	.object({
 		id: z.string().uuid(),
-		name: z.string().min(1).max(255),
+		name: trimmedStringMinMax(1, 255, 'Pay plan name must be between 1 and 255 characters'),
 		active: z.boolean(),
 		agentPercentage: z.number().min(0).max(100), // decimal percentage
 		cap: z.number().min(0), // decimal cap amount

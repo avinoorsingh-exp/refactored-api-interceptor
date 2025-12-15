@@ -2,6 +2,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { RegionsService } from './regions.service.js'
 import type { IRegionsRepository } from './ports/regions.repository.port.js';
 import type { Region, CreateRegionInput, UpdateRegionInput } from '@exprealty/shared-domain';
+import { LoggerService } from '../../core/logger.service.js';
 
 /**
  * Unit tests for RegionsService
@@ -11,6 +12,7 @@ import type { Region, CreateRegionInput, UpdateRegionInput } from '@exprealty/sh
 describe('RegionsService', () => {
   let service: RegionsService;
   let repository: jest.Mocked<IRegionsRepository>;
+  let logger: jest.Mocked<LoggerService>;
 
   const mockRegion: Region = {
     id: '550e8400-e29b-41d4-a716-446655440000',
@@ -31,7 +33,15 @@ describe('RegionsService', () => {
       findAll: jest.fn(),
     } as jest.Mocked<IRegionsRepository>;
 
-    service = new RegionsService(repository);
+    logger = {
+      setContext: jest.fn(),
+      info: jest.fn(),
+      debug: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    } as unknown as jest.Mocked<LoggerService>;
+
+    service = new RegionsService(repository, logger);
   });
 
   afterEach(() => {

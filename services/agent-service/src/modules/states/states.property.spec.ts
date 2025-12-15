@@ -5,6 +5,7 @@ import { StatesService } from './states.service.js';
 import type { IStatesRepository } from './ports/states.repository.port.js';
 import type { State, CreateStateInput, UpdateStateInput } from '@exprealty/shared-domain';
 import { stateArbitrary, createStateInputArbitrary, uuidArbitrary } from '../../../../../test/utils/generators.js';
+import { LoggerService } from '../../core/logger.service.js';
 
 /**
  * Property-Based Tests for States Module
@@ -131,6 +132,7 @@ describe('States Module Property Tests', () => {
   describe('Property 2: Service Operations Orchestrate Repository Calls (States)', () => {
     let service: StatesService;
     let mockRepository: jest.Mocked<IStatesRepository>;
+    let mockLogger: jest.Mocked<LoggerService>;
 
     beforeEach(() => {
       mockRepository = {
@@ -143,7 +145,15 @@ describe('States Module Property Tests', () => {
         delete: jest.fn(),
       } as jest.Mocked<IStatesRepository>;
 
-      service = new StatesService(mockRepository);
+      mockLogger = {
+        setContext: jest.fn(),
+        info: jest.fn(),
+        debug: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+      } as unknown as jest.Mocked<LoggerService>;
+
+      service = new StatesService(mockRepository, mockLogger);
     });
 
     it('should call repository.create for any valid create input when code is unique', async () => {
@@ -235,6 +245,7 @@ describe('States Module Property Tests', () => {
   describe('Property 3: Service Duplicate Detection Throws ConflictException (States)', () => {
     let service: StatesService;
     let mockRepository: jest.Mocked<IStatesRepository>;
+    let mockLogger: jest.Mocked<LoggerService>;
 
     beforeEach(() => {
       mockRepository = {
@@ -247,7 +258,15 @@ describe('States Module Property Tests', () => {
         delete: jest.fn(),
       } as jest.Mocked<IStatesRepository>;
 
-      service = new StatesService(mockRepository);
+      mockLogger = {
+        setContext: jest.fn(),
+        info: jest.fn(),
+        debug: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+      } as unknown as jest.Mocked<LoggerService>;
+
+      service = new StatesService(mockRepository, mockLogger);
     });
 
     it('should throw ConflictException on create when code already exists', async () => {
@@ -331,6 +350,7 @@ describe('States Module Property Tests', () => {
   describe('Property 4: Service Not Found Throws NotFoundException (States)', () => {
     let service: StatesService;
     let mockRepository: jest.Mocked<IStatesRepository>;
+    let mockLogger: jest.Mocked<LoggerService>;
 
     beforeEach(() => {
       mockRepository = {
@@ -343,7 +363,15 @@ describe('States Module Property Tests', () => {
         delete: jest.fn(),
       } as jest.Mocked<IStatesRepository>;
 
-      service = new StatesService(mockRepository);
+      mockLogger = {
+        setContext: jest.fn(),
+        info: jest.fn(),
+        debug: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+      } as unknown as jest.Mocked<LoggerService>;
+
+      service = new StatesService(mockRepository, mockLogger);
     });
 
     it('should throw NotFoundException for any non-existent ID', async () => {

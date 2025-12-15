@@ -7,7 +7,7 @@ import {
 	JoinColumn,
 } from 'typeorm'
 import { AuditableEntity } from './auditable.entity.js'
-import { Searchable, Filterable, Sortable } from '../../decorators/searchable-decorators.js'
+import { Searchable, Filterable, Sortable, SearchValidators } from '../../decorators/searchable-decorators.js'
 import { CompanyEntity } from './company.entity.js'
 
 /**
@@ -33,7 +33,7 @@ export class OfficeEntity extends AuditableEntity {
 	 * @public
 	 */
 	@PrimaryGeneratedColumn('increment', { type: 'bigint' })
-	@Searchable({ type: 'integer', weight: 3, behavior: 'exact', description: 'Unique office identifier' })
+	@Searchable({ type: 'integer', weight: 3, behavior: 'exact', description: 'Unique office identifier', validate: SearchValidators.bigint })
 	@Filterable()
 	@Sortable()
 	id!: string
@@ -52,7 +52,7 @@ export class OfficeEntity extends AuditableEntity {
 	 * Office name.
 	 * @public
 	 */
-	@Column({ type: 'text' })
+	@Column({ type: 'text', unique: true })
 	@Searchable({ weight: 10, behavior: 'partial', description: 'Office display name' })
 	@Filterable()
 	@Sortable()
@@ -93,7 +93,7 @@ export class OfficeEntity extends AuditableEntity {
 	 * @public
 	 */
 	@Column({ name: 'company_id', type: 'bigint' })
-	@Searchable({ type: 'integer', weight: 3, behavior: 'exact', description: 'Parent company ID' })
+	@Searchable({ type: 'integer', weight: 3, behavior: 'exact', description: 'Parent company ID', validate: SearchValidators.bigint })
 	@Filterable()
 	@Sortable()
 	companyId!: string

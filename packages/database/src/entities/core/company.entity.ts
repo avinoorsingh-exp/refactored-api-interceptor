@@ -5,7 +5,7 @@ import {
 } from 'typeorm'
 import type { Company, Name, Email } from '@exprealty/shared-domain'
 import { AuditableEntity } from './auditable.entity.js'
-import { Searchable, Filterable, Sortable } from '../../decorators/searchable-decorators.js'
+import { Searchable, Filterable, Sortable, SearchValidators } from '../../decorators/searchable-decorators.js'
 
 /**
  * TypeORM entity for Company table.
@@ -19,7 +19,7 @@ export class CompanyEntity extends AuditableEntity implements Company {
 	 * @public
 	 */
 	@PrimaryGeneratedColumn('increment', { type: 'bigint' })
-	@Searchable({ type: 'integer', weight: 3, behavior: 'exact', description: 'Unique company identifier' })
+	@Searchable({ type: 'integer', weight: 3, behavior: 'exact', description: 'Unique company identifier', validate: SearchValidators.bigint })
 	@Filterable()
 	@Sortable()
 	id!: string

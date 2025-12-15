@@ -1,6 +1,7 @@
 import { z } from 'zod'
-import { InstantUTC } from '../value-objects/dates.js'
+import { AuditableSchema } from './audit.js'
 import { MLS } from '../value-objects/contraints.js'
+import { trimmedStringMinMax } from './base-schemas.js'
 
 /**
  * MLS lifecycle status enum.
@@ -11,10 +12,10 @@ export const MLSLifecycleStatusSchema = z
 	.enum([
 		'active',
 		'archived',
-		'missing_broker',
-		'agent_closed',
+		'missing_broker_agent',
+		'closed',
 		'in_build',
-		'printing',
+		'pending',
 		'unknown',
 	])
 	.describe('MLS lifecycle status')
@@ -30,7 +31,7 @@ export type MLSLifecycleStatus = z.infer<typeof MLSLifecycleStatusSchema>
  * @public
  */
 export const MLSOrgTypeSchema = z
-	.enum(['association', 'mls', 'commercial_mls', 'technology_company'])
+	.enum(['association', 'mls', 'commercial', 'unknown', 'technology_company'])
 	.describe('MLS organization type')
 
 /**
@@ -45,19 +46,21 @@ export type MLSOrgType = z.infer<typeof MLSOrgTypeSchema>
  */
 export const MLSBaseSchema = z
 	.object({
-		mlsId: z.string(),
+		id: z
+			.string()
+			.regex(/^\d+$/, { message: 'errors.mls.id.invalid' })
+			.describe('Primary key (bigint as string)'),
 		ouid: z.string().max(MLS.ouid.max).optional(),
 		globalId: z.number().int().optional(),
 		lifecycleStatus: MLSLifecycleStatusSchema,
-		name: z.string().min(MLS.name.min).max(MLS.name.max),
+		name: trimmedStringMinMax(MLS.name.min, MLS.name.max, 'MLS name must be between 1 and 255 characters'),
 		shortName: z.string().max(MLS.shortName.max).optional(),
 		website: z.string().max(MLS.website.max).optional(),
 		orgType: MLSOrgTypeSchema,
-		larversionUrl: z.string().max(MLS.larversionUrl.max).optional(),
-		lastModified: InstantUTC,
-		modifiedBy: z.string().max(MLS.modifiedBy.max),
+		kunversionUrl: z.string().max(MLS.kunversionUrl.max).optional(),
 		addressId: z.string().optional(),
 	})
+	.merge(AuditableSchema)
 	.describe('Base MLS')
 
 /**
@@ -83,14 +86,20 @@ export type MLSExpanded = z.infer<typeof MLSExpandedSchema>
 /**
  * @public
  */
-export type MLS = MLSExpanded
+export type MLSType = MLSExpanded
 
 /**
  * Schema for creating a new MLS.
+ * Omits auto-generated fields (id, created, lastModified, modifiedBy).
  *
  * @public
  */
-export const CreateMLSInputSchema = MLSBaseSchema.omit({ mlsId: true })
+export const CreateMLSInputSchema = MLSBaseSchema.omit({
+	id: true,
+	created: true,
+	lastModified: true,
+	modifiedBy: true,
+})
 
 /**
  * @public
@@ -99,12 +108,35 @@ export type CreateMLSInput = z.infer<typeof CreateMLSInputSchema>
 
 /**
  * Schema for updating an MLS.
+ * All fields are optional for partial updates.
+ * Omits auto-generated fields.
  *
  * @public
  */
-export const UpdateMLSInputSchema = MLSBaseSchema.omit({ mlsId: true }).partial()
+export const UpdateMLSInputSchema = MLSBaseSchema.omit({
+	id: true,
+	created: true,
+	lastModified: true,
+	modifiedBy: true,
+}).partial()
 
 /**
  * @public
  */
 export type UpdateMLSInput = z.infer<typeof UpdateMLSInputSchema>
+
+/**
+ * Zod schema for validating MLS id path parameter.
+ *
+ * @public
+ */
+export const MLSIdParamSchema = z.object({
+	id: MLSBaseSchema.shape.id,
+})
+
+/**
+ * TypeScript type for MLS id path parameter.
+ *
+ * @public
+ */
+export type MLSIdParam = z.infer<typeof MLSIdParamSchema>

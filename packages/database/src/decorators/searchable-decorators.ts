@@ -12,6 +12,202 @@ const SORTABLE_FIELDS_KEY = Symbol('sortableFields');
 export type SearchableFieldType = 'string' | 'text' | 'numeric' | 'integer' | 'decimal' | 'date' | 'datetime' | 'boolean';
 
 /**
+ * Validation result from a search validator
+ */
+export interface SearchValidationResult {
+  valid: boolean;
+  error?: string;
+  sanitized?: any; // Sanitized/transformed value
+}
+
+/**
+ * Validator function type for search values
+ */
+export type SearchValidator = (
+  value: any,
+  field: string,
+  fieldType: string,
+) => SearchValidationResult;
+
+/**
+ * Search validation options
+ */
+export interface SearchValidationOptions {
+  /**
+   * Minimum value (for numeric/date fields)
+   */
+  min?: number | Date;
+
+  /**
+   * Maximum value (for numeric/date fields)
+   */
+  max?: number | Date;
+
+  /**
+   * Minimum length (for string fields)
+   */
+  minLength?: number;
+
+  /**
+   * Maximum length (for string fields)
+   */
+  maxLength?: number;
+
+  /**
+   * Regex pattern validation
+   */
+  pattern?: RegExp;
+
+  /**
+   * Allowed values (enum)
+   */
+  enum?: any[];
+
+  /**
+   * Custom validator function
+   */
+  custom?: SearchValidator;
+
+  /**
+   * Transform value before validation
+   */
+  transform?: (value: any) => any;
+
+  /**
+   * Custom error message
+   */
+  errorMessage?: string;
+}
+
+/**
+ * Built-in validators for common numeric ranges
+ */
+export const SearchValidators = {
+  /**
+   * Validates that a numeric value is within PostgreSQL integer range (-2147483648 to 2147483647)
+   */
+  integer: (value: any, field: string, fieldType: string): SearchValidationResult => {
+    const strValue = String(value);
+    const num = parseFloat(strValue.replace(/[$,]/g, '').replace(/k$/i, '000').replace(/m$/i, '000000'));
+    if (isNaN(num)) return { valid: true }; // Let non-numeric pass through for text search
+    const INT_MIN = -2147483648;
+    const INT_MAX = 2147483647;
+    if (num < INT_MIN || num > INT_MAX) {
+      return { valid: false, error: `Value ${value} is out of range for integer (${INT_MIN} to ${INT_MAX})` };
+    }
+    return { valid: true, sanitized: num };
+  },
+
+  /**
+   * Validates that a numeric value is within PostgreSQL bigint range
+   */
+  bigint: (value: any, field: string, fieldType: string): SearchValidationResult => {
+    const strValue = String(value);
+    const num = parseFloat(strValue.replace(/[$,]/g, '').replace(/k$/i, '000').replace(/m$/i, '000000'));
+    if (isNaN(num)) return { valid: true }; // Let non-numeric pass through for text search
+    const BIGINT_MIN = -9223372036854775808;
+    const BIGINT_MAX = 9223372036854775807;
+    if (num < BIGINT_MIN || num > BIGINT_MAX) {
+      return { valid: false, error: `Value ${value} is out of range for bigint (${BIGINT_MIN} to ${BIGINT_MAX})` };
+    }
+    return { valid: true, sanitized: num };
+  },
+
+  /**
+   * Validates that a numeric value is positive
+   */
+  positive: (value: any, field: string, fieldType: string): SearchValidationResult => {
+    const strValue = String(value);
+    const num = parseFloat(strValue.replace(/[$,]/g, '').replace(/k$/i, '000').replace(/m$/i, '000000'));
+    if (isNaN(num)) return { valid: true };
+    if (num < 0) {
+      return { valid: false, error: `Value ${value} must be positive` };
+    }
+    return { valid: true, sanitized: num };
+  },
+
+  /**
+   * Creates a custom range validator
+   */
+  range: (min: number, max: number): SearchValidator => (value: any, field: string, fieldType: string): SearchValidationResult => {
+    const strValue = String(value);
+    const num = parseFloat(strValue.replace(/[$,]/g, '').replace(/k$/i, '000').replace(/m$/i, '000000'));
+    if (isNaN(num)) return { valid: true };
+    if (num < min || num > max) {
+      return { valid: false, error: `Value ${value} is out of range (${min} to ${max})` };
+    }
+    return { valid: true, sanitized: num };
+  },
+
+  /**
+   * Creates a validator from SearchValidationOptions
+   */
+  fromOptions: (options: SearchValidationOptions): SearchValidator => (value: any, field: string, fieldType: string): SearchValidationResult => {
+    let processedValue = value;
+
+    // Apply transform if provided
+    if (options.transform) {
+      processedValue = options.transform(value);
+    }
+
+    // Check enum
+    if (options.enum && !options.enum.includes(processedValue)) {
+      return { 
+        valid: false, 
+        error: options.errorMessage || `Value ${value} must be one of: ${options.enum.join(', ')}` 
+      };
+    }
+
+    // Check pattern
+    if (options.pattern && !options.pattern.test(String(processedValue))) {
+      return { 
+        valid: false, 
+        error: options.errorMessage || `Value ${value} does not match required pattern` 
+      };
+    }
+
+    // String length checks
+    const strValue = String(processedValue);
+    if (options.minLength !== undefined && strValue.length < options.minLength) {
+      return { 
+        valid: false, 
+        error: options.errorMessage || `Value must be at least ${options.minLength} characters` 
+      };
+    }
+    if (options.maxLength !== undefined && strValue.length > options.maxLength) {
+      return { 
+        valid: false, 
+        error: options.errorMessage || `Value must be at most ${options.maxLength} characters` 
+      };
+    }
+
+    // Numeric range checks
+    const num = parseFloat(strValue.replace(/[$,]/g, '').replace(/k$/i, '000').replace(/m$/i, '000000'));
+    if (!isNaN(num)) {
+      if (options.min !== undefined && num < (options.min as number)) {
+        return { 
+          valid: false, 
+          error: options.errorMessage || `Value ${value} must be at least ${options.min}` 
+        };
+      }
+      if (options.max !== undefined && num > (options.max as number)) {
+        return { 
+          valid: false, 
+          error: options.errorMessage || `Value ${value} must be at most ${options.max}` 
+        };
+      }
+    }
+
+    // Custom validator
+    if (options.custom) {
+      return options.custom(processedValue, field, fieldType);
+    }
+
+    return { valid: true, sanitized: processedValue };
+  },
+};
+
+/**
  * Searchable decorator options for advanced search configuration
  */
 export interface SearchableOptions {

@@ -2,6 +2,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { StatesService } from './states.service.js';
 import type { IStatesRepository } from './ports/states.repository.port.js';
 import type { State, CreateStateInput, UpdateStateInput } from '@exprealty/shared-domain';
+import { LoggerService } from '../../core/logger.service.js';
 
 /**
  * Unit tests for StatesService
@@ -11,6 +12,7 @@ import type { State, CreateStateInput, UpdateStateInput } from '@exprealty/share
 describe('StatesService', () => {
   let service: StatesService;
   let repository: jest.Mocked<IStatesRepository>;
+  let logger: jest.Mocked<LoggerService>;
 
   const mockState: State = {
     id: '550e8400-e29b-41d4-a716-446655440000',
@@ -37,7 +39,15 @@ describe('StatesService', () => {
       delete: jest.fn(),
     } as jest.Mocked<IStatesRepository>;
 
-    service = new StatesService(repository);
+    logger = {
+      setContext: jest.fn(),
+      info: jest.fn(),
+      debug: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    } as unknown as jest.Mocked<LoggerService>;
+
+    service = new StatesService(repository, logger);
   });
 
   afterEach(() => {

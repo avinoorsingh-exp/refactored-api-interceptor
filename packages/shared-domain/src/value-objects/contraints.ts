@@ -209,7 +209,7 @@ export const MLS = {
 	displayName: { max: 255 },
 	website: { max: 500 },
 	orgType: { max: 50 },
-	larversionUrl: { max: 500 },
+	kunversionUrl: { max: 500 },
 	logoUrl: { max: 500 },
 	modifiedBy: { min: 1, max: 255 },
 	brokerOfRecordName: { max: 255 },
