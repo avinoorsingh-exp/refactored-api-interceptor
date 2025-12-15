@@ -3,21 +3,56 @@ import { MigrationInterface, QueryRunner } from "typeorm";
 export class AddEntityFieldsAndRelationships1765813354156 implements MigrationInterface {
     name = 'AddEntityFieldsAndRelationships1765813354156'
 
+    /**
+     * Safely drops a constraint if it exists
+     */
+    private async dropConstraintIfExists(
+        queryRunner: QueryRunner,
+        schema: string,
+        table: string,
+        constraintName: string
+    ): Promise<void> {
+        const result = await queryRunner.query(`
+            SELECT 1 FROM information_schema.table_constraints 
+            WHERE constraint_schema = $1 
+            AND table_name = $2 
+            AND constraint_name = $3
+        `, [schema, table, constraintName]);
+        
+        if (result.length > 0) {
+            await queryRunner.query(`ALTER TABLE "${schema}"."${table}" DROP CONSTRAINT "${constraintName}"`);
+        }
+    }
+
+    /**
+     * Safely drops an index if it exists
+     */
+    private async dropIndexIfExists(
+        queryRunner: QueryRunner,
+        schema: string,
+        indexName: string
+    ): Promise<void> {
+        await queryRunner.query(`DROP INDEX IF EXISTS "${schema}"."${indexName}"`);
+    }
+
     public async up(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`ALTER TABLE "core"."office" DROP CONSTRAINT "FK_office_company"`);
-        await queryRunner.query(`ALTER TABLE "core"."office_external_reference" DROP CONSTRAINT "FK_office_ext_ref_external_reference"`);
-        await queryRunner.query(`ALTER TABLE "core"."office_external_reference" DROP CONSTRAINT "FK_office_ext_ref_office"`);
-        await queryRunner.query(`ALTER TABLE "core"."agent_office" DROP CONSTRAINT "FK_agent_office_office"`);
-        await queryRunner.query(`ALTER TABLE "core"."agent_office" DROP CONSTRAINT "FK_agent_office_agent"`);
-        await queryRunner.query(`ALTER TABLE "core"."state" DROP CONSTRAINT "fk_state_country"`);
-        await queryRunner.query(`ALTER TABLE "core"."state_program" DROP CONSTRAINT "FK_state_program_state"`);
-        await queryRunner.query(`ALTER TABLE "core"."state_program" DROP CONSTRAINT "FK_state_program_program"`);
-        await queryRunner.query(`ALTER TABLE "core"."office_address" DROP CONSTRAINT "FK_office_address_address"`);
-        await queryRunner.query(`ALTER TABLE "core"."office_address" DROP CONSTRAINT "FK_office_address_office"`);
-        await queryRunner.query(`DROP INDEX "core"."IDX_office_company_id"`);
-        await queryRunner.query(`DROP INDEX "core"."IDX_office_lifecycle_status"`);
-        await queryRunner.query(`DROP INDEX "core"."IDX_office_name"`);
-        await queryRunner.query(`DROP INDEX "core"."idx_state_country_id"`);
+        // Drop constraints safely (they may not exist in all environments)
+        await this.dropConstraintIfExists(queryRunner, 'core', 'office', 'FK_office_company');
+        await this.dropConstraintIfExists(queryRunner, 'core', 'office_external_reference', 'FK_office_ext_ref_external_reference');
+        await this.dropConstraintIfExists(queryRunner, 'core', 'office_external_reference', 'FK_office_ext_ref_office');
+        await this.dropConstraintIfExists(queryRunner, 'core', 'agent_office', 'FK_agent_office_office');
+        await this.dropConstraintIfExists(queryRunner, 'core', 'agent_office', 'FK_agent_office_agent');
+        await this.dropConstraintIfExists(queryRunner, 'core', 'state', 'fk_state_country');
+        await this.dropConstraintIfExists(queryRunner, 'core', 'state_program', 'FK_state_program_state');
+        await this.dropConstraintIfExists(queryRunner, 'core', 'state_program', 'FK_state_program_program');
+        await this.dropConstraintIfExists(queryRunner, 'core', 'office_address', 'FK_office_address_address');
+        await this.dropConstraintIfExists(queryRunner, 'core', 'office_address', 'FK_office_address_office');
+        
+        // Drop indexes safely
+        await this.dropIndexIfExists(queryRunner, 'core', 'IDX_office_company_id');
+        await this.dropIndexIfExists(queryRunner, 'core', 'IDX_office_lifecycle_status');
+        await this.dropIndexIfExists(queryRunner, 'core', 'IDX_office_name');
+        await this.dropIndexIfExists(queryRunner, 'core', 'idx_state_country_id');
         await queryRunner.query(`ALTER TABLE "core"."public_profile" DROP COLUMN "created_at"`);
         await queryRunner.query(`ALTER TABLE "core"."public_profile" DROP COLUMN "updated_at"`);
         await queryRunner.query(`ALTER TABLE "core"."w9" DROP COLUMN "signature_date"`);
