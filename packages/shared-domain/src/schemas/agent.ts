@@ -161,3 +161,25 @@ export const AgentExpandedSchema = AgentSchema.extend({
  * @public
  */
 export type AgentExpanded = z.infer<typeof AgentExpandedSchema>
+
+// ---------------------------------------------------------------------------
+// PARAM SCHEMAS (for path/query validation)
+// ---------------------------------------------------------------------------
+
+/**
+ * Zod schema for validating Agent ID path parameter.
+ * Agent IDs are UUIDs.
+ * @public
+ */
+export const AgentIdParamSchema = z.object({
+	id: z
+		.string()
+		.uuid({ message: 'errors.agent.id.invalid' })
+		.describe('Agent ID (UUID)'),
+})
+
+/**
+ * TypeScript type for Agent ID path parameter.
+ * @public
+ */
+export type AgentIdParam = z.infer<typeof AgentIdParamSchema>

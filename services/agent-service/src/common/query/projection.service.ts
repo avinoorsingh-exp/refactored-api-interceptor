@@ -113,6 +113,22 @@ export class ProjectionService {
         relationAlias,
       );
 
+      // Load nested relations if configured
+      if (relationConfig.nested && relationConfig.nested.length > 0) {
+        for (const nestedRelation of relationConfig.nested) {
+          const nestedAlias = `${relationAlias}_${nestedRelation}`;
+          this.logger.debug('Loading nested relation', {
+            parentAlias: relationAlias,
+            nestedRelation,
+            nestedAlias,
+          });
+          qb.leftJoinAndSelect(
+            `${relationAlias}.${nestedRelation}`,
+            nestedAlias,
+          );
+        }
+      }
+
       // If relation has specific fields, project them
       if (relationConfig.fields.length > 0) {
         // Note: TypeORM doesn't support .select() on relations in leftJoinAndSelect

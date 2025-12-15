@@ -322,6 +322,8 @@ export {
 	type UpdateAgentInput as UpdateAgentInputType,
 	AgentExpandedSchema,
 	type AgentExpanded,
+	AgentIdParamSchema,
+	type AgentIdParam,
 } from './schemas/agent.js'
 
 // ============================================================================

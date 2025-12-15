@@ -110,11 +110,14 @@ export class AddEntityFieldsAndRelationships1765813354156 implements MigrationIn
         await queryRunner.query(`ALTER TABLE "core"."state_program" ADD CONSTRAINT "FK_e7e44a9cccc1cf53b320659d265" FOREIGN KEY ("program_id") REFERENCES "core"."program"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "core"."office_address" ADD CONSTRAINT "FK_f43f4200662b0ce7beddd29c3f5" FOREIGN KEY ("office_id") REFERENCES "core"."office"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "core"."office_address" ADD CONSTRAINT "FK_78be10b4116a9772d6f763c4301" FOREIGN KEY ("address_id") REFERENCES "core"."address"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
+        // Add unique constraint on agent.agent_id before creating FK that references it
+        await queryRunner.query(`ALTER TABLE "core"."agent" ADD CONSTRAINT "UQ_agent_agent_id" UNIQUE ("agent_id")`);
         await queryRunner.query(`ALTER TABLE "core"."artifact" ADD CONSTRAINT "FK_e19c0ef843d6873b96b4b1cf134" FOREIGN KEY ("agent_id") REFERENCES "core"."agent"("agent_id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`ALTER TABLE "core"."artifact" DROP CONSTRAINT "FK_e19c0ef843d6873b96b4b1cf134"`);
+        await queryRunner.query(`ALTER TABLE "core"."agent" DROP CONSTRAINT "UQ_agent_agent_id"`);
         await queryRunner.query(`ALTER TABLE "core"."office_address" DROP CONSTRAINT "FK_78be10b4116a9772d6f763c4301"`);
         await queryRunner.query(`ALTER TABLE "core"."office_address" DROP CONSTRAINT "FK_f43f4200662b0ce7beddd29c3f5"`);
         await queryRunner.query(`ALTER TABLE "core"."state_program" DROP CONSTRAINT "FK_e7e44a9cccc1cf53b320659d265"`);

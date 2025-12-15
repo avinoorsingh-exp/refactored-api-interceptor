@@ -13,6 +13,7 @@ import { StatesModule } from './modules/states/states.module.js'
 import { PayPlansModule } from './modules/pay-plans/pay-plans.module.js'
 import { OfficesModule } from './modules/offices/offices.module.js'
 import { MLSModule } from './modules/mls/mls.module.js'
+import { AgentModule } from './modules/agents/agent.module.js'
 import { CorrelationIdMiddleware } from './common/correlation-id.middleware.js'
 
 @Module({
@@ -29,6 +30,7 @@ import { CorrelationIdMiddleware } from './common/correlation-id.middleware.js'
     PayPlansModule,
     OfficesModule,
     MLSModule,
+    AgentModule,
 	],
 	controllers: [AgentController],
 	providers: [],

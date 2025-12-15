@@ -14,6 +14,16 @@ export const FieldSelectionSchema = z.object({
 export type FieldSelection = z.infer<typeof FieldSelectionSchema>;
 
 /**
+ * Configuration for a relation include
+ */
+export interface RelationConfig {
+  property: string;
+  fields: string[];
+  /** Nested relations to eagerly load with this relation */
+  nested?: string[];
+}
+
+/**
  * Projection configuration for an entity
  */
 export interface ProjectionConfig {
@@ -27,8 +37,5 @@ export interface ProjectionConfig {
   default: string[];
   
   // Available relations
-  relations: Record<string, {
-    property: string;
-    fields: string[];
-  }>;
+  relations: Record<string, RelationConfig>;
 }
