@@ -76,6 +76,7 @@ export class SearchMetadataReader {
         type: fieldType,
         weight: options.weight || 5, // Default weight
         searchBehavior: options.behavior,
+        validate: options.validate,
       };
 
       configs.push(config);
