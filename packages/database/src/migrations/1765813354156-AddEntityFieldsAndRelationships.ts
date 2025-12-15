@@ -3,72 +3,47 @@ import { MigrationInterface, QueryRunner } from "typeorm";
 export class AddEntityFieldsAndRelationships1765813354156 implements MigrationInterface {
     name = 'AddEntityFieldsAndRelationships1765813354156'
 
-    /**
-     * Safely drops a constraint if it exists
-     */
-    private async dropConstraintIfExists(
-        queryRunner: QueryRunner,
-        schema: string,
-        table: string,
-        constraintName: string
-    ): Promise<void> {
-        const result = await queryRunner.query(`
-            SELECT 1 FROM information_schema.table_constraints 
-            WHERE constraint_schema = $1 
-            AND table_name = $2 
-            AND constraint_name = $3
-        `, [schema, table, constraintName]);
-        
-        if (result.length > 0) {
-            await queryRunner.query(`ALTER TABLE "${schema}"."${table}" DROP CONSTRAINT "${constraintName}"`);
-        }
-    }
-
-    /**
-     * Safely drops an index if it exists
-     */
-    private async dropIndexIfExists(
-        queryRunner: QueryRunner,
-        schema: string,
-        indexName: string
-    ): Promise<void> {
-        await queryRunner.query(`DROP INDEX IF EXISTS "${schema}"."${indexName}"`);
-    }
-
     public async up(queryRunner: QueryRunner): Promise<void> {
-        // Drop constraints safely (they may not exist in all environments)
-        await this.dropConstraintIfExists(queryRunner, 'core', 'office', 'FK_office_company');
-        await this.dropConstraintIfExists(queryRunner, 'core', 'office_external_reference', 'FK_office_ext_ref_external_reference');
-        await this.dropConstraintIfExists(queryRunner, 'core', 'office_external_reference', 'FK_office_ext_ref_office');
-        await this.dropConstraintIfExists(queryRunner, 'core', 'agent_office', 'FK_agent_office_office');
-        await this.dropConstraintIfExists(queryRunner, 'core', 'agent_office', 'FK_agent_office_agent');
-        await this.dropConstraintIfExists(queryRunner, 'core', 'state', 'fk_state_country');
-        await this.dropConstraintIfExists(queryRunner, 'core', 'state_program', 'FK_state_program_state');
-        await this.dropConstraintIfExists(queryRunner, 'core', 'state_program', 'FK_state_program_program');
-        await this.dropConstraintIfExists(queryRunner, 'core', 'office_address', 'FK_office_address_address');
-        await this.dropConstraintIfExists(queryRunner, 'core', 'office_address', 'FK_office_address_office');
-        
-        // Drop indexes safely
-        await this.dropIndexIfExists(queryRunner, 'core', 'IDX_office_company_id');
-        await this.dropIndexIfExists(queryRunner, 'core', 'IDX_office_lifecycle_status');
-        await this.dropIndexIfExists(queryRunner, 'core', 'IDX_office_name');
-        await this.dropIndexIfExists(queryRunner, 'core', 'idx_state_country_id');
-        await queryRunner.query(`ALTER TABLE "core"."public_profile" DROP COLUMN "created_at"`);
-        await queryRunner.query(`ALTER TABLE "core"."public_profile" DROP COLUMN "updated_at"`);
-        await queryRunner.query(`ALTER TABLE "core"."w9" DROP COLUMN "signature_date"`);
-        await queryRunner.query(`ALTER TABLE "core"."w9" DROP COLUMN "created_at"`);
-        await queryRunner.query(`ALTER TABLE "core"."w9" DROP COLUMN "updated_at"`);
-        await queryRunner.query(`ALTER TABLE "core"."w9" DROP COLUMN "tin"`);
-        await queryRunner.query(`ALTER TABLE "core"."w9" DROP COLUMN "legal_name"`);
-        await queryRunner.query(`ALTER TABLE "core"."w9" DROP COLUMN "business_name"`);
-        await queryRunner.query(`ALTER TABLE "core"."w9" DROP COLUMN "federal_tax_classification"`);
-        await queryRunner.query(`ALTER TABLE "core"."w9" DROP COLUMN "federal_tax_classification_other"`);
-        await queryRunner.query(`ALTER TABLE "core"."w9" DROP COLUMN "exemption_from_fatca_reporting_code"`);
-        await queryRunner.query(`ALTER TABLE "core"."artifact" DROP COLUMN "metadata"`);
-        await queryRunner.query(`ALTER TABLE "core"."artifact" DROP COLUMN "created_at"`);
-        await queryRunner.query(`ALTER TABLE "core"."artifact" DROP COLUMN "updated_at"`);
-        await queryRunner.query(`ALTER TABLE "core"."artifact" DROP COLUMN "name"`);
-        await queryRunner.query(`ALTER TABLE "core"."artifact" DROP COLUMN "storage_key"`);
+        // Drop constraints conditionally - they may have different names depending on how the DB was set up
+        await queryRunner.query(`ALTER TABLE "core"."office" DROP CONSTRAINT IF EXISTS "FK_office_company"`);
+        await queryRunner.query(`ALTER TABLE "core"."office" DROP CONSTRAINT IF EXISTS "FK_1d2c5ae4f7c50107b361335279d"`);
+        await queryRunner.query(`ALTER TABLE "core"."office_external_reference" DROP CONSTRAINT IF EXISTS "FK_office_ext_ref_external_reference"`);
+        await queryRunner.query(`ALTER TABLE "core"."office_external_reference" DROP CONSTRAINT IF EXISTS "FK_21ff193616770559463efbf0396"`);
+        await queryRunner.query(`ALTER TABLE "core"."office_external_reference" DROP CONSTRAINT IF EXISTS "FK_office_ext_ref_office"`);
+        await queryRunner.query(`ALTER TABLE "core"."office_external_reference" DROP CONSTRAINT IF EXISTS "FK_bf9d6c6c7c8ce63e0326f4a51b4"`);
+        await queryRunner.query(`ALTER TABLE "core"."agent_office" DROP CONSTRAINT IF EXISTS "FK_agent_office_office"`);
+        await queryRunner.query(`ALTER TABLE "core"."agent_office" DROP CONSTRAINT IF EXISTS "FK_a9e9433cfd2dda289a647c12c45"`);
+        await queryRunner.query(`ALTER TABLE "core"."agent_office" DROP CONSTRAINT IF EXISTS "FK_agent_office_agent"`);
+        await queryRunner.query(`ALTER TABLE "core"."agent_office" DROP CONSTRAINT IF EXISTS "FK_f5ec523ddd694262dfccc237284"`);
+        await queryRunner.query(`ALTER TABLE "core"."state" DROP CONSTRAINT IF EXISTS "fk_state_country"`);
+        await queryRunner.query(`ALTER TABLE "core"."state" DROP CONSTRAINT IF EXISTS "FK_dd19065b0813dbffd8170ea6753"`);
+        await queryRunner.query(`ALTER TABLE "core"."state_program" DROP CONSTRAINT IF EXISTS "FK_state_program_state"`);
+        await queryRunner.query(`ALTER TABLE "core"."state_program" DROP CONSTRAINT IF EXISTS "FK_state_program_program"`);
+        await queryRunner.query(`ALTER TABLE "core"."state_program" DROP CONSTRAINT IF EXISTS "FK_e7e44a9cccc1cf53b320659d265"`);
+        await queryRunner.query(`ALTER TABLE "core"."office_address" DROP CONSTRAINT IF EXISTS "FK_office_address_address"`);
+        await queryRunner.query(`ALTER TABLE "core"."office_address" DROP CONSTRAINT IF EXISTS "FK_78be10b4116a9772d6f763c4301"`);
+        await queryRunner.query(`ALTER TABLE "core"."office_address" DROP CONSTRAINT IF EXISTS "FK_office_address_office"`);
+        await queryRunner.query(`ALTER TABLE "core"."office_address" DROP CONSTRAINT IF EXISTS "FK_f43f4200662b0ce7beddd29c3f5"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "core"."IDX_office_company_id"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "core"."IDX_office_lifecycle_status"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "core"."IDX_office_name"`);
+        await queryRunner.query(`DROP INDEX IF EXISTS "core"."idx_state_country_id"`);
+        await queryRunner.query(`ALTER TABLE "core"."public_profile" DROP COLUMN IF EXISTS "created_at"`);
+        await queryRunner.query(`ALTER TABLE "core"."public_profile" DROP COLUMN IF EXISTS "updated_at"`);
+        await queryRunner.query(`ALTER TABLE "core"."w9" DROP COLUMN IF EXISTS "signature_date"`);
+        await queryRunner.query(`ALTER TABLE "core"."w9" DROP COLUMN IF EXISTS "created_at"`);
+        await queryRunner.query(`ALTER TABLE "core"."w9" DROP COLUMN IF EXISTS "updated_at"`);
+        await queryRunner.query(`ALTER TABLE "core"."w9" DROP COLUMN IF EXISTS "tin"`);
+        await queryRunner.query(`ALTER TABLE "core"."w9" DROP COLUMN IF EXISTS "legal_name"`);
+        await queryRunner.query(`ALTER TABLE "core"."w9" DROP COLUMN IF EXISTS "business_name"`);
+        await queryRunner.query(`ALTER TABLE "core"."w9" DROP COLUMN IF EXISTS "federal_tax_classification"`);
+        await queryRunner.query(`ALTER TABLE "core"."w9" DROP COLUMN IF EXISTS "federal_tax_classification_other"`);
+        await queryRunner.query(`ALTER TABLE "core"."w9" DROP COLUMN IF EXISTS "exemption_from_fatca_reporting_code"`);
+        await queryRunner.query(`ALTER TABLE "core"."artifact" DROP COLUMN IF EXISTS "metadata"`);
+        await queryRunner.query(`ALTER TABLE "core"."artifact" DROP COLUMN IF EXISTS "created_at"`);
+        await queryRunner.query(`ALTER TABLE "core"."artifact" DROP COLUMN IF EXISTS "updated_at"`);
+        await queryRunner.query(`ALTER TABLE "core"."artifact" DROP COLUMN IF EXISTS "name"`);
+        await queryRunner.query(`ALTER TABLE "core"."artifact" DROP COLUMN IF EXISTS "storage_key"`);
         await queryRunner.query(`ALTER TABLE "core"."agent" ADD "created" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()`);
         await queryRunner.query(`ALTER TABLE "core"."agent" ADD "modified_by" text NOT NULL DEFAULT 'system'`);
         await queryRunner.query(`ALTER TABLE "core"."public_profile" ADD "created" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()`);
@@ -117,21 +92,21 @@ export class AddEntityFieldsAndRelationships1765813354156 implements MigrationIn
         await queryRunner.query(`ALTER TABLE "core"."pay_plan" ALTER COLUMN "agent_percentage" TYPE numeric(5,2)`);
         await queryRunner.query(`ALTER TABLE "core"."pay_plan" ALTER COLUMN "cap" TYPE numeric(10,2)`);
         await queryRunner.query(`ALTER TABLE "core"."email_forward" ALTER COLUMN "created" SET DEFAULT now()`);
-        await queryRunner.query(`ALTER TABLE "core"."social" DROP CONSTRAINT "PK_645aa1cff2b9f7b0e3e73d66b4d"`);
-        await queryRunner.query(`ALTER TABLE "core"."social" DROP COLUMN "id"`);
+        await queryRunner.query(`ALTER TABLE "core"."social" DROP CONSTRAINT IF EXISTS "PK_645aa1cff2b9f7b0e3e73d66b4d"`);
+        await queryRunner.query(`ALTER TABLE "core"."social" DROP COLUMN IF EXISTS "id"`);
         await queryRunner.query(`ALTER TABLE "core"."social" ADD "id" BIGSERIAL NOT NULL`);
         await queryRunner.query(`ALTER TABLE "core"."social" ADD CONSTRAINT "PK_645aa1cff2b9f7b0e3e73d66b4d" PRIMARY KEY ("id")`);
-        await queryRunner.query(`ALTER TABLE "core"."agent_mls" DROP CONSTRAINT "FK_b0f6195e4793254861d50da989a"`);
+        await queryRunner.query(`ALTER TABLE "core"."agent_mls" DROP CONSTRAINT IF EXISTS "FK_b0f6195e4793254861d50da989a"`);
         await queryRunner.query(`ALTER TABLE "core"."mls" ALTER COLUMN "last_modified" SET DEFAULT now()`);
         await queryRunner.query(`ALTER TABLE "core"."mls" ALTER COLUMN "modified_by" SET DEFAULT 'system'`);
         await queryRunner.query(`CREATE SEQUENCE IF NOT EXISTS "core"."mls_id_seq" OWNED BY "core"."mls"."id"`);
         await queryRunner.query(`ALTER TABLE "core"."mls" ALTER COLUMN "id" SET DEFAULT nextval('"core"."mls_id_seq"')`);
         await queryRunner.query(`ALTER TABLE "core"."mls" ALTER COLUMN "id" DROP DEFAULT`);
-        await queryRunner.query(`ALTER TABLE "core"."license" DROP COLUMN "expiration_date"`);
+        await queryRunner.query(`ALTER TABLE "core"."license" DROP COLUMN IF EXISTS "expiration_date"`);
         await queryRunner.query(`ALTER TABLE "core"."license" ADD "expiration_date" TIMESTAMP WITH TIME ZONE`);
-        await queryRunner.query(`ALTER TABLE "core"."license" DROP COLUMN "type"`);
+        await queryRunner.query(`ALTER TABLE "core"."license" DROP COLUMN IF EXISTS "type"`);
         await queryRunner.query(`ALTER TABLE "core"."license" ADD "type" text NOT NULL`);
-        await queryRunner.query(`ALTER TABLE "core"."program" DROP CONSTRAINT "UQ_program_code"`);
+        await queryRunner.query(`ALTER TABLE "core"."program" DROP CONSTRAINT IF EXISTS "UQ_program_code"`);
         await queryRunner.query(`ALTER TABLE "core"."office" ADD CONSTRAINT "FK_1d2c5ae4f7c50107b361335279d" FOREIGN KEY ("company_id") REFERENCES "core"."company"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "core"."office_external_reference" ADD CONSTRAINT "FK_bf9d6c6c7c8ce63e0326f4a51b4" FOREIGN KEY ("office_id") REFERENCES "core"."office"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "core"."office_external_reference" ADD CONSTRAINT "FK_21ff193616770559463efbf0396" FOREIGN KEY ("external_reference_id") REFERENCES "core"."external_reference"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
@@ -151,21 +126,21 @@ export class AddEntityFieldsAndRelationships1765813354156 implements MigrationIn
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {
-        await queryRunner.query(`ALTER TABLE "core"."artifact" DROP CONSTRAINT "FK_e19c0ef843d6873b96b4b1cf134"`);
-        await queryRunner.query(`ALTER TABLE "core"."agent" DROP CONSTRAINT "UQ_agent_agent_id"`);
-        await queryRunner.query(`ALTER TABLE "core"."office_address" DROP CONSTRAINT "FK_78be10b4116a9772d6f763c4301"`);
-        await queryRunner.query(`ALTER TABLE "core"."office_address" DROP CONSTRAINT "FK_f43f4200662b0ce7beddd29c3f5"`);
-        await queryRunner.query(`ALTER TABLE "core"."state_program" DROP CONSTRAINT "FK_e7e44a9cccc1cf53b320659d265"`);
-        await queryRunner.query(`ALTER TABLE "core"."state" DROP CONSTRAINT "FK_dd19065b0813dbffd8170ea6753"`);
-        await queryRunner.query(`ALTER TABLE "core"."license" DROP CONSTRAINT "FK_c6e3904af365b8e3fb87e0afa66"`);
-        await queryRunner.query(`ALTER TABLE "core"."agent_mls" DROP CONSTRAINT "FK_b0f6195e4793254861d50da989a"`);
-        await queryRunner.query(`ALTER TABLE "core"."social" DROP CONSTRAINT "FK_7834644a5255770ac759073cadb"`);
-        await queryRunner.query(`ALTER TABLE "core"."email_forward" DROP CONSTRAINT "FK_77247af9720e1d4eded98f3424c"`);
-        await queryRunner.query(`ALTER TABLE "core"."agent_office" DROP CONSTRAINT "FK_a9e9433cfd2dda289a647c12c45"`);
-        await queryRunner.query(`ALTER TABLE "core"."agent_office" DROP CONSTRAINT "FK_f5ec523ddd694262dfccc237284"`);
-        await queryRunner.query(`ALTER TABLE "core"."office_external_reference" DROP CONSTRAINT "FK_21ff193616770559463efbf0396"`);
-        await queryRunner.query(`ALTER TABLE "core"."office_external_reference" DROP CONSTRAINT "FK_bf9d6c6c7c8ce63e0326f4a51b4"`);
-        await queryRunner.query(`ALTER TABLE "core"."office" DROP CONSTRAINT "FK_1d2c5ae4f7c50107b361335279d"`);
+        await queryRunner.query(`ALTER TABLE "core"."artifact" DROP CONSTRAINT IF EXISTS "FK_e19c0ef843d6873b96b4b1cf134"`);
+        await queryRunner.query(`ALTER TABLE "core"."agent" DROP CONSTRAINT IF EXISTS "UQ_agent_agent_id"`);
+        await queryRunner.query(`ALTER TABLE "core"."office_address" DROP CONSTRAINT IF EXISTS "FK_78be10b4116a9772d6f763c4301"`);
+        await queryRunner.query(`ALTER TABLE "core"."office_address" DROP CONSTRAINT IF EXISTS "FK_f43f4200662b0ce7beddd29c3f5"`);
+        await queryRunner.query(`ALTER TABLE "core"."state_program" DROP CONSTRAINT IF EXISTS "FK_e7e44a9cccc1cf53b320659d265"`);
+        await queryRunner.query(`ALTER TABLE "core"."state" DROP CONSTRAINT IF EXISTS "FK_dd19065b0813dbffd8170ea6753"`);
+        await queryRunner.query(`ALTER TABLE "core"."license" DROP CONSTRAINT IF EXISTS "FK_c6e3904af365b8e3fb87e0afa66"`);
+        await queryRunner.query(`ALTER TABLE "core"."agent_mls" DROP CONSTRAINT IF EXISTS "FK_b0f6195e4793254861d50da989a"`);
+        await queryRunner.query(`ALTER TABLE "core"."social" DROP CONSTRAINT IF EXISTS "FK_7834644a5255770ac759073cadb"`);
+        await queryRunner.query(`ALTER TABLE "core"."email_forward" DROP CONSTRAINT IF EXISTS "FK_77247af9720e1d4eded98f3424c"`);
+        await queryRunner.query(`ALTER TABLE "core"."agent_office" DROP CONSTRAINT IF EXISTS "FK_a9e9433cfd2dda289a647c12c45"`);
+        await queryRunner.query(`ALTER TABLE "core"."agent_office" DROP CONSTRAINT IF EXISTS "FK_f5ec523ddd694262dfccc237284"`);
+        await queryRunner.query(`ALTER TABLE "core"."office_external_reference" DROP CONSTRAINT IF EXISTS "FK_21ff193616770559463efbf0396"`);
+        await queryRunner.query(`ALTER TABLE "core"."office_external_reference" DROP CONSTRAINT IF EXISTS "FK_bf9d6c6c7c8ce63e0326f4a51b4"`);
+        await queryRunner.query(`ALTER TABLE "core"."office" DROP CONSTRAINT IF EXISTS "FK_1d2c5ae4f7c50107b361335279d"`);
         await queryRunner.query(`ALTER TABLE "core"."program" ADD CONSTRAINT "UQ_program_code" UNIQUE ("code")`);
         await queryRunner.query(`ALTER TABLE "core"."license" DROP COLUMN "type"`);
         await queryRunner.query(`ALTER TABLE "core"."license" ADD "type" character varying(50) NOT NULL`);
@@ -173,12 +148,12 @@ export class AddEntityFieldsAndRelationships1765813354156 implements MigrationIn
         await queryRunner.query(`ALTER TABLE "core"."license" ADD "expiration_date" date`);
         await queryRunner.query(`ALTER TABLE "core"."mls" ALTER COLUMN "id" SET DEFAULT nextval('core."mls_mlsId_seq"')`);
         await queryRunner.query(`ALTER TABLE "core"."mls" ALTER COLUMN "id" DROP DEFAULT`);
-        await queryRunner.query(`DROP SEQUENCE "core"."mls_id_seq"`);
+        await queryRunner.query(`DROP SEQUENCE IF EXISTS "core"."mls_id_seq"`);
         await queryRunner.query(`ALTER TABLE "core"."mls" ALTER COLUMN "modified_by" DROP DEFAULT`);
         await queryRunner.query(`ALTER TABLE "core"."mls" ALTER COLUMN "last_modified" DROP DEFAULT`);
         await queryRunner.query(`ALTER TABLE "core"."agent_mls" ADD CONSTRAINT "FK_b0f6195e4793254861d50da989a" FOREIGN KEY ("mls_id") REFERENCES "core"."mls"("id") ON DELETE NO ACTION ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "core"."social" DROP CONSTRAINT "PK_645aa1cff2b9f7b0e3e73d66b4d"`);
-        await queryRunner.query(`ALTER TABLE "core"."social" DROP COLUMN "id"`);
+        await queryRunner.query(`ALTER TABLE "core"."social" DROP CONSTRAINT IF EXISTS "PK_645aa1cff2b9f7b0e3e73d66b4d"`);
+        await queryRunner.query(`ALTER TABLE "core"."social" DROP COLUMN IF EXISTS "id"`);
         await queryRunner.query(`ALTER TABLE "core"."social" ADD "id" SERIAL NOT NULL`);
         await queryRunner.query(`ALTER TABLE "core"."social" ADD CONSTRAINT "PK_645aa1cff2b9f7b0e3e73d66b4d" PRIMARY KEY ("id")`);
         await queryRunner.query(`ALTER TABLE "core"."email_forward" ALTER COLUMN "created" DROP DEFAULT`);
