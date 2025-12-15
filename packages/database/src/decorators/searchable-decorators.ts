@@ -235,6 +235,12 @@ export interface SearchableOptions {
    * Human-readable field description for metadata/documentation
    */
   description?: string;
+
+  /**
+   * Validator function for search values
+   * Use SearchValidators for common validations
+   */
+  validate?: SearchValidator;
 }
 
 /**
