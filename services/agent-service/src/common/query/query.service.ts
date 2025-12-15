@@ -393,6 +393,8 @@ export class QueryService {
    * @param searchQuery - The search term
    * @param entityClass - Entity class for metadata lookup
    * @param alias - Query builder alias
+   * @param searchFields - Optional array of fields to search. If provided, only these fields are searched.
+   *                       If not provided, all @Searchable fields are searched.
    * @returns The modified query builder
    */
   applyStrategySearch<T extends ObjectLiteral>(
@@ -400,19 +402,30 @@ export class QueryService {
     searchQuery: string | undefined,
     entityClass: new (...args: any[]) => T,
     alias: string,
+    searchFields?: string[],
   ): SelectQueryBuilder<T> {
     if (!searchQuery || !this.strategies || !this.searchMetadataReader) {
       return qb;
     }
 
     // Get searchable field configurations from metadata
-    const fieldConfigs = this.searchMetadataReader.getSearchableFieldsConfig(entityClass);
+    let fieldConfigs = this.searchMetadataReader.getSearchableFieldsConfig(entityClass);
     
     if (fieldConfigs.length === 0) {
       return qb;
     }
 
-    // Validate search term against all field validators
+    // Filter to only requested fields if searchFields is provided
+    if (searchFields && searchFields.length > 0) {
+      const searchFieldSet = new Set(searchFields);
+      fieldConfigs = fieldConfigs.filter(config => searchFieldSet.has(config.field));
+      
+      if (fieldConfigs.length === 0) {
+        return qb;
+      }
+    }
+
+    // Validate search term against field validators (only for fields being searched)
     // Throw SearchValidationException on first failure for proper i18n error response
     for (const config of fieldConfigs) {
       if (config.validate) {
@@ -475,6 +488,12 @@ export class QueryService {
   /**
    * Apply all query operations with strategy-based search.
    * Use this for entities that have numeric/date @Searchable fields.
+   * 
+   * @param qb - TypeORM SelectQueryBuilder
+   * @param params - Normalized query parameters including search.fields for field filtering
+   * @param entityClass - Entity class for metadata lookup
+   * @param alias - Query builder alias
+   * @param options - Optional field restrictions for filter/sort
    */
   applyAllWithStrategies<T extends ObjectLiteral>(
     qb: SelectQueryBuilder<T>,
@@ -489,8 +508,9 @@ export class QueryService {
     // Apply filters
     this.applyFilters(qb, params.filter, alias, options?.allowedFilterFields);
 
-    // Apply strategy-based search
-    this.applyStrategySearch(qb, params.search?.query, entityClass, alias);
+    // Apply strategy-based search with optional field filtering
+    // If params.search.fields is provided, only those fields are searched
+    this.applyStrategySearch(qb, params.search?.query, entityClass, alias, params.search?.fields);
 
     // Apply sorting
     this.applySorting(qb, params.sort, alias, options?.allowedSortFields);
