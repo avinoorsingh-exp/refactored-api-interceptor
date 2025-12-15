@@ -7,6 +7,7 @@ import {
 	JoinColumn,
 } from 'typeorm'
 import { AddressEntity } from './address.entity.js'
+import { AuditableEntity } from './auditable.entity.js'
 
 /**
  * TypeORM entity for MLS table.
@@ -14,14 +15,14 @@ import { AddressEntity } from './address.entity.js'
  * @public
  */
 @Entity({ name: 'mls', schema: 'core' })
-export class MLSEntity {
+export class MLSEntity extends AuditableEntity {
 	@PrimaryGeneratedColumn('increment', { type: 'bigint' })
-	mlsId!: string
+	id!: string
 
 	@Column({ type: 'text', nullable: true })
 	ouid?: string
 
-	@Column({ name: 'global_id', type: 'integer', nullable: true })
+	@Column({ name: 'global_id', type: 'integer', nullable: true, unique: true })
 	globalId?: number
 
 	@Column({
@@ -47,20 +48,11 @@ export class MLSEntity {
 	orgType!: string
 
 	@Column({
-		name: 'larversion_url',
+		name: 'kunversion_url',
 		type: 'text',
 		nullable: true,
 	})
-	larversionUrl?: string
-
-	@Column({ name: 'last_modified', type: 'timestamp with time zone' })
-	lastModified!: Date
-
-	@Column({
-		name: 'modified_by',
-		type: 'text',
-	})
-	modifiedBy!: string
+	kunversionUrl?: string
 
 	@Column({ name: 'address_id', type: 'bigint', nullable: true })
 	addressId?: string
@@ -75,14 +67,4 @@ export class MLSEntity {
 	@ManyToOne(() => AddressEntity, { nullable: true })
 	@JoinColumn({ name: 'address_id' })
 	address?: AddressEntity
-
-	toJSON(): Record<string, any> {
-		const obj: Record<string, any> = {}
-		for (const key in this) {
-			if (Object.prototype.hasOwnProperty.call(this, key) && !key.includes('_')) {
-				obj[key] = this[key]
-			}
-		}
-		return obj
-	}
 }

@@ -52,7 +52,7 @@ export class OfficeEntity extends AuditableEntity {
 	 * Office name.
 	 * @public
 	 */
-	@Column({ type: 'text' })
+	@Column({ type: 'text', unique: true })
 	@Searchable({ weight: 10, behavior: 'partial', description: 'Office display name' })
 	@Filterable()
 	@Sortable()

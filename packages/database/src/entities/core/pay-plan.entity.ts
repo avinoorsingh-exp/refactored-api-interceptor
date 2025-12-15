@@ -14,7 +14,7 @@ export class PayPlanEntity extends AuditableEntity {
 	@Sortable()
 	id!: string
 
-	@Column({ type: 'text' })
+	@Column({ type: 'text', unique: true })
 	@Searchable({ weight: 10, behavior: 'partial', description: 'Pay plan display name' })
 	@Filterable()
 	@Sortable()
