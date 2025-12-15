@@ -9,6 +9,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
 import configuration from './core/configuration.js'
 import { QueryPerformanceInterceptor } from './common/interceptors/query-performance.interceptor.js'
 import { PerformanceInterceptor } from './common/interceptors/performance.interceptor.js'
+import { DataSource } from 'typeorm'
 
 async function bootstrap() {
 	// CRITICAL: Load configuration BEFORE creating NestJS app
@@ -23,6 +24,8 @@ async function bootstrap() {
 	const configService = app.get(ConfigService)
 	const config = configService.getAll()
 
+	// Get dependencies from DI container
+  	const dataSource = app.get(DataSource);
 	// Get LoggerService from DI container
 	const logger = app.get(LoggerService)
 
@@ -48,10 +51,13 @@ async function bootstrap() {
 	if (includeQueryMetadata) {
 		// Local/Dev: Include full query metadata in response for debugging
 		app.useGlobalInterceptors(
-			new QueryPerformanceInterceptor({
-				slowQueryThresholdMs: 1000,
-				logAllQueries: true,
-			}),
+			new QueryPerformanceInterceptor(dataSource, {
+				slowQueryThresholdMs: 2000,      // Log queries > 2 seconds
+				criticalQueryThresholdMs: 10000, // Error log queries > 10 seconds
+				logAllQueries: false,            // Only log slow queries in prod
+				captureExplain: true,            // Run EXPLAIN ANALYZE on slow queries
+				includeInResponse: includeQueryMetadata, // Include SQL in dev
+}),
 		)
 		logger.info(`Query metadata enabled for environment: ${environment}`)
 	} else {

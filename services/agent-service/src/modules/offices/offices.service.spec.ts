@@ -2,6 +2,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { OfficesService } from './offices.service.js';
 import type { IOfficesRepository } from './ports/offices.repository.port.js';
 import type { Office, CreateOfficeInput, UpdateOfficeInput } from '@exprealty/shared-domain';
+import { LoggerService } from '../../core/logger.service.js';
 
 /**
  * Unit tests for OfficesService
@@ -10,6 +11,7 @@ import type { Office, CreateOfficeInput, UpdateOfficeInput } from '@exprealty/sh
 describe('OfficesService', () => {
   let service: OfficesService;
   let repository: jest.Mocked<IOfficesRepository>;
+  let logger: jest.Mocked<LoggerService>;
 
   const mockOffice: Office = {
     id: '12345',
@@ -35,7 +37,15 @@ describe('OfficesService', () => {
       delete: jest.fn(),
     } as jest.Mocked<IOfficesRepository>;
 
-    service = new OfficesService(repository);
+    logger = {
+      setContext: jest.fn(),
+      info: jest.fn(),
+      debug: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    } as unknown as jest.Mocked<LoggerService>;
+
+    service = new OfficesService(repository, logger);
   });
 
   afterEach(() => {

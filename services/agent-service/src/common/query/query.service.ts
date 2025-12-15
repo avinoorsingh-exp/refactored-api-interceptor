@@ -25,6 +25,7 @@ import type {
 import { SEARCH_STRATEGIES } from './query.tokens.js';
 import { SearchMetadataReader } from './search-metadata-reader.service.js';
 import { ColumnResolverService } from './column-resolver.service.js';
+import { SearchValidationException } from '../exceptions/search-validation.exception.js';
 
 /**
  * Map of field types to search strategies
@@ -412,22 +413,22 @@ export class QueryService {
     }
 
     // Validate search term against all field validators
-    const validationErrors: string[] = [];
-    fieldConfigs.forEach((config) => {
+    // Throw SearchValidationException on first failure for proper i18n error response
+    for (const config of fieldConfigs) {
       if (config.validate) {
         const result = config.validate(searchQuery, config.field, config.type);
         if (!result.valid && result.error) {
-          validationErrors.push(`${config.field}: ${result.error}`);
+          // Determine validation constraints from the error message
+          const validation = this.extractValidationConstraints(result.error);
+          
+          throw new SearchValidationException(
+            config.field,
+            searchQuery,
+            result.error,
+            validation,
+          );
         }
       }
-    });
-
-    // If any validation failed, throw BadRequestException
-    if (validationErrors.length > 0) {
-      throw new BadRequestException({
-        message: 'Search validation failed',
-        errors: validationErrors,
-      });
     }
 
     qb.andWhere(
@@ -495,5 +496,44 @@ export class QueryService {
     this.applySorting(qb, params.sort, alias, options?.allowedSortFields);
 
     return qb;
+  }
+
+  /**
+   * Extract validation constraints from error message.
+   * Used to populate SearchValidationException with constraint info.
+   */
+  private extractValidationConstraints(errorMessage: string): { min?: number; max?: number } | undefined {
+    // Match patterns like "out of range for integer (-2147483648 to 2147483647)"
+    // or "out of range for bigint (-9223372036854775808 to 9223372036854775807)"
+    const rangeMatch = errorMessage.match(/\((-?[\d.]+(?:e[+-]?\d+)?) to (-?[\d.]+(?:e[+-]?\d+)?)\)/i);
+    if (rangeMatch) {
+      return {
+        min: parseFloat(rangeMatch[1]),
+        max: parseFloat(rangeMatch[2]),
+      };
+    }
+
+    // Match patterns like "must be at least X" or "must be at most X"
+    const minMatch = errorMessage.match(/must be at least (-?\d+(?:\.\d+)?)/);
+    const maxMatch = errorMessage.match(/must be at most (-?\d+(?:\.\d+)?)/);
+    if (minMatch || maxMatch) {
+      return {
+        min: minMatch ? parseFloat(minMatch[1]) : undefined,
+        max: maxMatch ? parseFloat(maxMatch[1]) : undefined,
+      };
+    }
+
+    // Match patterns like "must be positive"
+    if (errorMessage.includes('must be positive')) {
+      return { min: 0 };
+    }
+
+    // Fallback: if error mentions "out of range", return empty range object
+    // This allows i18n type inference to detect it as a range error
+    if (errorMessage.includes('out of range')) {
+      return { min: undefined, max: undefined };
+    }
+
+    return undefined;
   }
 }

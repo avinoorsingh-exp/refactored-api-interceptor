@@ -9,7 +9,7 @@ import {
 import { RegionEntity } from './region.entity.js'
 import { CountryEntity } from './country.entity.js'
 import { AuditableEntity } from './auditable.entity.js'
-import { Searchable, Filterable, Sortable } from '../../decorators/searchable-decorators.js'
+import { Searchable, Filterable, Sortable, SearchValidators } from '../../decorators/searchable-decorators.js'
 import type { StateProgramEntity } from './state-program.entity.js'
 
 /**
@@ -57,7 +57,7 @@ export class StateEntity extends AuditableEntity {
 	signatureDistributionEmail?: string
 
 	@Column({ name: 'region_id', type: 'bigint' })
-	@Searchable({ type: 'integer', weight: 4, behavior: 'exact', description: 'Associated region ID' })
+	@Searchable({ type: 'integer', weight: 4, behavior: 'exact', description: 'Associated region ID', validate: SearchValidators.bigint })
 	@Filterable()
 	@Sortable()
 	regionId!: bigint
@@ -67,7 +67,7 @@ export class StateEntity extends AuditableEntity {
 	region?: RegionEntity
 
 	@Column({ name: 'country_id', type: 'integer' })
-	@Searchable({ type: 'integer', weight: 4, behavior: 'exact', description: 'Associated country ID' })
+	@Searchable({ type: 'integer', weight: 4, behavior: 'exact', description: 'Associated country ID', validate: SearchValidators.integer })
 	@Filterable()
 	@Sortable()
 	countryId!: number

@@ -108,7 +108,7 @@ export const SearchValidators = {
     const BIGINT_MIN = -9223372036854775808;
     const BIGINT_MAX = 9223372036854775807;
     if (num < BIGINT_MIN || num > BIGINT_MAX) {
-      return { valid: false, error: `Value ${value} is out of range for bigint` };
+      return { valid: false, error: `Value ${value} is out of range for bigint (${BIGINT_MIN} to ${BIGINT_MAX})` };
     }
     return { valid: true, sanitized: num };
   },

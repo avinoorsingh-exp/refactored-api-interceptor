@@ -1,6 +1,7 @@
 import { CountriesService } from './countries.service.js';
 import type { ICountriesRepository } from './ports/countries.repository.port.js';
 import type { Country, CreateCountryInput } from '@exprealty/shared-domain';
+import { LoggerService } from '../../core/logger.service.js';
 
 /**
  * Unit tests for CountriesService
@@ -10,6 +11,7 @@ import type { Country, CreateCountryInput } from '@exprealty/shared-domain';
 describe('CountriesService', () => {
   let service: CountriesService;
   let repository: jest.Mocked<ICountriesRepository>;
+  let logger: jest.Mocked<LoggerService>;
 
   const mockCountry: Country = {
     id: 1,
@@ -34,7 +36,15 @@ describe('CountriesService', () => {
       upsert: jest.fn(),
     } as jest.Mocked<ICountriesRepository>;
 
-    service = new CountriesService(repository);
+    logger = {
+      setContext: jest.fn(),
+      info: jest.fn(),
+      debug: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    } as unknown as jest.Mocked<LoggerService>;
+
+    service = new CountriesService(repository, logger);
   });
 
   afterEach(() => {

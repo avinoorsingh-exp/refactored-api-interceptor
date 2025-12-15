@@ -5,6 +5,7 @@ import { PayPlansService } from './pay-plans.service.js';
 import type { IPayPlansRepository } from './ports/pay-plans.repository.port.js';
 import type { PayPlan, CreatePayPlanInput, UpdatePayPlanInput } from '@exprealty/shared-domain';
 import { payPlanArbitrary, createPayPlanInputArbitrary, uuidArbitrary } from '../../../../../test/utils/generators.js';
+import { LoggerService } from '../../core/logger.service.js';
 
 /**
  * Property-Based Tests for PayPlans Module
@@ -162,7 +163,15 @@ describe('PayPlans Module Property Tests', () => {
         findAll: jest.fn(),
       } as jest.Mocked<IPayPlansRepository>;
 
-      service = new PayPlansService(mockRepository);
+      const mockLogger = {
+        setContext: jest.fn(),
+        info: jest.fn(),
+        debug: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+      } as unknown as jest.Mocked<LoggerService>;
+
+      service = new PayPlansService(mockRepository, mockLogger);
     });
 
     it('should call repository.create for any valid create input when name is unique', async () => {

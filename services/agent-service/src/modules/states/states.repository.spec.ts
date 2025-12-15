@@ -60,6 +60,7 @@ describe('StatesTypeOrmRepository', () => {
     mockLogger = {
       setContext: jest.fn(),
       log: jest.fn(),
+      info: jest.fn(),
       debug: jest.fn(),
       error: jest.fn(),
       warn: jest.fn(),
@@ -444,16 +445,29 @@ describe('StatesTypeOrmRepository', () => {
     /**
      * Test findPage with field selection
      * Validates: Requirements 3.1
+     * Note: applyProjection is only called when no relations are included
      */
-    it('should apply projection when field selection is provided', async () => {
+    it('should apply projection when field selection is provided without relations', async () => {
+      const mockQb = mockTypeOrmRepo.createQueryBuilder();
+      mockQb.getManyAndCount.mockResolvedValue([[mockStateEntity], 1]);
+
+      const selection = { fields: ['id', 'name', 'code'], include: [] };
+      await repository.findPage({ offset: 0, limit: 25 }, selection);
+
+      expect(mockProjectionService.applyProjection).toHaveBeenCalled();
+      expect(mockProjectionService.applyRelations).toHaveBeenCalled();
+    });
+
+    it('should apply relations but skip projection when include has relations', async () => {
       const mockQb = mockTypeOrmRepo.createQueryBuilder();
       mockQb.getManyAndCount.mockResolvedValue([[mockStateEntity], 1]);
 
       const selection = { fields: ['id', 'name', 'code'], include: ['region'] };
       await repository.findPage({ offset: 0, limit: 25 }, selection);
 
-      expect(mockProjectionService.applyProjection).toHaveBeenCalled();
       expect(mockProjectionService.applyRelations).toHaveBeenCalled();
+      // applyProjection is NOT called when relations are included - TypeORM needs all fields for joins
+      expect(mockProjectionService.applyProjection).not.toHaveBeenCalled();
     });
   });
 });

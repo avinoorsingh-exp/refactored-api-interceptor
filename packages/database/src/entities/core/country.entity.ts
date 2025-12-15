@@ -1,7 +1,7 @@
 import { Country } from '@exprealty/shared-domain'
 import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm'
 import { AuditableEntity } from './auditable.entity.js'
-import { Searchable, Sortable, Filterable } from '../../decorators/searchable-decorators.js'
+import { Searchable, Sortable, Filterable, SearchValidators } from '../../decorators/searchable-decorators.js'
 
 /**
  * TypeORM entity for Country table.
@@ -15,7 +15,7 @@ export class CountryEntity extends AuditableEntity implements Country {
 	 * @public
 	 */
 	@PrimaryGeneratedColumn('increment', { type: 'integer', name: 'id' })
-	@Searchable({ type: 'integer', weight: 3, behavior: 'exact', description: 'Unique country identifier' })
+	@Searchable({ type: 'integer', weight: 3, behavior: 'exact', description: 'Unique country identifier', validate: SearchValidators.integer })
 	@Filterable()
 	@Sortable()
 	id!: number
@@ -55,7 +55,7 @@ export class CountryEntity extends AuditableEntity implements Country {
 	 * @public
 	 */
 	@Column({ name: 'number', type: 'integer', unique: true })
-	@Searchable({ type: 'integer', weight: 6, behavior: 'exact', description: 'ISO 3166-1 numeric code (e.g., 840, 124)' })
+	@Searchable({ type: 'integer', weight: 6, behavior: 'exact', description: 'ISO 3166-1 numeric code (e.g., 840, 124)', validate: SearchValidators.integer })
 	@Filterable()
 	@Sortable()
 	number!: number
@@ -65,7 +65,7 @@ export class CountryEntity extends AuditableEntity implements Country {
 	 * @public
 	 */
 	@Column({ name: 'dialing_code', type: 'integer' })
-	@Searchable({ type: 'integer', weight: 5, behavior: 'exact', description: 'International dialing code (e.g., 1, 44)' })
+	@Searchable({ type: 'integer', weight: 5, behavior: 'exact', description: 'International dialing code (e.g., 1, 44)', validate: SearchValidators.integer })
 	@Filterable()
 	@Sortable()
 	dialingCode!: number

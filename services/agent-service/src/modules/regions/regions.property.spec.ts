@@ -5,6 +5,7 @@ import { RegionsService } from './regions.service.js';
 import type { IRegionsRepository } from './ports/regions.repository.port.js';
 import type { Region, CreateRegionInput, UpdateRegionInput } from '@exprealty/shared-domain';
 import { regionArbitrary, createRegionInputArbitrary, uuidArbitrary } from '../../../../../test/utils/generators.js';
+import { LoggerService } from '../../core/logger.service.js';
 
 /**
  * Property-Based Tests for Regions Module
@@ -169,7 +170,15 @@ describe('Regions Module Property Tests', () => {
         findAll: jest.fn(),
       } as jest.Mocked<IRegionsRepository>;
 
-      service = new RegionsService(mockRepository);
+      const mockLogger = {
+        setContext: jest.fn(),
+        info: jest.fn(),
+        debug: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+      } as unknown as jest.Mocked<LoggerService>;
+
+      service = new RegionsService(mockRepository, mockLogger);
     });
 
     it('should call repository.create for any valid create input when name is unique', async () => {

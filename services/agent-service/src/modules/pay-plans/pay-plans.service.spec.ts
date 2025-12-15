@@ -2,6 +2,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { PayPlansService } from './pay-plans.service.js';
 import type { IPayPlansRepository } from './ports/pay-plans.repository.port.js';
 import type { PayPlan, CreatePayPlanInput, UpdatePayPlanInput } from '@exprealty/shared-domain';
+import { LoggerService } from '../../core/logger.service.js';
 
 /**
  * Unit tests for PayPlansService
@@ -11,6 +12,7 @@ import type { PayPlan, CreatePayPlanInput, UpdatePayPlanInput } from '@exprealty
 describe('PayPlansService', () => {
   let service: PayPlansService;
   let repository: jest.Mocked<IPayPlansRepository>;
+  let logger: jest.Mocked<LoggerService>;
 
   const mockPayPlan: PayPlan = {
     id: '550e8400-e29b-41d4-a716-446655440000',
@@ -34,7 +36,15 @@ describe('PayPlansService', () => {
       findAll: jest.fn(),
     } as jest.Mocked<IPayPlansRepository>;
 
-    service = new PayPlansService(repository);
+    logger = {
+      setContext: jest.fn(),
+      info: jest.fn(),
+      debug: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    } as unknown as jest.Mocked<LoggerService>;
+
+    service = new PayPlansService(repository, logger);
   });
 
   afterEach(() => {

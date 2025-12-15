@@ -122,9 +122,40 @@ export class AddUniqueConstraintsAndFixMLS1763139300000 implements MigrationInte
             ALTER TABLE "core"."mls"
             ADD CONSTRAINT "UQ_mls_global_id" UNIQUE ("global_id")
         `);
+
+        // =====================================================
+        // STEP 5: Add unique constraint on mls.name
+        // =====================================================
+        
+        // Remove duplicate mls names (keep first/oldest)
+        await queryRunner.query(`
+            DELETE FROM "core"."mls" m1
+            USING "core"."mls" m2
+            WHERE m1.id > m2.id
+            AND LOWER(TRIM(m1.name)) = LOWER(TRIM(m2.name))
+        `);
+
+        // Trim whitespace from mls names
+        await queryRunner.query(`
+            UPDATE "core"."mls"
+            SET name = TRIM(name)
+            WHERE name != TRIM(name)
+        `);
+
+        // Add unique constraint on mls.name
+        await queryRunner.query(`
+            ALTER TABLE "core"."mls"
+            ADD CONSTRAINT "UQ_mls_name" UNIQUE ("name")
+        `);
     }
 
     public async down(queryRunner: QueryRunner): Promise<void> {
+        // Remove unique constraint from mls.name
+        await queryRunner.query(`
+            ALTER TABLE "core"."mls"
+            DROP CONSTRAINT IF EXISTS "UQ_mls_name"
+        `);
+
         // Remove unique constraint from mls.global_id
         await queryRunner.query(`
             ALTER TABLE "core"."mls"
