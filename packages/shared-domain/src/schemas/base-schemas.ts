@@ -185,3 +185,41 @@ export const phoneString = (message?: string) =>
       )
     );
 
+/**
+ * Lifecycle status string (trimmed and lowercased)
+ * Converts input to lowercase before enum validation
+ * Use with .pipe() to validate against enum values
+ * 
+ * @example
+ * const OfficeLifecycleStatus = lifecycleString().pipe(
+ *   z.enum(['new', 'pending', 'active', 'inactive'])
+ * );
+ */
+export const lifecycleString = () =>
+  z.string()
+    .transform((val) => val.trim().toLowerCase());
+
+/**
+ * Lifecycle enum with lowercase transformation
+ * Automatically lowercases input before validating against enum values
+ * 
+ * @example
+ * const OfficeLifecycleStatus = lifecycleEnum(
+ *   ['new', 'pending', 'active', 'inactive'],
+ *   'Invalid office lifecycle status'
+ * );
+ */
+export const lifecycleEnum = <T extends string>(
+  values: readonly [T, ...T[]],
+  message?: string
+) =>
+  z.string()
+    .transform((val) => val.trim().toLowerCase() as T)
+    .pipe(
+      z.enum(values, {
+        errorMap: () => ({
+          message: message || `Must be one of: ${values.join(', ')}`
+        })
+      })
+    );
+

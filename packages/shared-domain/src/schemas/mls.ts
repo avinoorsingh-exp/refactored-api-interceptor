@@ -1,24 +1,29 @@
 import { z } from 'zod'
 import { AuditableSchema } from './audit.js'
 import { MLS } from '../value-objects/contraints.js'
-import { trimmedStringMinMax } from './base-schemas.js'
+import { trimmedStringMinMax, lifecycleEnum } from './base-schemas.js'
+
+/**
+ * MLS lifecycle status values.
+ * @public
+ */
+export const MLS_LIFECYCLE_VALUES = [
+	'active',
+	'archived',
+	'missing_broker_agent',
+	'closed',
+	'in_build',
+	'pending',
+	'unknown',
+] as const
 
 /**
  * MLS lifecycle status enum.
+ * Accepts case-insensitive input and normalizes to lowercase.
  *
  * @public
  */
-export const MLSLifecycleStatusSchema = z
-	.enum([
-		'active',
-		'archived',
-		'missing_broker_agent',
-		'closed',
-		'in_build',
-		'pending',
-		'unknown',
-	])
-	.describe('MLS lifecycle status')
+export const MLSLifecycleStatusSchema = lifecycleEnum(MLS_LIFECYCLE_VALUES, 'MLS lifecycle status')
 
 /**
  * @public

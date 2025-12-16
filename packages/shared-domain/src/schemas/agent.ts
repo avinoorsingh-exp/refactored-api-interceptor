@@ -11,6 +11,7 @@ import {
 import { AgentCompanyExpandedSchema } from './agent-company.js'
 import { AgentAddressSchema } from './agent-address.js'
 import { AddressExpandedSchema } from './address.js'
+import { lifecycleEnum } from './base-schemas.js'
 
 // Allowed suffixes
 /**
@@ -32,14 +33,27 @@ export const AgentTitle = z
 	.describe('Agent title prefix')
 
 /**
- * Agent lifecycle status options.
+ * Agent lifecycle status values (lowercase).
  * @public
  */
-export const AgentLifecycleStatus = z
-	.enum(['Joining', 'Active', 'Inactive', 'Vested', 'Vested Retired', 'Lead Only'], {
-		message: 'errors.agent.lifecycle_status.invalid',
-	})
-	.describe('Agent lifecycle status')
+export const AGENT_LIFECYCLE_VALUES = [
+	'joining',
+	'active',
+	'inactive',
+	'vested',
+	'vested retired',
+	'lead only',
+] as const;
+
+/**
+ * Agent lifecycle status options.
+ * Automatically lowercases input before validation.
+ * @public
+ */
+export const AgentLifecycleStatus = lifecycleEnum(
+	AGENT_LIFECYCLE_VALUES,
+	'errors.agent.lifecycle_status.invalid'
+).describe('Agent lifecycle status')
 
 /**
  * @internal

@@ -25,16 +25,16 @@ import type { PublicProfileEntity } from './public-profile.entity.js'
 export type AgentTitle = 'Mr' | 'Mrs' | 'Ms' | 'Miss'
 
 /**
- * Agent lifecycle status enum values.
+ * Agent lifecycle status enum values (lowercase).
  * @public
  */
 export type AgentLifecycleStatus =
-	| 'Joining'
-	| 'Active'
-	| 'Inactive'
-	| 'Vested'
-	| 'Vested Retired'
-	| 'Lead Only'
+	| 'joining'
+	| 'active'
+	| 'inactive'
+	| 'vested'
+	| 'vested retired'
+	| 'lead only'
 
 /**
  * TypeORM entity for Agent table.

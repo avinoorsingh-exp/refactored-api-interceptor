@@ -1,22 +1,30 @@
 import { z } from 'zod'
 import { UrlBranded } from '../value-objects/index.js'
 import { AuditableSchema } from './audit.js'
-import { trimmedStringMinMax } from './base-schemas.js'
+import { trimmedStringMinMax, lifecycleEnum } from './base-schemas.js'
+
+/**
+ * Office lifecycle status values.
+ * @public
+ */
+export const OFFICE_LIFECYCLE_VALUES = [
+	'new',
+	'pending_due_diligence',
+	'pending_payment',
+	'active',
+	'withdrawn',
+	'missing_broker_agent',
+] as const;
 
 /**
  * Office lifecycle status.
+ * Automatically lowercases input before validation.
  * @public
  */
-export const OfficeLifecycleStatus = z
-	.enum([
-		'new',
-		'pending_due_diligence',
-		'pending_payment',
-		'active',
-		'withdrawn',
-		'missing_broker_agent',
-	])
-	.describe('Office lifecycle status')
+export const OfficeLifecycleStatus = lifecycleEnum(
+	OFFICE_LIFECYCLE_VALUES,
+	'errors.office.lifecycle_status.invalid'
+).describe('Office lifecycle status')
 
 /**
  * Base schema for Office entity.
