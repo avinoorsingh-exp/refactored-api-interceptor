@@ -364,6 +364,8 @@ export {
 	type CreateContactMethodInputType,
 	UpdateContactMethodInput,
 	type UpdateContactMethodInputType,
+	ContactMethodIdParamSchema,
+	type ContactMethodIdParam,
 } from './schemas/contact-method.js'
 
 // ============================================================================

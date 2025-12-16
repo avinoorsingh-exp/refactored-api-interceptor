@@ -2,12 +2,11 @@ import {
 	Entity,
 	Column,
 	PrimaryGeneratedColumn,
-	CreateDateColumn,
-	UpdateDateColumn,
 	ManyToOne,
 	JoinColumn,
 } from 'typeorm'
 import { AgentEntity } from './agent.entity.js'
+import { AuditableEntity } from './auditable.entity.js'
 
 /**
  * TypeORM entity for ContactMethod table.
@@ -15,7 +14,7 @@ import { AgentEntity } from './agent.entity.js'
  * @public
  */
 @Entity({ name: 'contact_method', schema: 'core' })
-export class ContactMethodEntity {
+export class ContactMethodEntity extends AuditableEntity {
 	/**
 	 * Primary key (BigInt as string for large ID values).
 	 * @public
@@ -27,7 +26,7 @@ export class ContactMethodEntity {
 	 * Contact method name/label.
 	 * @public
 	 */
-	@Column({ type: 'text' })
+	@Column({ type: 'text', unique: true })
 	name!: string
 
 	/**
@@ -71,20 +70,6 @@ export class ContactMethodEntity {
 	 */
 	@Column({ name: 'agent_id', type: 'uuid' })
 	agentId!: string
-
-	/**
-	 * Creation timestamp.
-	 * @public
-	 */
-	@CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
-	createdAt!: Date
-
-	/**
-	 * Last update timestamp.
-	 * @public
-	 */
-	@UpdateDateColumn({ name: 'updated_at', type: 'timestamp with time zone' })
-	updatedAt!: Date
 
 	/**
 	 * Many-to-One relationship with Agent.

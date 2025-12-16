@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { InstantUTC } from '../value-objects/index.js'
+import { AuditableSchema } from './audit.js'
+import { trimmedStringMinMax } from './base-schemas.js'
 
 /**
  * Channel enum for contact methods.
@@ -32,7 +33,7 @@ export const ContactMethodBaseSchema = z.object({
 	id: z.string().describe('Primary key (BigInt as string)'),
 
 	/**
-	 * Contact method name/label.
+	 * Contact method name/label (unique).
 	 * @public
 	 */
 	name: z.string().min(1).max(255),
@@ -72,19 +73,7 @@ export const ContactMethodBaseSchema = z.object({
 	 * @public
 	 */
 	agentId: z.string().uuid({ message: 'errors.contactMethod.agentId.invalid' }),
-
-	/**
-	 * Timestamp when the contact method was created.
-	 * @public
-	 */
-	createdAt: InstantUTC,
-
-	/**
-	 * Timestamp when the contact method was last updated.
-	 * @public
-	 */
-	updatedAt: InstantUTC,
-})
+}).merge(AuditableSchema)
 
 /**
  * Expanded schema for ContactMethod with nested relationships.
@@ -100,21 +89,25 @@ export const ContactMethodExpandedSchema = ContactMethodBaseSchema.extend({
 
 /**
  * Input schema for creating a new ContactMethod.
+ * Note: agentId is omitted as it comes from the URL path in nested routes.
  * @public
  */
 export const CreateContactMethodInput = ContactMethodBaseSchema.omit({
 	id: true,
-	createdAt: true,
-	updatedAt: true,
+	created: true,
+	lastModified: true,
+	modifiedBy: true,
+	agentId: true,
+}).extend({
+	name: trimmedStringMinMax(1, 255, 'Contact method name must be between 1 and 255 characters'),
+	value: trimmedStringMinMax(1, 255, 'Contact method value must be between 1 and 255 characters'),
 })
 
 /**
  * Input schema for updating an existing ContactMethod.
  * @public
  */
-export const UpdateContactMethodInput = ContactMethodBaseSchema.partial().required({
-	id: true,
-})
+export const UpdateContactMethodInput = CreateContactMethodInput.partial()
 
 /**
  * TypeScript type inferred from ContactMethodBaseSchema.
@@ -139,3 +132,21 @@ export type CreateContactMethodInputType = z.infer<typeof CreateContactMethodInp
  * @public
  */
 export type UpdateContactMethodInputType = z.infer<typeof UpdateContactMethodInput>
+
+/**
+ * Schema for contact method ID path parameter.
+ * @public
+ */
+export const ContactMethodIdParamSchema = z.object({
+	/**
+	 * Contact method ID (UUID).
+	 * @public
+	 */
+	id: z.string().uuid({ message: 'errors.contactMethod.id.invalid' }),
+})
+
+/**
+ * TypeScript type for contact method ID parameter.
+ * @public
+ */
+export type ContactMethodIdParam = z.infer<typeof ContactMethodIdParamSchema>

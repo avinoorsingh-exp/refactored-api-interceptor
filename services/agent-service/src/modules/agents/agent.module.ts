@@ -27,6 +27,9 @@ import { AgentService } from './agent.service.js';
 import { AgentTypeOrmRepository } from './agent.repository.js';
 import { PaginationModule } from '../../common/pagination/pagination.module.js';
 import { ProjectionService } from '../../common/query/projection.service.js';
+import { ContactMethodController } from './contact-methods/contact-method.controller.js';
+import { ContactMethodService } from './contact-methods/contact-method.service.js';
+import { ContactMethodTypeOrmRepository } from './contact-methods/contact-method.repository.js';
 
 /**
  * Module for Agent aggregate.
@@ -85,16 +88,21 @@ import { ProjectionService } from '../../common/query/projection.service.js';
 		]),
 		PaginationModule,
 	],
-	controllers: [AgentController],
+	controllers: [AgentController, ContactMethodController],
 	providers: [
 		AgentService,
+		ContactMethodService,
 		ProjectionService,
 		// Provide the repository adapter under the port token
 		{
 			provide: 'IAgentRepository',
 			useClass: AgentTypeOrmRepository,
 		},
+		{
+			provide: 'IContactMethodRepository',
+			useClass: ContactMethodTypeOrmRepository,
+		},
 	],
-	exports: [AgentService],
+	exports: [AgentService, ContactMethodService],
 })
 export class AgentModule {}

@@ -35,7 +35,52 @@ async function bootstrap() {
 		contentSecurityPolicy: false,
 		})
 	);
-	app.use(compression());
+	
+	// Configure compression middleware
+	// The filter ensures compression only applies when appropriate
+	app.use(compression({
+		// Only compress responses above 1KB (default is 1KB, being explicit)
+		threshold: 1024,
+		// Filter function to decide if response should be compressed
+		filter: (req, res) => {
+			// Don't compress if client doesn't accept encoding
+			if (req.headers['x-no-compression']) {
+				return false;
+			}
+			// Use compression's default filter for MIME types
+			return compression.filter(req, res);
+		},
+	}));
+	
+	// Middleware to fix conflicting Content-Length and Transfer-Encoding headers
+	// HTTP spec: Cannot have both Content-Length and Transfer-Encoding: chunked
+	// This ensures only one is present before response is sent
+	app.use((req: any, res: any, next: any) => {
+		const originalWrite = res.write.bind(res);
+		const originalEnd = res.end.bind(res);
+		
+		const fixHeaders = () => {
+			const transferEncoding = res.getHeader('transfer-encoding');
+			const contentLength = res.getHeader('content-length');
+			
+			// If both headers are set, remove Content-Length (Transfer-Encoding takes precedence)
+			if (transferEncoding && contentLength) {
+				res.removeHeader('content-length');
+			}
+		};
+		
+		res.write = function(...args: any[]) {
+			fixHeaders();
+			return originalWrite(...args);
+		};
+		
+		res.end = function(...args: any[]) {
+			fixHeaders();
+			return originalEnd(...args);
+		};
+		
+		next();
+	});
 
 	// Enable CORS
 	app.enableCors({
