@@ -162,39 +162,11 @@ export class AgentController {
 		example: 25,
 	})
 	@ApiQuery({
-		name: 'filter',
-		description: 'JSON filter conditions',
-		required: false,
-		type: String,
-		example: '{"conditions":[{"field":"lifecycleStatus","operator":"eq","value":"Active"}]}',
-	})
-	@ApiQuery({
-		name: 'sort',
-		description: 'JSON sort conditions',
-		required: false,
-		type: String,
-		example: '{"conditions":[{"field":"lastName","direction":"ASC"}]}',
-	})
-	@ApiQuery({
-		name: 'search',
-		description: 'Search term for firstName, lastName, preferredName, and email fields',
-		required: false,
-		type: String,
-		example: 'John',
-	})
-	@ApiQuery({
-		name: 'fields',
-		description: 'Comma-separated list of fields to return',
-		required: false,
-		type: String,
-		example: 'id,firstName,lastName,email,lifecycleStatus',
-	})
-	@ApiQuery({
 		name: 'include',
 		description: 'Comma-separated list of relations to include',
 		required: false,
 		type: String,
-		example: 'agentMlsList,agentOffices,publicProfile',
+		example: 'mls,office,publicProfile',
 	})
 	@ApiResponse({
 		status: 200,
@@ -289,7 +261,7 @@ export class AgentController {
 		description: 'Comma-separated list of relations to include',
 		required: false,
 		type: String,
-		example: 'agentMlsList,agentOffices,publicProfile',
+		example: 'mls,office,publicProfile',
 	})
 	@ApiResponse({
 		status: 200,

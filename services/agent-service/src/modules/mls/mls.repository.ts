@@ -81,7 +81,7 @@ export class MLSTypeOrmRepository
 				...entity.address,
 				id: String(entity.address.id),
 			} : undefined,
-			agentMLS: entity.agentMLS,
+			agent: entity.agents,
 		};
 	}
 

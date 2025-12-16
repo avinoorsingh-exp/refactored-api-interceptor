@@ -77,6 +77,7 @@ export class AgentTypeOrmRepository
 	protected mapToDomain(entity: AgentEntity): Agent {
 		const result = {
 			id: entity.id,
+			agentId: entity.agentId,
 			agentCompanyId: entity.agentCompanyId,
 			firstName: entity.firstName,
 			lastName: entity.lastName,
@@ -84,13 +85,12 @@ export class AgentTypeOrmRepository
 			suffix: entity.suffix as Agent['suffix'],
 			email: '', // TODO: Get from contactMethods
 			birthDate: entity.birthDate?.toISOString().split('T')[0] || '',
+			lifecycleStatus: entity.lifecycleStatus,
 			createdAt: entity.created,
 			updatedAt: entity.lastModified,
 			// Map optional fields
-			...(entity.agentId && { agentId: entity.agentId }),
 			...(entity.title && { title: entity.title }),
 			...(entity.middleName && { middleName: entity.middleName }),
-			...(entity.lifecycleStatus && { lifecycleStatus: entity.lifecycleStatus }),
 			...(entity.systemId && { systemId: entity.systemId }),
 			...(entity.seedAgent !== undefined && { seedAgent: entity.seedAgent }),
 			...(entity.joinDate && { joinDate: entity.joinDate }),
@@ -99,8 +99,9 @@ export class AgentTypeOrmRepository
 			...(entity.isStaff !== undefined && { isStaff: entity.isStaff }),
 			// Map relations if loaded
 			...(entity.agentCompany && { agentCompany: entity.agentCompany }),
-			...(entity.agentOffices && { agentOffices: entity.agentOffices }),
-			...(entity.agentMlsList && { agentMlsList: entity.agentMlsList }),
+			...(entity.agentOffice && { agentOffice: entity.agentOffice }),
+			...(entity.office && { office: entity.office }),
+			...(entity.mls && { mls: entity.mls }),
 			...(entity.agentAddresses && { agentAddresses: entity.agentAddresses }),
 			...(entity.externalReferences && { externalReferences: entity.externalReferences }),
 			...(entity.languages && { languages: entity.languages }),

@@ -160,34 +160,6 @@ export class MLSController {
 		type: Number,
 		example: 25,
 	})
-	@ApiQuery({
-		name: 'filter',
-		description: 'JSON filter conditions',
-		required: false,
-		type: String,
-		example: '{"conditions":[{"field":"lifecycleStatus","operator":"eq","value":"active"}]}',
-	})
-	@ApiQuery({
-		name: 'sort',
-		description: 'JSON sort conditions',
-		required: false,
-		type: String,
-		example: '{"conditions":[{"field":"name","direction":"ASC"}]}',
-	})
-	@ApiQuery({
-		name: 'search',
-		description: 'Search term for name, ouid, and shortName fields',
-		required: false,
-		type: String,
-		example: 'Metro',
-	})
-	@ApiQuery({
-		name: 'fields',
-		description: 'Comma-separated list of fields to return',
-		required: false,
-		type: String,
-		example: 'id,name,lifecycleStatus,orgType,globalId',
-	})
 	@ApiResponse({
 		status: 200,
 		description: 'MLS records retrieved successfully',

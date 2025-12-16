@@ -51,7 +51,8 @@ export const OfficeBaseSchema = z
  */
 export const OfficeExpandedSchema = OfficeBaseSchema.extend({
 	company: z.lazy(() => z.any()).optional().describe('Parent company relationship'),
-	agentOffices: z.lazy(() => z.array(z.any())).optional(),
+	agentOffice: z.lazy(() => z.array(z.any())).optional().describe('Associated agent-office junction records (includes isPrimary)'),
+	agents: z.lazy(() => z.array(z.any())).optional().describe('Direct access to associated agents'),
 	officeExternalReferences: z.lazy(() => z.array(z.any())).optional(),
 }).describe('Expanded Office with relationships')
 

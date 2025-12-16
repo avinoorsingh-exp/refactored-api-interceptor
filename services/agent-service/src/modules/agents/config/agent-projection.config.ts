@@ -4,8 +4,8 @@ import { ProjectionConfig } from '@exprealty/shared-domain';
  * Projection configuration for Agent entity.
  * Defines which fields can be projected and which relations can be included.
  * 
- * Note: Nested relations (e.g., agentOffices.office) are handled by TypeORM's
- * eager loading in the repository layer - this config controls the top-level includes.
+ * Note: Relations are handled by TypeORM's eager loading in the repository layer.
+ * This config controls the top-level includes.
  */
 export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 	// Always included (primary key)
@@ -35,8 +35,9 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		'modifiedBy',
 		// Relations
 		'agentCompany',
-		'agentOffices',
-		'agentMlsList',
+		'agentOffice',
+		'office',
+		'mls',
 		'agentAddresses',
 		'externalReferences',
 		'languages',
@@ -72,15 +73,20 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 			property: 'agentCompany',
 			fields: ['id', 'name', 'lifecycleStatus'],
 		},
-		agentOffices: {
-			property: 'agentOffices',
+		agentOffice: {
+			property: 'agentOffice',
 			fields: ['id', 'officeId', 'isPrimary'],
-			nested: ['office'], // Include the nested office entity
+			nested: ['office'], // Include the nested office entity for metadata access
 		},
-		agentMlsList: {
-			property: 'agentMlsList',
-			fields: ['id', 'mlsId', 'isPrimary', 'mlsMemberId'],
-			nested: ['mls'], // Include the nested MLS entity
+		office: {
+			property: 'office',
+			fields: ['id', 'name', 'phone', 'lifecycleStatus', 'primaryState', 'website'],
+			// Direct access to OfficeEntity[] - hides junction table
+		},
+		mls: {
+			property: 'mls',
+			fields: ['id', 'name', 'shortName', 'lifecycleStatus', 'orgType', 'website'],
+			// TypeORM handles junction table transparently via @ManyToMany
 		},
 		agentAddresses: {
 			property: 'agentAddresses',

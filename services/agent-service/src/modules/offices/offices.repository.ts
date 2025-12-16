@@ -77,7 +77,8 @@ export class OfficesTypeOrmRepository
 				...entity.company,
 				id: String(entity.company.id),
 			} : undefined,
-			agentOffices: entity.agentOffices,
+			agentOffice: entity.agentOffice,
+			agents: entity.agents,
 			officeExternalReferences: entity.officeExternalReferences,
 		};
 	}

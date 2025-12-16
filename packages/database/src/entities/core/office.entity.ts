@@ -4,11 +4,13 @@ import {
 	PrimaryGeneratedColumn,
 	OneToMany,
 	ManyToOne,
+	ManyToMany,
 	JoinColumn,
 } from 'typeorm'
 import { AuditableEntity } from './auditable.entity.js'
 import { Searchable, Filterable, Sortable, SearchValidators } from '../../decorators/searchable-decorators.js'
 import { CompanyEntity } from './company.entity.js'
+import { AgentEntity } from './agent.entity.js'
 
 /**
  * Lifecycle status values for Office.
@@ -108,11 +110,19 @@ export class OfficeEntity extends AuditableEntity {
 
 	/**
 	 * One-to-Many relationship with AgentOffice.
-	 * Uses string name to avoid circular dependency at module load time.
+	 * Use this to access junction metadata like isPrimary.
 	 * @public
 	 */
 	@OneToMany('AgentOfficeEntity', 'office')
-	agentOffices?: unknown[]
+	agentOffice?: unknown[]
+
+	/**
+	 * Many-to-Many relationship with Agent.
+	 * Direct access to agents (hides junction table).
+	 * @public
+	 */
+	@ManyToMany(() => AgentEntity, (agent) => agent.office)
+	agents?: AgentEntity[]
 
 	/**
 	 * One-to-Many relationship with OfficeExternalReference.

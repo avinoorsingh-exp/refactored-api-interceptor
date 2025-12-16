@@ -160,34 +160,6 @@ export class PayPlansController {
 		type: Number,
 		example: 25,
 	})
-	@ApiQuery({
-		name: 'filter',
-		description: 'JSON filter conditions',
-		required: false,
-		type: String,
-		example: '{"conditions":[{"field":"active","operator":"eq","value":true}]}',
-	})
-	@ApiQuery({
-		name: 'sort',
-		description: 'JSON sort conditions',
-		required: false,
-		type: String,
-		example: '{"conditions":[{"field":"name","direction":"ASC"}]}',
-	})
-	@ApiQuery({
-		name: 'search',
-		description: 'Search term for name field',
-		required: false,
-		type: String,
-		example: 'Standard',
-	})
-	@ApiQuery({
-		name: 'fields',
-		description: 'Comma-separated list of fields to return',
-		required: false,
-		type: String,
-		example: 'id,name,active,agentPercentage,cap',
-	})
 	@ApiResponse({
 		status: 200,
 		description: 'Pay plans retrieved successfully',

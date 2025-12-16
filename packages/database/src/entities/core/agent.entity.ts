@@ -1,11 +1,13 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, OneToOne, JoinColumn } from 'typeorm'
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, OneToOne, JoinColumn, ManyToMany , JoinTable} from 'typeorm'
 import { AgentCompanyEntity } from './agent-company.entity.js'
 import { AuditableEntity } from './auditable.entity.js'
+import { MLSEntity } from './mls.entity.js'
+import { OfficeEntity } from './office.entity.js'
 import { Searchable, Filterable, Sortable, SearchValidators } from '../../decorators/searchable-decorators.js'
 
 // Forward declarations for circular dependencies
 import type { AgentOfficeEntity } from './agent-office.entity.js'
-import type { AgentMLSEntity } from './agent-mls.entity.js'
+
 import type { AgentAddressEntity } from './agent-address.entity.js'
 import type { AgentExternalReferenceEntity } from './agent-external-reference.entity.js'
 import type { AgentLanguageEntity } from './agent-language.entity.js'
@@ -52,14 +54,15 @@ export class AgentEntity extends AuditableEntity {
 	id!: string
 
 	/**
-	 * Legacy agent ID from old system (BigInt).
+	 * Auto-generated agent ID (BigInt).
+	 * If not provided during INSERT, a sequence generates the value.
 	 * @public
 	 */
-	@Column({ name: 'agent_id', type: 'bigint', nullable: true })
-	@Searchable({ type: 'integer', weight: 4, behavior: 'exact', description: 'Legacy agent ID (bigint)', validate: SearchValidators.bigint })
+	@Column({ name: 'agent_id', type: 'bigint' })
+	@Searchable({ type: 'integer', weight: 4, behavior: 'exact', description: 'Auto-generated agent ID (bigint)', validate: SearchValidators.bigint })
 	@Filterable()
 	@Sortable()
-	agentId?: string
+	agentId!: string
 
 	/**
 	 * Agent title (Mr., Mrs., Ms., Miss).
@@ -133,13 +136,14 @@ export class AgentEntity extends AuditableEntity {
 
 	/**
 	 * Agent lifecycle status.
+	 * Defaults to 'joining' for new agents.
 	 * @public
 	 */
-	@Column({ name: 'lifecycle_status', type: 'text', nullable: true })
+	@Column({ name: 'lifecycle_status', type: 'text', default: 'joining' })
 	@Searchable({ weight: 7, behavior: 'exact', description: 'Agent lifecycle status (Joining, Active, Inactive, Vested, Vested Retired, Lead Only)' })
 	@Filterable()
 	@Sortable()
-	lifecycleStatus?: AgentLifecycleStatus
+	lifecycleStatus!: AgentLifecycleStatus
 
 	/**
 	 * System ID reference.
@@ -225,19 +229,53 @@ export class AgentEntity extends AuditableEntity {
 
 	/**
 	 * One-to-Many relationship with AgentOffice (junction table).
-	 * Links agent to their offices with primary designation.
+	 * Use this to access junction metadata like isPrimary.
 	 * @public
 	 */
 	@OneToMany('AgentOfficeEntity', 'agent')
-	agentOffices?: AgentOfficeEntity[]
+	agentOffice?: AgentOfficeEntity[]
 
 	/**
-	 * One-to-Many relationship with AgentMls (junction table).
-	 * Links agent to MLS memberships.
+	 * Many-to-Many relationship with Office.
+	 * Direct access to offices (hides junction table).
+	 * TypeORM handles agent_office join table transparently.
 	 * @public
 	 */
-	@OneToMany('AgentMLSEntity', 'agent')
-	agentMlsList?: AgentMLSEntity[]
+	@ManyToMany(() => OfficeEntity, (office) => office.agents)
+	@JoinTable({
+		name: 'agent_office',
+		schema: 'core',
+		joinColumn: {
+			name: 'agent_id',
+			referencedColumnName: 'id',
+		},
+		inverseJoinColumn: {
+			name: 'office_id',
+			referencedColumnName: 'id',
+		},
+	})
+	office?: OfficeEntity[]
+
+	/**
+	 * Many-to-Many relationship with MLS.
+	 * TypeORM handles agent_mls join table transparently.
+	 * Uses agent.id (UUID) as the join column.
+	 * @public
+	 */
+	@ManyToMany(() => MLSEntity, (mls) => mls.agents)
+	@JoinTable({
+		name: 'agent_mls',
+		schema: 'core',
+		joinColumn: {
+			name: 'agent_id',
+			referencedColumnName: 'id', // References Agent.id (UUID primary key)
+		},
+		inverseJoinColumn: {
+			name: 'mls_id',
+			referencedColumnName: 'id', // References MLS.id (bigint primary key)
+		},
+	})
+	mls?: MLSEntity[];
 
 	/**
 	 * One-to-Many relationship with AgentAddress (junction table).

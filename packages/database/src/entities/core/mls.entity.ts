@@ -5,9 +5,11 @@ import {
 	OneToMany,
 	ManyToOne,
 	JoinColumn,
+	ManyToMany,
 } from 'typeorm'
 import { AddressEntity } from './address.entity.js'
 import { AuditableEntity } from './auditable.entity.js'
+import { AgentEntity } from './agent.entity.js'
 import { Searchable, Filterable, Sortable, SearchValidators } from '../../decorators/searchable-decorators.js'
 
 /**
@@ -151,8 +153,8 @@ export class MLSEntity extends AuditableEntity {
 	 * One-to-many relationship with AgentMLS.
 	 * Uses string name to avoid circular dependency at module load time.
 	 */
-	@OneToMany('AgentMLSEntity', 'mls')
-	agentMLS?: unknown[]
+	@ManyToMany(() => AgentEntity, (agent) => agent.mls)
+  	agents!: AgentEntity[];
 
 	/**
 	 * Many-to-One relationship with Address.

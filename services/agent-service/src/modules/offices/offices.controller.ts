@@ -160,34 +160,6 @@ export class OfficesController {
 		type: Number,
 		example: 25,
 	})
-	@ApiQuery({
-		name: 'filter',
-		description: 'JSON filter conditions',
-		required: false,
-		type: String,
-		example: '{"conditions":[{"field":"lifecycleStatus","operator":"eq","value":"active"}]}',
-	})
-	@ApiQuery({
-		name: 'sort',
-		description: 'JSON sort conditions',
-		required: false,
-		type: String,
-		example: '{"conditions":[{"field":"name","direction":"ASC"}]}',
-	})
-	@ApiQuery({
-		name: 'search',
-		description: 'Search term for name, phone, and primaryState fields',
-		required: false,
-		type: String,
-		example: 'Downtown',
-	})
-	@ApiQuery({
-		name: 'fields',
-		description: 'Comma-separated list of fields to return',
-		required: false,
-		type: String,
-		example: 'id,name,phone,lifecycleStatus,primaryState,companyId',
-	})
 	@ApiResponse({
 		status: 200,
 		description: 'Offices retrieved successfully',

@@ -74,7 +74,7 @@ export type MLSBase = z.infer<typeof MLSBaseSchema>
  * @public
  */
 export const MLSExpandedSchema = MLSBaseSchema.extend({
-	agentMLS: z.lazy(() => z.array(z.any())).optional(),
+	agent: z.lazy(() => z.array(z.any())).optional(),
 	address: z.lazy(() => z.any()).optional(),
 }).describe('Expanded MLS with relationships')
 
