@@ -33,9 +33,9 @@ export const PAY_PLANS_PROJECTION_CONFIG: ProjectionConfig = {
 		'modifiedBy',
 	],
 
-	// Available relations
+	// Available relations (singular names following GraphQL conventions)
 	relations: {
-		payPlanVariants: {
+		payPlanVariant: {
 			property: 'payPlanVariants',
 			fields: ['id', 'name'],
 		},
@@ -48,5 +48,5 @@ export const PAY_PLANS_PROJECTION_CONFIG: ProjectionConfig = {
 export const PAY_PLANS_FIELD_PRESETS = {
 	minimal: ['id', 'name', 'active'],
 	summary: PAY_PLANS_PROJECTION_CONFIG.default,
-	detail: [...PAY_PLANS_PROJECTION_CONFIG.default!, 'payPlanVariants'],
+	detail: [...PAY_PLANS_PROJECTION_CONFIG.default!, 'payPlanVariant'],
 };

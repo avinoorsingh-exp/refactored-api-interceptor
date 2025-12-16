@@ -33,18 +33,18 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		'created',
 		'lastModified',
 		'modifiedBy',
-		// Relations
+		// Relations (singular names following GraphQL conventions)
 		'agentCompany',
 		'agentOffice',
 		'office',
 		'mls',
-		'agentAddresses',
-		'externalReferences',
-		'languages',
-		'contactMethods',
+		'agentAddress',
+		'externalReference',
+		'language',
+		'contactMethod',
 		'paymentSettings',
 		'sponsorConfiguration',
-		'activeLocations',
+		'activeLocation',
 		'publicProfile',
 	],
 
@@ -68,6 +68,7 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 	],
 
 	// Available relations that can be included via ?include=
+	// Note: Uses singular names following GraphQL conventions
 	relations: {
 		agentCompany: {
 			property: 'agentCompany',
@@ -88,24 +89,24 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 			fields: ['id', 'name', 'shortName', 'lifecycleStatus', 'orgType', 'website'],
 			// TypeORM handles junction table transparently via @ManyToMany
 		},
-		agentAddresses: {
+		agentAddress: {
 			property: 'agentAddresses',
 			fields: ['id', 'addressId', 'isPrimary', 'addressType'],
 			nested: ['address'], // Include the nested address entity
 		},
-		externalReferences: {
+		externalReference: {
 			property: 'externalReferences',
 			fields: ['id', 'externalReferenceId'],
 			nested: ['externalReference'],
 		},
-		languages: {
+		language: {
 			property: 'languages',
 			fields: ['id', 'languageId', 'proficiency'],
 			nested: ['language'],
 		},
-		contactMethods: {
+		contactMethod: {
 			property: 'contactMethods',
-			fields: ['id', 'type', 'value', 'isPrimary'],
+			fields: ['id', 'name', 'channel', 'subType', 'value', 'isPrimary', 'smsOptIn'],
 		},
 		paymentSettings: {
 			property: 'paymentSettings',
@@ -115,7 +116,7 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 			property: 'sponsorConfiguration',
 			fields: ['id', 'sponsorBuffer'],
 		},
-		activeLocations: {
+		activeLocation: {
 			property: 'activeLocations',
 			fields: ['id', 'stateId', 'isPrimary'],
 		},

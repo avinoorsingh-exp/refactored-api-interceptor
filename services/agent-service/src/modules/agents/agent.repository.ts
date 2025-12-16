@@ -97,18 +97,18 @@ export class AgentTypeOrmRepository
 			...(entity.anniversaryDate && { anniversaryDate: entity.anniversaryDate }),
 			...(entity.terminationDate && { terminationDate: entity.terminationDate }),
 			...(entity.isStaff !== undefined && { isStaff: entity.isStaff }),
-			// Map relations if loaded
+			// Map relations if loaded (singular names following GraphQL conventions)
 			...(entity.agentCompany && { agentCompany: entity.agentCompany }),
 			...(entity.agentOffice && { agentOffice: entity.agentOffice }),
 			...(entity.office && { office: entity.office }),
 			...(entity.mls && { mls: entity.mls }),
-			...(entity.agentAddresses && { agentAddresses: entity.agentAddresses }),
-			...(entity.externalReferences && { externalReferences: entity.externalReferences }),
-			...(entity.languages && { languages: entity.languages }),
-			...(entity.contactMethods && { contactMethods: entity.contactMethods }),
+			...(entity.agentAddresses && { agentAddress: entity.agentAddresses }),
+			...(entity.externalReferences && { externalReference: entity.externalReferences }),
+			...(entity.languages && { language: entity.languages }),
+			...(entity.contactMethods && { contactMethod: entity.contactMethods }),
 			...(entity.paymentSettings && { paymentSettings: entity.paymentSettings }),
 			...(entity.sponsorConfiguration && { sponsorConfiguration: entity.sponsorConfiguration }),
-			...(entity.activeLocations && { activeLocations: entity.activeLocations }),
+			...(entity.activeLocations && { activeLocation: entity.activeLocations }),
 			...(entity.publicProfile && { publicProfile: entity.publicProfile }),
 		};
 		return result as unknown as Agent;
