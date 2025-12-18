@@ -245,10 +245,12 @@ export class QueryService {
         qb[whereMethod](`${fieldPath} <= :${paramName}`, { [paramName]: value });
         break;
       case 'like':
-        qb[whereMethod](`${fieldPath} LIKE :${paramName}`, { [paramName]: `%${value}%` });
+        // Pass value as-is - user must include their own wildcards (e.g., "4%" for startsWith)
+        qb[whereMethod](`${fieldPath}::TEXT LIKE :${paramName}`, { [paramName]: value });
         break;
       case 'ilike':
-        qb[whereMethod](`${fieldPath} ILIKE :${paramName}`, { [paramName]: `%${value}%` });
+        // Pass value as-is - user must include their own wildcards (e.g., "%test%")
+        qb[whereMethod](`${fieldPath}::TEXT ILIKE :${paramName}`, { [paramName]: value });
         break;
       case 'in':
         qb[whereMethod](`${fieldPath} IN (:...${paramName})`, { [paramName]: value });
@@ -269,13 +271,13 @@ export class QueryService {
         qb[whereMethod](`${fieldPath} IS NOT NULL`);
         break;
       case 'startsWith':
-        qb[whereMethod](`${fieldPath} ILIKE :${paramName}`, { [paramName]: `${value}%` });
+        qb[whereMethod](`${fieldPath}::TEXT ILIKE :${paramName}`, { [paramName]: `${value}%` });
         break;
       case 'endsWith':
-        qb[whereMethod](`${fieldPath} ILIKE :${paramName}`, { [paramName]: `%${value}` });
+        qb[whereMethod](`${fieldPath}::TEXT ILIKE :${paramName}`, { [paramName]: `%${value}` });
         break;
       case 'contains':
-        qb[whereMethod](`${fieldPath} ILIKE :${paramName}`, { [paramName]: `%${value}%` });
+        qb[whereMethod](`${fieldPath}::TEXT ILIKE :${paramName}`, { [paramName]: `%${value}%` });
         break;
       default:
         throw new Error(`Unsupported filter operator: ${operator}`);
