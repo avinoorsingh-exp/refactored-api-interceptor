@@ -47,8 +47,9 @@ import { LoggerModule } from './logger.module.js'
           // Entity discovery - autoLoadEntities loads entities from forFeature()
           autoLoadEntities: true,
           
-          // Auto-schema sync (ONLY for development)
-          synchronize: cfg.NODE_ENV === 'dev',
+          // NEVER use synchronize - always use migrations for schema changes.
+          // synchronize can cause data loss and conflicts with FK constraints.
+          synchronize: false,
           
           // Logging (conditional based on environment)
           logging: cfg.NODE_ENV === 'dev' ? ['error', 'warn', 'schema'] : ['error'],
