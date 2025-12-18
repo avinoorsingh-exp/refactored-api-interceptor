@@ -4,6 +4,7 @@ import 'reflect-metadata';
 const SEARCHABLE_FIELDS_KEY = Symbol('searchableFields');
 const SEARCHABLE_CONFIG_KEY = Symbol('searchableConfig');
 const FILTERABLE_FIELDS_KEY = Symbol('filterableFields');
+const FILTERABLE_CONFIG_KEY = Symbol('filterableConfig');
 const SORTABLE_FIELDS_KEY = Symbol('sortableFields');
 
 /**
@@ -274,14 +275,97 @@ export function Searchable(options: SearchableOptions = {}) {
   };
 }
 
-export function Filterable() {
+/**
+ * All supported filter operators
+ */
+export type FilterOperator =
+  | 'eq'
+  | 'ne'
+  | 'gt'
+  | 'gte'
+  | 'lt'
+  | 'lte'
+  | 'like'
+  | 'ilike'
+  | 'in'
+  | 'nin'
+  | 'between'
+  | 'isNull'
+  | 'isNotNull'
+  | 'startsWith'
+  | 'endsWith'
+  | 'contains';
+
+/**
+ * All available filter operators (permissive default)
+ */
+export const ALL_FILTER_OPERATORS: FilterOperator[] = [
+  'eq', 'ne', 'gt', 'gte', 'lt', 'lte',
+  'like', 'ilike', 'in', 'nin', 'between',
+  'isNull', 'isNotNull', 'startsWith', 'endsWith', 'contains',
+];
+
+/**
+ * Validation options for filterable fields
+ */
+export interface FilterValidationOptions {
+  /**
+   * Minimum value (for numeric fields)
+   */
+  min?: number;
+
+  /**
+   * Maximum value (for numeric fields)
+   */
+  max?: number;
+
+  /**
+   * Regex pattern validation
+   */
+  pattern?: RegExp | string;
+}
+
+/**
+ * Options for @Filterable decorator
+ * Business-level constraints - what operators are allowed and validation rules
+ */
+export interface FilterableOptions {
+  /**
+   * Allowed operators for this field.
+   * If not specified, all operators are allowed (permissive default).
+   */
+  operators?: FilterOperator[];
+
+  /**
+   * Validation rules for filter values
+   */
+  validation?: FilterValidationOptions;
+}
+
+/**
+ * Stored filterable field configuration
+ */
+export interface FilterableFieldConfig {
+  field: string;
+  operators?: FilterOperator[];
+  validation?: FilterValidationOptions;
+}
+
+export function Filterable(options: FilterableOptions = {}) {
   return function (target: any, propertyKey: string) {
+    // Store in simple array for backward compatibility (getFilterableFields)
     const existingFields = Reflect.getMetadata(FILTERABLE_FIELDS_KEY, target.constructor) || [];
     Reflect.defineMetadata(
       FILTERABLE_FIELDS_KEY,
       [...existingFields, propertyKey],
       target.constructor
     );
+
+    // Store in Map with options for advanced usage (getFilterableFieldsConfig)
+    const existingConfig: Map<string, FilterableOptions> =
+      Reflect.getMetadata(FILTERABLE_CONFIG_KEY, target.constructor) || new Map();
+    existingConfig.set(propertyKey, options);
+    Reflect.defineMetadata(FILTERABLE_CONFIG_KEY, existingConfig, target.constructor);
   };
 }
 
@@ -314,6 +398,14 @@ export function getSearchableFieldsConfig(target: any): Map<string, SearchableOp
 
 export function getFilterableFields(target: any): string[] {
   return Reflect.getMetadata(FILTERABLE_FIELDS_KEY, target) || [];
+}
+
+/**
+ * Get filterable fields with their configuration options
+ * @returns Map of property names to their FilterableOptions
+ */
+export function getFilterableFieldsConfig(target: any): Map<string, FilterableOptions> {
+  return Reflect.getMetadata(FILTERABLE_CONFIG_KEY, target) || new Map();
 }
 
 export function getSortableFields(target: any): string[] {

@@ -1,14 +1,16 @@
 
 
-import { Injectable, Inject, Optional } from '@nestjs/common';
+import { Injectable, Inject, Optional, BadRequestException } from '@nestjs/common';
 import { SelectQueryBuilder, Brackets, ObjectLiteral } from 'typeorm';
 import {
 	getFilterableFields,
+	getFilterableFieldsConfig,
 	getSortableFields,
 	getSearchableFields,
 	ISearchStrategy,
 	SearchableFieldType,
 } from '@exprealty/database'
+import type { FilterableOptions } from '@exprealty/database';
 import {
   QueryParamsSchema,
   NormalizedQueryParamsSchema,
@@ -178,12 +180,14 @@ export class QueryService {
   /**
    * Apply filters to TypeORM query builder.
    * Handles reserved word column names by quoting them.
+   * Uses ColumnResolverService for type-aware casting on non-text columns.
    */
   applyFilters<T>(
     qb: SelectQueryBuilder<T>,
     filter: Filter | undefined,
     alias: string,
     allowedFields?: Set<string>,
+    entityClass?: new (...args: any[]) => T,
   ): SelectQueryBuilder<T> {
     if (!filter || !filter.conditions || filter.conditions.length === 0) {
       return qb;
@@ -191,12 +195,34 @@ export class QueryService {
 
     const { conditions, logicalOperator } = filter;
 
+    // Get filterable config for operator and validation checking
+    const filterableConfig = entityClass 
+      ? getFilterableFieldsConfig(entityClass) 
+      : new Map<string, FilterableOptions>();
+
     qb.andWhere(
       new Brackets((subQb) => {
         conditions.forEach((condition, index) => {
           // Validate field is allowed
           if (allowedFields && allowedFields.size > 0 && !allowedFields.has(condition.field)) {
-            throw new Error(`Field '${condition.field}' is not allowed for filtering`);
+            throw new BadRequestException({
+              message: `Field '${condition.field}' is not allowed for filtering`,
+              i18nType: 'entity.validation.filter_field_not_allowed',
+            });
+          }
+
+          // Validate operator is allowed for this field (if operators specified)
+          const fieldConfig = filterableConfig.get(condition.field);
+          if (fieldConfig?.operators && !fieldConfig.operators.includes(condition.operator as any)) {
+            throw new BadRequestException({
+              message: `Operator '${condition.operator}' is not allowed for field '${condition.field}'`,
+              i18nType: 'entity.validation.filter_operator_not_allowed',
+            });
+          }
+
+          // Validate value against validation rules
+          if (fieldConfig?.validation) {
+            this.validateFilterValue(condition.field, condition.value, fieldConfig.validation);
           }
 
           const paramName = `filter_${condition.field}_${index}`;
@@ -205,7 +231,7 @@ export class QueryService {
           const fieldPath = `${alias}.${quotedField}`;
           const whereMethod = logicalOperator === 'OR' ? 'orWhere' : 'andWhere';
 
-          this.applyFilterCondition(subQb, condition, fieldPath, paramName, whereMethod);
+          this.applyFilterCondition(qb, subQb, condition, fieldPath, paramName, whereMethod, alias);
         });
       }),
     );
@@ -214,72 +240,138 @@ export class QueryService {
   }
 
   /**
-   * Apply a single filter condition
+   * Validate filter value against validation rules
    */
-  private applyFilterCondition(
-    qb: any, // Can be QueryBuilder or Brackets
+  private validateFilterValue(
+    field: string,
+    value: any,
+    validation: { min?: number; max?: number; pattern?: RegExp | string },
+  ): void {
+    // Skip validation for null checks
+    if (value === null || value === undefined) return;
+
+    // Validate min/max for numeric values
+    const numValue = typeof value === 'number' ? value : parseFloat(value);
+    if (!isNaN(numValue)) {
+      if (validation.min !== undefined && numValue < validation.min) {
+        throw new BadRequestException({
+          message: `Value '${value}' for field '${field}' must be at least ${validation.min}`,
+          i18nType: 'entity.validation.filter_value_invalid',
+        });
+      }
+      if (validation.max !== undefined && numValue > validation.max) {
+        throw new BadRequestException({
+          message: `Value '${value}' for field '${field}' must be at most ${validation.max}`,
+          i18nType: 'entity.validation.filter_value_invalid',
+        });
+      }
+    }
+
+    // Validate pattern
+    if (validation.pattern) {
+      const regex = typeof validation.pattern === 'string' 
+        ? new RegExp(validation.pattern) 
+        : validation.pattern;
+      if (!regex.test(String(value))) {
+        throw new BadRequestException({
+          message: `Value '${value}' for field '${field}' does not match required pattern`,
+          i18nType: 'entity.validation.filter_value_invalid',
+        });
+      }
+    }
+  }
+
+  /**
+   * Apply a single filter condition with type-aware casting
+   */
+  private applyFilterCondition<T>(
+    mainQb: SelectQueryBuilder<T>, // Main query builder for metadata access
+    subQb: any, // Can be QueryBuilder or Brackets
     condition: FilterCondition,
     fieldPath: string,
     paramName: string,
     whereMethod: 'andWhere' | 'orWhere',
+    alias: string,
   ): void {
-    const { operator, value } = condition;
+    const { operator, value, field } = condition;
+
+    // For text search operators, use column resolver to get proper column path with casting
+    let resolvedFieldPath = fieldPath;
+    if (this.columnResolver && this.isTextSearchOperator(operator)) {
+      // Use resolveColumn to get database column name with proper casting
+      resolvedFieldPath = this.columnResolver.resolveColumn(mainQb, alias, field, 'filter');
+      const columnType = this.columnResolver.getColumnTypeFromQb(mainQb, alias, field);
+      const castResult = this.columnResolver.applyCastingForFilterOperator(
+        resolvedFieldPath,
+        columnType,
+        operator,
+        value,
+      );
+      resolvedFieldPath = castResult.column;
+    }
 
     switch (operator) {
       case 'eq':
-        qb[whereMethod](`${fieldPath} = :${paramName}`, { [paramName]: value });
+        subQb[whereMethod](`${fieldPath} = :${paramName}`, { [paramName]: value });
         break;
       case 'ne':
-        qb[whereMethod](`${fieldPath} != :${paramName}`, { [paramName]: value });
+        subQb[whereMethod](`${fieldPath} != :${paramName}`, { [paramName]: value });
         break;
       case 'gt':
-        qb[whereMethod](`${fieldPath} > :${paramName}`, { [paramName]: value });
+        subQb[whereMethod](`${fieldPath} > :${paramName}`, { [paramName]: value });
         break;
       case 'gte':
-        qb[whereMethod](`${fieldPath} >= :${paramName}`, { [paramName]: value });
+        subQb[whereMethod](`${fieldPath} >= :${paramName}`, { [paramName]: value });
         break;
       case 'lt':
-        qb[whereMethod](`${fieldPath} < :${paramName}`, { [paramName]: value });
+        subQb[whereMethod](`${fieldPath} < :${paramName}`, { [paramName]: value });
         break;
       case 'lte':
-        qb[whereMethod](`${fieldPath} <= :${paramName}`, { [paramName]: value });
+        subQb[whereMethod](`${fieldPath} <= :${paramName}`, { [paramName]: value });
         break;
       case 'like':
-        qb[whereMethod](`${fieldPath} LIKE :${paramName}`, { [paramName]: `%${value}%` });
+        subQb[whereMethod](`${resolvedFieldPath} LIKE :${paramName}`, { [paramName]: `%${value}%` });
         break;
       case 'ilike':
-        qb[whereMethod](`${fieldPath} ILIKE :${paramName}`, { [paramName]: `%${value}%` });
+        subQb[whereMethod](`${resolvedFieldPath} ILIKE :${paramName}`, { [paramName]: `%${value}%` });
         break;
       case 'in':
-        qb[whereMethod](`${fieldPath} IN (:...${paramName})`, { [paramName]: value });
+        subQb[whereMethod](`${fieldPath} IN (:...${paramName})`, { [paramName]: value });
         break;
       case 'nin':
-        qb[whereMethod](`${fieldPath} NOT IN (:...${paramName})`, { [paramName]: value });
+        subQb[whereMethod](`${fieldPath} NOT IN (:...${paramName})`, { [paramName]: value });
         break;
       case 'between':
-        qb[whereMethod](`${fieldPath} BETWEEN :${paramName}_start AND :${paramName}_end`, {
+        subQb[whereMethod](`${fieldPath} BETWEEN :${paramName}_start AND :${paramName}_end`, {
           [`${paramName}_start`]: value[0],
           [`${paramName}_end`]: value[1],
         });
         break;
       case 'isNull':
-        qb[whereMethod](`${fieldPath} IS NULL`);
+        subQb[whereMethod](`${fieldPath} IS NULL`);
         break;
       case 'isNotNull':
-        qb[whereMethod](`${fieldPath} IS NOT NULL`);
+        subQb[whereMethod](`${fieldPath} IS NOT NULL`);
         break;
       case 'startsWith':
-        qb[whereMethod](`${fieldPath} ILIKE :${paramName}`, { [paramName]: `${value}%` });
+        subQb[whereMethod](`${resolvedFieldPath} ILIKE :${paramName}`, { [paramName]: `${value}%` });
         break;
       case 'endsWith':
-        qb[whereMethod](`${fieldPath} ILIKE :${paramName}`, { [paramName]: `%${value}` });
+        subQb[whereMethod](`${resolvedFieldPath} ILIKE :${paramName}`, { [paramName]: `%${value}` });
         break;
       case 'contains':
-        qb[whereMethod](`${fieldPath} ILIKE :${paramName}`, { [paramName]: `%${value}%` });
+        subQb[whereMethod](`${resolvedFieldPath} ILIKE :${paramName}`, { [paramName]: `%${value}%` });
         break;
       default:
         throw new Error(`Unsupported filter operator: ${operator}`);
     }
+  }
+
+  /**
+   * Check if operator is a text search operator that needs type casting
+   */
+  private isTextSearchOperator(operator: string): boolean {
+    return ['like', 'ilike', 'contains', 'startsWith', 'endsWith'].includes(operator);
   }
 
   /**

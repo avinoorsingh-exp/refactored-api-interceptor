@@ -326,10 +326,18 @@ export {
 	getSearchableFields,
 	getSearchableFieldsConfig,
 	getFilterableFields,
+	getFilterableFieldsConfig,
 	getSortableFields,
+	ALL_FILTER_OPERATORS,
 } from './decorators/searchable-decorators.js'
 
-export type { SearchableOptions } from './decorators/searchable-decorators.js'
+export type { 
+	SearchableOptions,
+	FilterableOptions,
+	FilterableFieldConfig,
+	FilterValidationOptions,
+	FilterOperator,
+} from './decorators/searchable-decorators.js'
 
 // ============================================================================
 // Search Strategy Types

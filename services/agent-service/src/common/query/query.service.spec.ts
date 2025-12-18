@@ -15,6 +15,7 @@ class MockEntity {
 // Mock the database decorators
 jest.mock('@exprealty/database', () => ({
   getFilterableFields: jest.fn(() => ['name', 'status', 'number', 'dialingCode', 'createdAt']),
+  getFilterableFieldsConfig: jest.fn(() => new Map()),
   getSortableFields: jest.fn(() => ['name', 'status', 'number', 'dialingCode', 'createdAt']),
   getSearchableFields: jest.fn(() => ['name']),
 }));
