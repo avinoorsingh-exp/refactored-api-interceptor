@@ -37,8 +37,7 @@ pipeline
     stage('Docker build') {
       steps {
         script {
-          // Use --no-cache to ensure fresh builds and avoid stale compiled code
-          docker.build("${env.IMAGE}", "--no-cache -f services/agent-service/Dockerfile .")
+          docker.build("${env.IMAGE}", "-f services/agent-service/Dockerfile .")
         }
       }
     }
