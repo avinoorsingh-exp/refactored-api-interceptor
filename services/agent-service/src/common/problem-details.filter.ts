@@ -12,6 +12,7 @@ import { DatabaseErrorHandler } from '../errors/database-error.handler.js'
 import { DomainException } from './exceptions/domain.exception.js'
 import { SearchValidationException } from './exceptions/search-validation.exception.js'
 import { FilterValidationException } from './exceptions/filter-validation.exception.js'
+import { QueryFieldValidationException } from './exceptions/query-field-validation.exception.js'
 
 /**
  * Global exception filter that transforms all errors into RFC 9457 Problem Details.
@@ -258,6 +259,11 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 			return this.handleFilterValidationException(exception, instance, traceId)
 		}
 
+		// Handle QueryFieldValidationException specifically
+		if (exception instanceof QueryFieldValidationException) {
+			return this.handleQueryFieldValidationException(exception, instance, traceId)
+		}
+
 		// Generic domain exception handling
 		const invalidParams: InvalidParam[] = []
 		if (context.field) {
@@ -361,6 +367,39 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 			operator,
 			value,
 			hint: 'Check allowed operators and field types in metadata endpoint',
+		}
+	}
+
+	/**
+	 * Handle QueryFieldValidationException with full context.
+	 * Includes operation type, invalid fields, and allowed fields.
+	 */
+	private handleQueryFieldValidationException(
+		exception: QueryFieldValidationException,
+		instance: string,
+		traceId?: string,
+	): ProblemDetails {
+		const { operationType, invalidFields, allowedFields, i18nType } = exception
+
+		// Build invalid params for each invalid field
+		const invalidParams: InvalidParam[] = invalidFields.map((field) => ({
+			name: field,
+			reason: `Field '${field}' is not allowed for ${operationType}`,
+			in: 'query',
+		}))
+
+		return {
+			type: i18nType,
+			title: `Invalid ${operationType.charAt(0).toUpperCase() + operationType.slice(1)} Field`,
+			status: 400,
+			detail: exception.message,
+			instance,
+			traceId,
+			invalidParams,
+			operationType,
+			invalidFields,
+			allowedFields,
+			hint: 'Check allowed fields in metadata endpoint',
 		}
 	}
 

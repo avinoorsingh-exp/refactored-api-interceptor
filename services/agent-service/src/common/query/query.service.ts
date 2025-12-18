@@ -1,6 +1,6 @@
 
 
-import { Injectable, Inject, Optional, BadRequestException } from '@nestjs/common';
+import { Injectable, Inject, Optional } from '@nestjs/common';
 import { SelectQueryBuilder, Brackets, ObjectLiteral } from 'typeorm';
 import {
 	getFilterableFields,
@@ -28,6 +28,8 @@ import { SEARCH_STRATEGIES } from './query.tokens.js';
 import { SearchMetadataReader } from './search-metadata-reader.service.js';
 import { ColumnResolverService } from './column-resolver.service.js';
 import { SearchValidationException } from '../exceptions/search-validation.exception.js';
+import { QueryFieldValidationException } from '../exceptions/query-field-validation.exception.js';
+import { FilterValidationException } from '../exceptions/filter-validation.exception.js';
 
 /**
  * Map of field types to search strategies
@@ -105,9 +107,10 @@ export class QueryService {
       .filter((field) => !allowedFields.has(field));
 
     if (invalidFields.length > 0) {
-      throw new Error(
-        `Invalid filter fields: ${invalidFields.join(', ')}. ` +
-        `Allowed fields: ${Array.from(allowedFields).join(', ')}`,
+      throw new QueryFieldValidationException(
+        'filter',
+        invalidFields,
+        Array.from(allowedFields),
       );
     }
   }
@@ -126,9 +129,10 @@ export class QueryService {
       .filter((field) => !allowedFields.has(field));
 
     if (invalidFields.length > 0) {
-      throw new Error(
-        `Invalid sort fields: ${invalidFields.join(', ')}. ` +
-        `Allowed fields: ${Array.from(allowedFields).join(', ')}`,
+      throw new QueryFieldValidationException(
+        'sort',
+        invalidFields,
+        Array.from(allowedFields),
       );
     }
   }
@@ -145,9 +149,10 @@ export class QueryService {
     const invalidFields = fields.filter((field) => !allowedFields.has(field));
 
     if (invalidFields.length > 0) {
-      throw new Error(
-        `Invalid search fields: ${invalidFields.join(', ')}. ` +
-        `Allowed fields: ${Array.from(allowedFields).join(', ')}`,
+      throw new QueryFieldValidationException(
+        'search',
+        invalidFields,
+        Array.from(allowedFields),
       );
     }
   }
@@ -205,24 +210,28 @@ export class QueryService {
         conditions.forEach((condition, index) => {
           // Validate field is allowed
           if (allowedFields && allowedFields.size > 0 && !allowedFields.has(condition.field)) {
-            throw new BadRequestException({
-              message: `Field '${condition.field}' is not allowed for filtering`,
-              i18nType: 'entity.validation.filter_field_not_allowed',
-            });
+            throw new QueryFieldValidationException(
+              'filter',
+              [condition.field],
+              Array.from(allowedFields),
+            );
           }
 
           // Validate operator is allowed for this field (if operators specified)
           const fieldConfig = filterableConfig.get(condition.field);
           if (fieldConfig?.operators && !fieldConfig.operators.includes(condition.operator as any)) {
-            throw new BadRequestException({
-              message: `Operator '${condition.operator}' is not allowed for field '${condition.field}'`,
-              i18nType: 'entity.validation.filter_operator_not_allowed',
-            });
+            throw new FilterValidationException(
+              condition.field,
+              condition.operator,
+              condition.value,
+              `Operator '${condition.operator}' is not allowed for field '${condition.field}'`,
+              'entity.validation.filter_operator_not_allowed',
+            );
           }
 
           // Validate value against validation rules
           if (fieldConfig?.validation) {
-            this.validateFilterValue(condition.field, condition.value, fieldConfig.validation);
+            this.validateFilterValue(condition.field, condition.operator, condition.value, fieldConfig.validation);
           }
 
           const paramName = `filter_${condition.field}_${index}`;
@@ -244,6 +253,7 @@ export class QueryService {
    */
   private validateFilterValue(
     field: string,
+    operator: string,
     value: any,
     validation: { min?: number; max?: number; pattern?: RegExp | string },
   ): void {
@@ -254,16 +264,22 @@ export class QueryService {
     const numValue = typeof value === 'number' ? value : parseFloat(value);
     if (!isNaN(numValue)) {
       if (validation.min !== undefined && numValue < validation.min) {
-        throw new BadRequestException({
-          message: `Value '${value}' for field '${field}' must be at least ${validation.min}`,
-          i18nType: 'entity.validation.filter_value_invalid',
-        });
+        throw new FilterValidationException(
+          field,
+          operator,
+          value,
+          `Value '${value}' for field '${field}' must be at least ${validation.min}`,
+          'entity.validation.filter_value_out_of_range',
+        );
       }
       if (validation.max !== undefined && numValue > validation.max) {
-        throw new BadRequestException({
-          message: `Value '${value}' for field '${field}' must be at most ${validation.max}`,
-          i18nType: 'entity.validation.filter_value_invalid',
-        });
+        throw new FilterValidationException(
+          field,
+          operator,
+          value,
+          `Value '${value}' for field '${field}' must be at most ${validation.max}`,
+          'entity.validation.filter_value_out_of_range',
+        );
       }
     }
 
@@ -273,10 +289,13 @@ export class QueryService {
         ? new RegExp(validation.pattern) 
         : validation.pattern;
       if (!regex.test(String(value))) {
-        throw new BadRequestException({
-          message: `Value '${value}' for field '${field}' does not match required pattern`,
-          i18nType: 'entity.validation.filter_value_invalid',
-        });
+        throw new FilterValidationException(
+          field,
+          operator,
+          value,
+          `Value '${value}' for field '${field}' does not match required pattern`,
+          'entity.validation.filter_value_invalid_pattern',
+        );
       }
     }
   }

@@ -631,7 +631,7 @@ describe('QueryService', () => {
 
       expect(() =>
         service.applyFilters(mockQbWithBrackets, filter, 'entity', allowedFields),
-      ).toThrow(/not allowed for filtering/);
+      ).toThrow(/Invalid filter fields/);
     });
   });
 
