@@ -59,12 +59,18 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		'lastName',
 		'suffix',
 		'preferredName',
+		'birthDate',
 		'lifecycleStatus',
+		'systemId',
+		'seedAgent',
 		'joinDate',
+		'anniversaryDate',
+		'terminationDate',
 		'isStaff',
 		'agentCompanyId',
 		'created',
 		'lastModified',
+		'modifiedBy',
 	],
 
 	// Available relations that can be included via ?include=
