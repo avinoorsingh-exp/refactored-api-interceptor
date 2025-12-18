@@ -183,13 +183,22 @@ describe('PaginationInterceptor (offset mode)', () => {
       expect(() => interceptor.intercept(ctx, next)).toThrow(BadRequestException);
     });
 
-    it('throws BadRequestException for limit exceeding max (50)', () => {
+    it('clamps limit exceeding max (50) instead of throwing', (done) => {
       const req = createMockRequest({ query: { offset: '0', limit: '100' } });
       const res = createMockResponse();
       const ctx = makeHttpContext(req, res);
       const next = { handle: () => of({ items: [], total: 0 }) } as any;
 
-      expect(() => interceptor.intercept(ctx, next)).toThrow(BadRequestException);
+      // Should NOT throw - limit is clamped to 50
+      const result$ = interceptor.intercept(ctx, next);
+      result$.subscribe({
+        next: (response) => {
+          // Verify limit was clamped to 50 in meta
+          expect(response.meta.limit).toBe(50);
+          done();
+        },
+        error: done.fail,
+      });
     });
 
     it('throws BadRequestException for negative total from handler', (done) => {

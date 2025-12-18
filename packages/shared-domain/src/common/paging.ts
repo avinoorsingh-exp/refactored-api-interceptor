@@ -1,12 +1,23 @@
-import { off } from 'process';
 import { z } from 'zod'
 
 export const LIMIT_DEFAULT = 25 as const;
 export const LIMIT_MAX = 50 as const;
 
+/**
+ * Clamps a limit value to the valid range [1, LIMIT_MAX].
+ * Values > LIMIT_MAX are clamped to LIMIT_MAX (no error thrown).
+ * Values < 1 are clamped to 1.
+ */
+const clampLimit = (val: number): number => Math.min(Math.max(1, val), LIMIT_MAX)
+
 export const PaginationQuerySchema = z.object({
     offset: z.coerce.number().int().min(0).optional().default(0),
-    limit: z.coerce.number().int().min(1).max(LIMIT_MAX).optional().default(LIMIT_DEFAULT),
+    limit: z.coerce
+        .number()
+        .int()
+        .optional()
+        .default(LIMIT_DEFAULT)
+        .transform(clampLimit),
 })
 
 export const NormalizedPaginationSchema = z.object({

@@ -1,6 +1,21 @@
 import { z } from 'zod'
 import { AuditableSchema } from './audit.js'
 import { EmailBranded } from '../value-objects/email.js'
+import { trimmedStringMinMax } from './base-schemas.js'
+
+/**
+ * Helper for state/province codes - trims, uppercases, and validates 2-letter format.
+ * @internal
+ */
+const stateCode = z
+	.string()
+	.transform((val) => val.trim().toUpperCase())
+	.pipe(
+		z
+			.string()
+			.length(2, { message: 'errors.state.code.length' })
+			.regex(/^[A-Z]{2}$/, { message: 'errors.state.code.format' }),
+	)
 
 /**
  * Base schema for State entity.
@@ -10,8 +25,8 @@ import { EmailBranded } from '../value-objects/email.js'
 export const StateBaseSchema = z
 	.object({
 		id: z.string().uuid(),
-		name: z.string().min(1).max(255),
-		code: z.string().length(2, { message: 'State code must be exactly 2 characters' }),
+		name: trimmedStringMinMax(1, 255, 'errors.state.name.length'),
+		code: stateCode.describe('Two-letter state/province code (e.g., CA, TX)'),
 		isActive: z.boolean(),
 		email: EmailBranded.optional(),
 		signatureDistributionEmail: EmailBranded.optional(),

@@ -34,9 +34,10 @@ export const ContactMethodBaseSchema = z.object({
 
 	/**
 	 * Contact method name/label (unique).
+	 * Trimmed to prevent whitespace-only or padded duplicates.
 	 * @public
 	 */
-	name: z.string().min(1).max(255),
+	name: trimmedStringMinMax(1, 255, 'errors.contactMethod.name.length'),
 
 	/**
 	 * Communication channel type.

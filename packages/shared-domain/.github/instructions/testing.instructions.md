@@ -346,14 +346,16 @@ describe('PaginationQuerySchema', () => {
     expect(result.success).toBe(false)
   })
 
-  it('should reject limit exceeding maximum', () => {
+  it('should clamp limit exceeding maximum to LIMIT_MAX', () => {
     const result = PaginationQuerySchema.safeParse({ limit: LIMIT_MAX + 1 })
-    expect(result.success).toBe(false)
+    expect(result.success).toBe(true)
+    expect(result.data?.limit).toBe(LIMIT_MAX) // Clamped, not rejected
   })
 
-  it('should reject zero limit', () => {
+  it('should clamp zero limit to 1', () => {
     const result = PaginationQuerySchema.safeParse({ limit: 0 })
-    expect(result.success).toBe(false)
+    expect(result.success).toBe(true)
+    expect(result.data?.limit).toBe(1) // Clamped to minimum
   })
 })
 ```

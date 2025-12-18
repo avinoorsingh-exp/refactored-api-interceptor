@@ -84,10 +84,11 @@ describe('DTO Validation Property Tests', () => {
 		})
 
 		it('should reject any input with invalid state code length', () => {
-			// Generate codes that are not exactly 2 characters
+			// Generate codes that are not exactly 2 characters (after trimming)
+			// Filter out strings with trailing/leading whitespace since schema trims
 			const invalidCodeArbitrary = fc.oneof(
-				fc.string({ minLength: 0, maxLength: 1 }),
-				fc.string({ minLength: 3, maxLength: 10 }),
+				fc.string({ minLength: 0, maxLength: 1 }).filter((s) => s.trim().length !== 2),
+				fc.string({ minLength: 3, maxLength: 10 }).filter((s) => s.trim().length !== 2),
 			)
 
 			fc.assert(
@@ -373,7 +374,29 @@ describe('DTO Validation Property Tests', () => {
 			)
 		})
 
-		it('should reject any pagination with limit exceeding maximum', () => {
+		it('should clamp limit exceeding maximum via PaginationQuerySchema', () => {
+			fc.assert(
+				fc.property(
+					fc.record({
+						offset: fc.integer({ min: 0, max: 10000 }),
+						limit: fc.integer({ min: LIMIT_MAX + 1, max: LIMIT_MAX + 1000 }),
+					}),
+					(input) => {
+						// PaginationQuerySchema now clamps instead of rejecting
+						const result = PaginationQuerySchema.safeParse(input)
+						expect(result.success).toBe(true)
+						if (result.success) {
+							expect(result.data.limit).toBe(LIMIT_MAX) // Clamped to max
+						}
+					},
+				),
+				{ numRuns: 100 },
+			)
+		})
+
+		it('should still reject limit exceeding maximum in NormalizedPaginationSchema (post-processing validation)', () => {
+			// NormalizedPaginationSchema is used for already-processed data
+			// It still validates the max constraint for data integrity
 			fc.assert(
 				fc.property(
 					fc.record({

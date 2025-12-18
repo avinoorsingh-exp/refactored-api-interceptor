@@ -200,6 +200,95 @@ export type EntityIdParam = z.infer<typeof EntityIdParamSchema>
 
 ---
 
+## Unique Field Trimming (CRITICAL)
+
+**All unique text fields MUST use trimmed string validation** to prevent duplicate entries caused by whitespace differences.
+
+### Why This Matters
+
+```typescript
+// Without trimming, these would be DIFFERENT values in the database:
+"California"      // No spaces
+" California"     // Leading space
+"California "     // Trailing space
+"  California  "  // Both
+
+// With trimming, all resolve to "California" → proper uniqueness
+```
+
+### Required Patterns for Unique Fields
+
+#### Simple Unique Text Fields
+
+Use `trimmedStringMinMax`:
+
+```typescript
+import { trimmedStringMinMax } from './base-schemas.js'
+
+// ✅ CORRECT - Unique field with trimming
+name: trimmedStringMinMax(1, 255, 'errors.entity.name.length'),
+
+// ❌ WRONG - No trimming, allows whitespace duplicates
+name: z.string().min(1).max(255),
+```
+
+#### Unique Code Fields (with case normalization)
+
+Create transform + validate helpers:
+
+```typescript
+// State/Province code - trim + uppercase
+const stateCode = z
+  .string()
+  .transform((val) => val.trim().toUpperCase())
+  .pipe(
+    z.string()
+      .length(2, { message: 'errors.state.code.length' })
+      .regex(/^[A-Z]{2}$/, { message: 'errors.state.code.format' }),
+  )
+
+// ISO alpha codes - reusable helper
+const alphaCode = (length: 2 | 3) =>
+  z
+    .string()
+    .transform((val) => val.trim().toUpperCase())
+    .pipe(
+      z.string()
+        .length(length)
+        .regex(length === 2 ? /^[A-Z]{2}$/ : /^[A-Z]{3}$/),
+    )
+```
+
+### Unique Fields Checklist
+
+When adding a new entity, verify these unique fields use trimming:
+
+| Field Type | Pattern |
+|------------|---------|
+| `name` (unique) | `trimmedStringMinMax(min, max, errorCode)` |
+| `code` (unique) | Transform → trim → uppercase → validate |
+| `email` (unique) | `EmailBranded` (already trims/lowercases) or `z.string().trim().email()` |
+| `alpha2/alpha3` | `alphaCode(2)` or `alphaCode(3)` helper |
+
+### Current Entities Using Trimmed Unique Fields
+
+| Entity | Field | Pattern Used |
+|--------|-------|--------------|
+| Country | `name` | `trimmedStringMinMax(1, 255)` |
+| Country | `alpha2` | `alphaCode(2)` - trim + uppercase |
+| Country | `alpha3` | `alphaCode(3)` - trim + uppercase |
+| State | `name` | `trimmedStringMinMax(1, 255)` |
+| State | `code` | `stateCode` - trim + uppercase |
+| Region | `name` | `z.string().trim().min(1).max(255)` (in CreateInput) |
+| Company | `name` | `NameBranded` (includes trim) |
+| Company | `email` | `EmailBranded` (includes trim) |
+| Office | `name` | `trimmedStringMinMax(1, 255)` |
+| PayPlan | `name` | `trimmedStringMinMax(1, 255)` |
+| ContactMethod | `name` | `trimmedStringMinMax(1, 255)` |
+| MLS | `name` | `trimmedStringMinMax(...)` |
+
+---
+
 ## ID Type Patterns
 
 ### UUID Primary Keys (Standard)

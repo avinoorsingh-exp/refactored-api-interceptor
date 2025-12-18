@@ -43,14 +43,28 @@ export const LIMIT_MAX = 50 as const
 
 ### PaginationQuerySchema
 
-Parses pagination from query parameters:
+Parses pagination from query parameters. **Clamps** limit to LIMIT_MAX instead of throwing:
 
 ```typescript
+/**
+ * Clamps a limit value to the valid range [1, LIMIT_MAX].
+ * Values > LIMIT_MAX are clamped to LIMIT_MAX (no error thrown).
+ * Values < 1 are clamped to 1.
+ */
+const clampLimit = (val: number): number => Math.min(Math.max(1, val), LIMIT_MAX)
+
 export const PaginationQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).optional().default(0),
-  limit: z.coerce.number().int().min(1).max(LIMIT_MAX).optional().default(LIMIT_DEFAULT),
+  limit: z.coerce
+    .number()
+    .int()
+    .optional()
+    .default(LIMIT_DEFAULT)
+    .transform(clampLimit),
 })
 ```
+
+> **Note**: Limit values exceeding 50 are silently clamped to 50 rather than returning a 400 error. This provides a better UX while still enforcing the maximum.
 
 ### PaginationMetaSchema
 
@@ -225,8 +239,8 @@ export const QueryParamsSchema = PaginationQuerySchema.extend({
 
 ### MUST NOT Do
 
-1. **Never exceed LIMIT_MAX (50)** - Prevents performance issues
-2. **Never allow negative offsets**
+1. **Limit is clamped, not rejected** - Values > 50 are silently clamped to LIMIT_MAX (50)
+2. **Never allow negative offsets** - Still throws 400 for offset < 0
 3. **Never trust filter field names** - Validate against allowlist
 4. **Never expose internal field names** - Map to public API names
 
@@ -376,8 +390,14 @@ describe('PaginationQuerySchema', () => {
     expect(result.limit).toBe(25)
   })
 
-  it('should enforce LIMIT_MAX', () => {
-    expect(() => PaginationQuerySchema.parse({ limit: 100 })).toThrow()
+  it('should clamp limit to LIMIT_MAX instead of throwing', () => {
+    const result = PaginationQuerySchema.parse({ limit: 100 })
+    expect(result.limit).toBe(50) // Clamped to LIMIT_MAX
+  })
+
+  it('should clamp limit below 1 to 1', () => {
+    const result = PaginationQuerySchema.parse({ limit: 0 })
+    expect(result.limit).toBe(1) // Clamped to minimum
   })
 })
 

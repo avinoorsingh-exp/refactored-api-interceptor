@@ -1,5 +1,24 @@
 import { z } from 'zod'
 import { AuditableSchema } from './audit.js'
+import { trimmedStringMinMax } from './base-schemas.js'
+
+/**
+ * Helper for ISO alpha codes - trims, uppercases, and validates exact length.
+ * @internal
+ */
+const alphaCode = (length: 2 | 3) =>
+	z
+		.string()
+		.transform((val) => val.trim().toUpperCase())
+		.pipe(
+			z
+				.string()
+				.length(length, { message: `Must be exactly ${length} characters` })
+				.regex(
+					length === 2 ? /^[A-Z]{2}$/ : /^[A-Z]{3}$/,
+					`Must be ${length} uppercase letters`,
+				),
+		)
 
 /**
  * Base schema for Country entity.
@@ -10,15 +29,9 @@ import { AuditableSchema } from './audit.js'
 export const CountryBaseSchema = z
 	.object({
 		id: z.number().int().positive(),
-		name: z.string().min(1).max(255),
-		alpha2: z
-			.string()
-			.length(2)
-			.regex(/^[A-Z]{2}$/, 'Must be 2 uppercase letters'),
-		alpha3: z
-			.string()
-			.length(3)
-			.regex(/^[A-Z]{3}$/, 'Must be 3 uppercase letters'),
+		name: trimmedStringMinMax(1, 255, 'Country name must be between 1 and 255 characters'),
+		alpha2: alphaCode(2).describe('ISO 3166-1 alpha-2 code (e.g., US, CA)'),
+		alpha3: alphaCode(3).describe('ISO 3166-1 alpha-3 code (e.g., USA, CAN)'),
 		number: z.number().int().min(1).max(999),
 		dialingCode: z.number().int().positive(),
 	})
