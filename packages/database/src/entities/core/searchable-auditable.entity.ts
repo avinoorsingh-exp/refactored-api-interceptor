@@ -13,8 +13,6 @@ import { AuditableEntity } from './auditable.entity.js'
  * @public
  */
 export abstract class SearchableAuditableEntity extends AuditableEntity {
-	@Searchable({ type: 'date', weight: 2, behavior: 'range', description: 'Record creation timestamp' })
-	declare created: Date
 
 	@Searchable({ type: 'date', weight: 2, behavior: 'range', description: 'Record last modified timestamp' })
 	declare lastModified: Date

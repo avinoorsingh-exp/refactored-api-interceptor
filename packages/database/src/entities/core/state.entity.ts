@@ -8,16 +8,17 @@ import {
 } from 'typeorm'
 import { RegionEntity } from './region.entity.js'
 import { CountryEntity } from './country.entity.js'
-import { AuditableEntity } from './auditable.entity.js'
+import { SearchableAuditableEntity } from './searchable-auditable.entity.js'
 import { Searchable, Filterable, Sortable, SearchValidators } from '../../decorators/searchable-decorators.js'
 import type { StateProgramEntity } from './state-program.entity.js'
 
 /**
  * TypeORM entity for State table.
+ * Extends SearchableAuditableEntity to include lastModified and modifiedBy in search.
  * @public
  */
 @Entity({ name: 'state', schema: 'core' })
-export class StateEntity extends AuditableEntity {
+export class StateEntity extends SearchableAuditableEntity {
 	@PrimaryGeneratedColumn('uuid')
 	@Filterable()
 	@Sortable()
@@ -67,7 +68,6 @@ export class StateEntity extends AuditableEntity {
 	region?: RegionEntity
 
 	@Column({ name: 'country_id', type: 'integer' })
-	@Searchable({ type: 'integer', weight: 4, behavior: 'exact', description: 'Associated country ID', validate: SearchValidators.integer })
 	@Filterable()
 	@Sortable()
 	countryId!: number

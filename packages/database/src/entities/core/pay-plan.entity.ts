@@ -1,6 +1,6 @@
 import { Entity, Column, PrimaryGeneratedColumn, OneToMany } from 'typeorm'
 import { AuditableEntity } from './auditable.entity.js'
-import { Searchable, Filterable, Sortable, SearchValidators } from '../../decorators/searchable-decorators.js'
+import { Searchable, Filterable, Sortable } from '../../decorators/searchable-decorators.js'
 import type { PayPlanVariantEntity } from './pay-plan-variant.entity.js'
 
 /**
@@ -21,19 +21,16 @@ export class PayPlanEntity extends AuditableEntity {
 	name!: string
 
 	@Column({ type: 'boolean' })
-	@Searchable({ weight: 5, type: 'boolean', description: 'Whether pay plan is active' })
 	@Filterable()
 	@Sortable()
 	active!: boolean
 
 	@Column({ name: 'agent_percentage', type: 'decimal', precision: 5, scale: 2 })
-	@Searchable({ weight: 5, type: 'numeric', description: 'Agent commission percentage', validate: SearchValidators.range(0, 100) })
 	@Filterable()
 	@Sortable()
 	agentPercentage!: number
 
 	@Column({ type: 'decimal', precision: 10, scale: 2 })
-	@Searchable({ weight: 5, type: 'numeric', description: 'Commission cap amount', validate: SearchValidators.positive })
 	@Filterable()
 	@Sortable()
 	cap!: number
