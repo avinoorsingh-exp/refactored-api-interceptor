@@ -381,6 +381,18 @@ export class AgentEntity extends AuditableEntity {
 	 */
 	primaryPhone?: ContactMethodEntity;
 
+	/**
+	 * Primary address for the agent
+	 * 
+	 * Virtual property - loaded via custom query
+	 * Use ?include=primaryAddress to load
+	 * Returns the AgentAddressEntity with nested AddressEntity
+	 * 
+	 * @see AgentRepository.loadPrimaryAddress()
+	 * @see AGENT_PROJECTION_CONFIG.relations.primaryAddress
+	 */
+	primaryAddress?: AgentAddressEntity;
+
     // ========================================
 	// Helper Methods
 	// ========================================

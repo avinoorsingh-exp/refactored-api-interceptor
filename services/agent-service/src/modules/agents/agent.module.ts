@@ -30,6 +30,9 @@ import { ProjectionService } from '../../common/query/projection.service.js';
 import { ContactMethodController } from './contact-methods/contact-method.controller.js';
 import { ContactMethodService } from './contact-methods/contact-method.service.js';
 import { ContactMethodTypeOrmRepository } from './contact-methods/contact-method.repository.js';
+import { AgentAddressController } from './addresses/agent-address.controller.js';
+import { AgentAddressService } from './addresses/agent-address.service.js';
+import { AgentAddressTypeOrmRepository } from './addresses/agent-address.repository.js';
 import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 
 /**
@@ -89,10 +92,11 @@ import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 		]),
 		PaginationModule,
 	],
-	controllers: [AgentController, ContactMethodController],
+	controllers: [AgentController, ContactMethodController, AgentAddressController],
 	providers: [
 		AgentService,
 		ContactMethodService,
+		AgentAddressService,
 		ProjectionService,
 		AgentExistsGuard,
 		// Provide the repository adapter under the port token
@@ -104,12 +108,16 @@ import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 			provide: 'IContactMethodRepository',
 			useClass: ContactMethodTypeOrmRepository,
 		},
+		{
+			provide: 'IAgentAddressRepository',
+			useClass: AgentAddressTypeOrmRepository,
+		},
 		// Provide AgentService under AGENT_SERVICE token for AgentExistsGuard
 		{
 			provide: 'AGENT_SERVICE',
 			useExisting: AgentService,
 		},
 	],
-	exports: [AgentService, ContactMethodService, AgentExistsGuard],
+	exports: [AgentService, ContactMethodService, AgentAddressService, AgentExistsGuard],
 })
 export class AgentModule {}

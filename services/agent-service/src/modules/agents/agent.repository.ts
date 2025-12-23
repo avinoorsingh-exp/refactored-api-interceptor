@@ -118,6 +118,8 @@ export class AgentTypeOrmRepository
 			// Virtual relations - loaded via loadPrimaryContacts()
 			...(entity.primaryEmail && { primaryEmail: entity.primaryEmail }),
 			...(entity.primaryPhone && { primaryPhone: entity.primaryPhone }),
+			// Virtual relation - loaded via loadPrimaryAddress()
+			...(entity.primaryAddress && { primaryAddress: entity.primaryAddress }),
 		};
 		return result as unknown as Agent;
 	}
@@ -212,6 +214,27 @@ export class AgentTypeOrmRepository
 	}
 
 	/**
+	 * Loads the primary address for an agent.
+	 * Uses leftJoinAndMapOne to join agentAddresses with isPrimary = true filter.
+	 * Also loads the nested address entity.
+	 */
+	protected loadPrimaryAddress<T>(
+		qb: SelectQueryBuilder<T>,
+		alias: string,
+	): void {
+		// Join agent_address where isPrimary = true
+		qb.leftJoinAndMapOne(
+			`${alias}.primaryAddress`,
+			`${alias}.agentAddresses`,
+			'primaryAddress',
+			'primaryAddress.isPrimary = true',
+		);
+
+		// Also join the nested address entity
+		qb.leftJoinAndSelect('primaryAddress.address', 'primaryAddressDetails');
+	}
+
+	/**
 	 * Extract primary contact types from includes.
 	 * Detects primaryEmail, primaryPhone, etc. in the includes array.
 	 * 
@@ -222,7 +245,7 @@ export class AgentTypeOrmRepository
 
 		const primaryContactTypes: string[] = [];
 		for (const item of include) {
-			if (item.startsWith('primary')) {
+			if (item.startsWith('primary') && item !== 'primaryAddress') {
 				// primaryEmail -> email, primaryPhone -> phone
 				const type = item.replace('primary', '').toLowerCase();
 				if (type) primaryContactTypes.push(type);
@@ -232,19 +255,32 @@ export class AgentTypeOrmRepository
 	}
 
 	/**
+	 * Check if primaryAddress is requested in includes.
+	 */
+	private hasPrimaryAddressInclude(include?: string[]): boolean {
+		return include?.includes('primaryAddress') ?? false;
+	}
+
+	/**
 	 * Finds agents with pagination, filtering, sorting, and search.
-	 * Handles primary contact loading via custom joins.
+	 * Handles primary contact and address loading via custom joins.
 	 */
 	async findPage(
 		query: Partial<QueryParams>,
 		selection?: FieldSelection,
 	): Promise<PageResult<Agent>> {
 		const primaryContactTypes = this.extractPrimaryContactTypes(selection?.include);
+		const hasPrimaryAddress = this.hasPrimaryAddressInclude(selection?.include);
 
-		if (primaryContactTypes.length > 0) {
-			// Use customizeQuery callback to add primary contact joins
+		if (primaryContactTypes.length > 0 || hasPrimaryAddress) {
+			// Use customizeQuery callback to add primary contact/address joins
 			return this.findWithQuery(query, selection, (qb) => {
-				this.loadPrimaryContacts(qb, this.getAlias(), primaryContactTypes);
+				if (primaryContactTypes.length > 0) {
+					this.loadPrimaryContacts(qb, this.getAlias(), primaryContactTypes);
+				}
+				if (hasPrimaryAddress) {
+					this.loadPrimaryAddress(qb, this.getAlias());
+				}
 			});
 		}
 

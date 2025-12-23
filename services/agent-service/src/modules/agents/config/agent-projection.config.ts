@@ -142,5 +142,12 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 			fields: ['id', 'name', 'value', 'channel', 'subType', 'isPrimary'],
 			virtual: true, // Loaded by repository, not ProjectionService
 		},
+		// Virtual relation - loaded via AgentRepository.loadPrimaryAddress()
+		// Uses leftJoinAndMapOne with isPrimary filter on agentAddresses
+		primaryAddress: {
+			property: 'primaryAddress',
+			fields: ['id', 'addressId', 'role', 'isPrimary', 'validFrom', 'validTo'],
+			virtual: true, // Loaded by repository, not ProjectionService
+		},
 	},
 };
