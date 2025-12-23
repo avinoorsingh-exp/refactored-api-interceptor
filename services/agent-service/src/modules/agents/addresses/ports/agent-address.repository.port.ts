@@ -7,14 +7,19 @@ import type { PageResult } from '../../../../common/ports/pagination.types.js';
 export interface AgentAddressWithAddress extends AgentAddress {
 	address?: {
 		id: string;
+		type?: string | null;
+		role?: string | null;
 		line1: string;
 		line2?: string | null;
 		city: string;
-		unit: string;
+		unit?: string | null;
 		postalCode: string;
-		country: string;
-		createdAt: Date;
-		updatedAt: Date;
+		county?: string | null;
+		label?: string | null;
+		stateId?: string | null;
+		created: Date;
+		lastModified: Date;
+		modifiedBy: string;
 	};
 }
 
@@ -24,40 +29,45 @@ export interface AgentAddressWithAddress extends AgentAddress {
 export interface CreateAgentAddressData {
 	agentId: string;
 	// Junction metadata
-	role?: 'home' | 'office' | 'mailing' | 'billing' | 'other';
 	isPrimary: boolean;
-	validFrom?: string;
-	validTo?: string;
 	// Address data (inline creation)
+	type?: string;
+	role?: string; // Address role (contact, bill_to, etc.)
 	line1: string;
 	line2?: string | null;
 	city: string;
-	unit: string;
+	unit?: string | null;
 	postalCode: string;
-	country: string;
+	county?: string | null;
+	label?: string | null;
+	stateId?: string | null;
 }
 
 /**
  * Data for updating an AgentAddress.
+ * Only isPrimary can be updated on the junction.
+ * Address fields update the linked address.
  */
 export interface UpdateAgentAddressData {
 	// Junction metadata
-	role?: 'home' | 'office' | 'mailing' | 'billing' | 'other';
 	isPrimary?: boolean;
-	validFrom?: string;
-	validTo?: string;
 	// Address data (optional updates)
+	type?: string | null;
+	role?: string | null;
 	line1?: string;
 	line2?: string | null;
 	city?: string;
-	unit?: string;
+	unit?: string | null;
 	postalCode?: string;
-	country?: string;
+	county?: string | null;
+	label?: string | null;
+	stateId?: string | null;
 }
 
 /**
  * Port interface for AgentAddress repository.
  * Defines the contract that any AgentAddress persistence adapter must implement.
+ * Uses composite key (agentId, addressId) instead of single ID.
  * @public
  */
 export interface IAgentAddressRepository {
@@ -68,9 +78,11 @@ export interface IAgentAddressRepository {
 	create(data: CreateAgentAddressData): Promise<AgentAddressWithAddress>;
 
 	/**
-	 * Finds an agent address by ID with nested address.
+	 * Finds an agent address by composite key with nested address.
+	 * @param agentId - The agent ID (part of composite key)
+	 * @param addressId - The address ID (part of composite key)
 	 */
-	findById(id: string): Promise<AgentAddressWithAddress | null>;
+	findByCompositeKey(agentId: string, addressId: string): Promise<AgentAddressWithAddress | null>;
 
 	/**
 	 * Finds the primary address for an agent.
@@ -90,12 +102,17 @@ export interface IAgentAddressRepository {
 
 	/**
 	 * Updates an existing agent address and optionally its nested address.
+	 * @param agentId - The agent ID (part of composite key)
+	 * @param addressId - The address ID (part of composite key)
+	 * @param data - Fields to update
 	 */
-	update(id: string, data: UpdateAgentAddressData): Promise<AgentAddressWithAddress>;
+	update(agentId: string, addressId: string, data: UpdateAgentAddressData): Promise<AgentAddressWithAddress>;
 
 	/**
-	 * Deletes an agent address by ID.
+	 * Deletes an agent address by composite key.
 	 * Note: This removes the junction only, not the underlying Address.
+	 * @param agentId - The agent ID (part of composite key)
+	 * @param addressId - The address ID (part of composite key)
 	 */
-	delete(id: string): Promise<void>;
+	delete(agentId: string, addressId: string): Promise<void>;
 }

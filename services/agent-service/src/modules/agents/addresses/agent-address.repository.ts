@@ -36,28 +36,27 @@ export class AgentAddressTypeOrmRepository implements IAgentAddressRepository {
 	 */
 	private mapToDomain(entity: AgentAddressEntity): AgentAddressWithAddress {
 		const result = {
-			id: entity.id,
 			agentId: entity.agentId,
 			addressId: entity.addressId,
-			role: entity.role,
 			isPrimary: entity.isPrimary,
-			validFrom: entity.validFrom,
-			validTo: entity.validTo,
-			createdAt: entity.createdAt,
-			updatedAt: entity.updatedAt,
 		} as unknown as AgentAddressWithAddress;
 
 		if (entity.address) {
 			result.address = {
 				id: entity.address.id,
+				type: entity.address.type,
+				role: entity.address.role,
 				line1: entity.address.line1,
 				line2: entity.address.line2,
 				city: entity.address.city,
 				unit: entity.address.unit,
 				postalCode: entity.address.postalCode,
-				country: entity.address.country,
-				createdAt: entity.address.createdAt,
-				updatedAt: entity.address.updatedAt,
+				county: entity.address.county,
+				label: entity.address.label,
+				stateId: entity.address.stateId,
+				created: entity.address.created,
+				lastModified: entity.address.lastModified,
+				modifiedBy: entity.address.modifiedBy,
 			};
 		}
 
@@ -72,23 +71,24 @@ export class AgentAddressTypeOrmRepository implements IAgentAddressRepository {
 		return this.dataSource.transaction(async (manager) => {
 			// Create the address first
 			const addressEntity = manager.create(AddressEntity, {
+				type: data.type,
+				role: data.role,
 				line1: data.line1,
 				line2: data.line2,
 				city: data.city,
 				unit: data.unit,
 				postalCode: data.postalCode,
-				country: data.country,
+				county: data.county,
+				label: data.label,
+				stateId: data.stateId,
 			});
 			const savedAddress = await manager.save(AddressEntity, addressEntity);
 
-			// Create the junction record
+			// Create the junction record (composite PK: agentId + addressId)
 			const agentAddressEntity = manager.create(AgentAddressEntity, {
 				agentId: data.agentId,
 				addressId: savedAddress.id,
-				role: data.role,
 				isPrimary: data.isPrimary,
-				validFrom: data.validFrom,
-				validTo: data.validTo,
 			});
 			const savedAgentAddress = await manager.save(AgentAddressEntity, agentAddressEntity);
 
@@ -99,9 +99,9 @@ export class AgentAddressTypeOrmRepository implements IAgentAddressRepository {
 		});
 	}
 
-	async findById(id: string): Promise<AgentAddressWithAddress | null> {
+	async findByCompositeKey(agentId: string, addressId: string): Promise<AgentAddressWithAddress | null> {
 		const entity = await this.agentAddressRepo.findOne({
-			where: { id },
+			where: { agentId, addressId },
 			relations: ['address'],
 		});
 		return entity ? this.mapToDomain(entity) : null;
@@ -128,7 +128,7 @@ export class AgentAddressTypeOrmRepository implements IAgentAddressRepository {
 			relations: ['address'],
 			skip: offset,
 			take: limit,
-			order: { isPrimary: 'DESC', createdAt: 'DESC' }, // Primary first, then by creation date
+			order: { isPrimary: 'DESC' }, // Primary first
 		});
 
 		return {
@@ -138,37 +138,41 @@ export class AgentAddressTypeOrmRepository implements IAgentAddressRepository {
 	}
 
 	/**
-	 * Updates an agent address and optionally its nested address.
+	 * Updates an agent address and its nested address.
 	 * Uses a transaction for atomic updates.
+	 * @param agentId - The agent ID (part of composite key)
+	 * @param addressId - The address ID (part of composite key)
+	 * @param data - Fields to update
 	 */
-	async update(id: string, data: UpdateAgentAddressData): Promise<AgentAddressWithAddress> {
+	async update(agentId: string, addressId: string, data: UpdateAgentAddressData): Promise<AgentAddressWithAddress> {
 		return this.dataSource.transaction(async (manager) => {
-			// Get existing record with address
+			// Get existing record with address using composite key
 			const existing = await manager.findOne(AgentAddressEntity, {
-				where: { id },
+				where: { agentId, addressId },
 				relations: ['address'],
 			});
 
 			if (!existing) {
-				throw new Error(`AgentAddress with id '${id}' not found`);
+				throw new Error(`AgentAddress with agentId '${agentId}' and addressId '${addressId}' not found`);
 			}
 
-			// Update junction metadata
-			if (data.role !== undefined) existing.role = data.role;
+			// Update junction metadata (only isPrimary in simplified schema)
 			if (data.isPrimary !== undefined) existing.isPrimary = data.isPrimary;
-			if (data.validFrom !== undefined) existing.validFrom = data.validFrom;
-			if (data.validTo !== undefined) existing.validTo = data.validTo;
 
 			await manager.save(AgentAddressEntity, existing);
 
 			// Update address if any address fields provided
 			const addressUpdates: Partial<AddressEntity> = {};
+			if (data.type !== undefined) addressUpdates.type = data.type ?? undefined;
+			if (data.role !== undefined) addressUpdates.role = data.role ?? undefined;
 			if (data.line1 !== undefined) addressUpdates.line1 = data.line1;
 			if (data.line2 !== undefined) addressUpdates.line2 = data.line2 ?? undefined;
 			if (data.city !== undefined) addressUpdates.city = data.city;
-			if (data.unit !== undefined) addressUpdates.unit = data.unit;
+			if (data.unit !== undefined) addressUpdates.unit = data.unit ?? undefined;
 			if (data.postalCode !== undefined) addressUpdates.postalCode = data.postalCode;
-			if (data.country !== undefined) addressUpdates.country = data.country;
+			if (data.county !== undefined) addressUpdates.county = data.county ?? undefined;
+			if (data.label !== undefined) addressUpdates.label = data.label ?? undefined;
+			if (data.stateId !== undefined) addressUpdates.stateId = data.stateId ?? undefined;
 
 			if (Object.keys(addressUpdates).length > 0 && existing.address) {
 				await manager.update(AddressEntity, existing.addressId, addressUpdates);
@@ -176,7 +180,7 @@ export class AgentAddressTypeOrmRepository implements IAgentAddressRepository {
 
 			// Fetch updated record
 			const updated = await manager.findOne(AgentAddressEntity, {
-				where: { id },
+				where: { agentId, addressId },
 				relations: ['address'],
 			});
 
@@ -185,10 +189,12 @@ export class AgentAddressTypeOrmRepository implements IAgentAddressRepository {
 	}
 
 	/**
-	 * Deletes an agent address junction record.
+	 * Deletes an agent address junction record using composite key.
 	 * Note: Does NOT delete the underlying Address entity (may be shared or needed for history).
+	 * @param agentId - The agent ID (part of composite key)
+	 * @param addressId - The address ID (part of composite key)
 	 */
-	async delete(id: string): Promise<void> {
-		await this.agentAddressRepo.delete(id);
+	async delete(agentId: string, addressId: string): Promise<void> {
+		await this.agentAddressRepo.delete({ agentId, addressId });
 	}
 }

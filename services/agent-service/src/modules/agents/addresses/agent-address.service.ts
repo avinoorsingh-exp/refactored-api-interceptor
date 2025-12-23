@@ -49,39 +49,32 @@ export class AgentAddressService {
 
 		const agentAddress = await this.agentAddressRepo.create({
 			agentId,
-			role: data.role,
 			isPrimary: data.isPrimary,
-			validFrom: data.validFrom,
-			validTo: data.validTo,
+			type: data.type,
+			role: data.role,
 			line1: data.line1,
 			line2: data.line2,
 			city: data.city,
 			unit: data.unit,
 			postalCode: data.postalCode,
-			country: data.country,
+			county: data.county,
+			label: data.label,
+			stateId: data.stateId,
 		});
 
 		const duration = Date.now() - startTime;
-		this.logger.info(`Created address ${agentAddress.id} for agent ${agentId} in ${duration}ms`);
+		this.logger.info(`Created address ${agentAddress.addressId} for agent ${agentId} in ${duration}ms`);
 
 		return agentAddress;
 	}
 
 	/**
-	 * Finds an address by ID for a specific agent.
+	 * Finds an address by composite key for a specific agent.
 	 */
-	async findById(agentId: string, addressId: string): Promise<AgentAddressWithAddress> {
-		const agentAddress = await this.agentAddressRepo.findById(addressId);
+	async findByCompositeKey(agentId: string, addressId: string): Promise<AgentAddressWithAddress> {
+		const agentAddress = await this.agentAddressRepo.findByCompositeKey(agentId, addressId);
 
 		if (!agentAddress) {
-			throw new NotFoundException({
-				message: `Address with id '${addressId}' not found`,
-				i18nType: 'agentaddress.not_found',
-			});
-		}
-
-		// Ensure address belongs to the specified agent
-		if (agentAddress.agentId !== agentId) {
 			throw new NotFoundException({
 				message: `Address with id '${addressId}' not found for agent '${agentId}'`,
 				i18nType: 'agentaddress.not_found',
@@ -123,12 +116,12 @@ export class AgentAddressService {
 		const startTime = Date.now();
 
 		// Verify address exists and belongs to agent
-		const existing = await this.findById(agentId, addressId);
+		const existing = await this.findByCompositeKey(agentId, addressId);
 
 		// If setting as primary, check no other primary exists
 		if (data.isPrimary === true && !existing.isPrimary) {
 			const existingPrimary = await this.agentAddressRepo.findPrimaryByAgentId(agentId);
-			if (existingPrimary && existingPrimary.id !== addressId) {
+			if (existingPrimary && existingPrimary.addressId !== addressId) {
 				throw new ConflictException({
 					message: 'A primary address already exists for this agent',
 					i18nType: 'agentaddress.primary_exists',
@@ -136,7 +129,7 @@ export class AgentAddressService {
 			}
 		}
 
-		const updated = await this.agentAddressRepo.update(addressId, data);
+		const updated = await this.agentAddressRepo.update(agentId, addressId, data);
 
 		const duration = Date.now() - startTime;
 		this.logger.info(`Updated address ${addressId} for agent ${agentId} in ${duration}ms`);
@@ -151,9 +144,9 @@ export class AgentAddressService {
 		const startTime = Date.now();
 
 		// Verify address exists and belongs to agent
-		await this.findById(agentId, addressId);
+		await this.findByCompositeKey(agentId, addressId);
 
-		await this.agentAddressRepo.delete(addressId);
+		await this.agentAddressRepo.delete(agentId, addressId);
 
 		const duration = Date.now() - startTime;
 		this.logger.info(`Deleted address ${addressId} for agent ${agentId} in ${duration}ms`);

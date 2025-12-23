@@ -5,8 +5,17 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  * @public
  */
 export class AddressResponseDto {
-	@ApiProperty({ description: 'Unique identifier (UUID)' })
+	@ApiProperty({ description: 'Unique identifier (BigInt as string)' })
 	id!: string;
+
+	@ApiPropertyOptional({ description: 'Address type (personal, company)', enum: ['personal', 'company'] })
+	type?: string | null;
+
+	@ApiPropertyOptional({
+		description: 'Address role (contact, bill_to, pay_to, ship_to, return_to)',
+		enum: ['contact', 'bill_to', 'pay_to', 'ship_to', 'return_to'],
+	})
+	role?: string | null;
 
 	@ApiProperty({ description: 'Address line 1 (street address)', example: '123 Main St' })
 	line1!: string;
@@ -17,57 +26,45 @@ export class AddressResponseDto {
 	@ApiProperty({ description: 'City name', example: 'Austin' })
 	city!: string;
 
-	@ApiProperty({ description: 'Unit/apartment number', example: '101' })
-	unit!: string;
+	@ApiPropertyOptional({ description: 'Unit/apartment number', example: '101' })
+	unit?: string | null;
 
 	@ApiProperty({ description: 'Postal/ZIP code', example: '78701' })
 	postalCode!: string;
 
-	@ApiProperty({ description: 'ISO-3166 alpha-2 country code', example: 'US' })
-	country!: string;
+	@ApiPropertyOptional({ description: 'County name', example: 'Travis' })
+	county?: string | null;
+
+	@ApiPropertyOptional({ description: 'Address label for display', example: 'Home Address' })
+	label?: string | null;
+
+	@ApiPropertyOptional({ description: 'Foreign key to State entity (UUID)' })
+	stateId?: string | null;
 
 	@ApiProperty({ description: 'Creation timestamp' })
-	createdAt!: Date;
+	created!: Date;
 
 	@ApiProperty({ description: 'Last modification timestamp' })
-	updatedAt!: Date;
+	lastModified!: Date;
+
+	@ApiProperty({ description: 'User/system that last modified the record' })
+	modifiedBy!: string;
 }
 
 /**
  * Response DTO for AgentAddress junction entity with nested address.
+ * Composite key: (agentId, addressId).
  * @public
  */
 export class AgentAddressResponseDto {
-	@ApiProperty({ description: 'Unique identifier (UUID)' })
-	id!: string;
-
-	@ApiProperty({ description: 'Foreign key to Agent entity' })
+	@ApiProperty({ description: 'Foreign key to Agent entity (UUID)' })
 	agentId!: string;
 
-	@ApiProperty({ description: 'Foreign key to Address entity' })
+	@ApiProperty({ description: 'Foreign key to Address entity (BigInt as string)' })
 	addressId!: string;
-
-	@ApiPropertyOptional({
-		description: 'Role/type of address',
-		enum: ['home', 'office', 'mailing', 'billing', 'other'],
-		example: 'home',
-	})
-	role?: 'home' | 'office' | 'mailing' | 'billing' | 'other';
 
 	@ApiProperty({ description: 'Whether this is the primary address', example: true })
 	isPrimary!: boolean;
-
-	@ApiPropertyOptional({ description: 'Date from which this address is valid (YYYY-MM-DD)', example: '2024-01-01' })
-	validFrom?: string;
-
-	@ApiPropertyOptional({ description: 'Date until which this address is valid (YYYY-MM-DD)', example: '2025-12-31' })
-	validTo?: string;
-
-	@ApiProperty({ description: 'Creation timestamp' })
-	createdAt!: Date;
-
-	@ApiProperty({ description: 'Last modification timestamp' })
-	updatedAt!: Date;
 
 	@ApiPropertyOptional({ description: 'The address details', type: AddressResponseDto })
 	address?: AddressResponseDto;

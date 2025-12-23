@@ -3,27 +3,24 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 /**
  * DTO for creating a new AgentAddress with inline address creation.
  * Creates both the Address entity and the AgentAddress junction record.
+ * Junction only has isPrimary; all other fields go to Address entity.
  * @public
  */
 export class CreateAgentAddressDto {
-	// Junction metadata
-	@ApiPropertyOptional({
-		description: 'Role/type of address',
-		enum: ['home', 'office', 'mailing', 'billing', 'other'],
-		example: 'home',
-	})
-	role?: 'home' | 'office' | 'mailing' | 'billing' | 'other';
-
+	// Junction metadata (simplified - only isPrimary)
 	@ApiProperty({ description: 'Whether this is the primary address', example: true })
 	isPrimary!: boolean;
 
-	@ApiPropertyOptional({ description: 'Date from which this address is valid (YYYY-MM-DD)', example: '2024-01-01' })
-	validFrom?: string;
-
-	@ApiPropertyOptional({ description: 'Date until which this address is valid (YYYY-MM-DD)', example: '2025-12-31' })
-	validTo?: string;
-
 	// Address data (inline creation)
+	@ApiPropertyOptional({ description: 'Address type (personal, company)', enum: ['personal', 'company'] })
+	type?: string;
+
+	@ApiPropertyOptional({
+		description: 'Address role (contact, bill_to, pay_to, ship_to, return_to)',
+		enum: ['contact', 'bill_to', 'pay_to', 'ship_to', 'return_to'],
+	})
+	role?: string;
+
 	@ApiProperty({ description: 'Address line 1 (street address)', example: '123 Main St' })
 	line1!: string;
 
@@ -33,12 +30,18 @@ export class CreateAgentAddressDto {
 	@ApiProperty({ description: 'City name', example: 'Austin' })
 	city!: string;
 
-	@ApiProperty({ description: 'Unit/apartment number', example: '101' })
-	unit!: string;
+	@ApiPropertyOptional({ description: 'Unit/apartment number', example: '101' })
+	unit?: string | null;
 
 	@ApiProperty({ description: 'Postal/ZIP code', example: '78701' })
 	postalCode!: string;
 
-	@ApiProperty({ description: 'ISO-3166 alpha-2 country code', example: 'US' })
-	country!: string;
+	@ApiPropertyOptional({ description: 'County name', example: 'Travis' })
+	county?: string | null;
+
+	@ApiPropertyOptional({ description: 'Address label for display', example: 'Home Address' })
+	label?: string | null;
+
+	@ApiPropertyOptional({ description: 'Foreign key to State entity (UUID)' })
+	stateId?: string | null;
 }

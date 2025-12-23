@@ -38,27 +38,28 @@ import { Agent } from '../../../common/decorators/agent.decorator.js';
 import type { Agent as AgentType } from '@exprealty/shared-domain';
 
 /**
- * UUID validation schema for address ID.
+ * Address ID validation schema (BigInt as string).
  */
-const AddressIdSchema = z.string().uuid({ message: 'errors.address.id.invalid' });
+const AddressIdSchema = z.string({ message: 'errors.address.id.invalid' });
 
 /**
  * Zod schema for creating an agent address with inline address creation.
- * Combines junction metadata with address data.
+ * Junction has only isPrimary; all other fields go to Address entity.
  */
 const CreateAgentAddressSchema = z.object({
-	// Junction metadata
-	role: z.enum(['home', 'office', 'mailing', 'billing', 'other']).optional(),
+	// Junction metadata (simplified - only isPrimary)
 	isPrimary: z.boolean(),
-	validFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD format').optional(),
-	validTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD format').optional(),
 	// Address data
-	line1: z.string().min(1).max(200),
-	line2: z.string().max(200).optional().nullable(),
-	city: z.string().min(1).max(100),
-	unit: z.string().min(1).max(50),
-	postalCode: z.string().min(3).max(20),
-	country: z.string().length(2).toUpperCase(),
+	type: z.enum(['personal', 'company']).optional(),
+	role: z.enum(['contact', 'bill_to', 'pay_to', 'ship_to', 'return_to']).optional(),
+	line1: z.string().min(1).max(256),
+	line2: z.string().max(256).optional().nullable(),
+	city: z.string().min(1).max(128),
+	unit: z.string().max(64).optional().nullable(),
+	postalCode: z.string().min(2).max(16),
+	county: z.string().max(128).optional().nullable(),
+	label: z.string().max(256).optional().nullable(),
+	stateId: z.string().uuid().optional().nullable(),
 });
 
 /**
@@ -153,8 +154,8 @@ export class AgentAddressController {
 	@ApiParam({
 		name: 'addressId',
 		type: 'string',
-		description: 'Address UUID (junction table ID)',
-		example: '123e4567-e89b-12d3-a456-426614174000',
+		description: 'Address ID (BigInt as string)',
+		example: '12345',
 	})
 	@ApiResponse({
 		status: 200,
@@ -170,7 +171,7 @@ export class AgentAddressController {
 		@Param('addressId', new ZodValidationPipe(AddressIdSchema, 'address.validation'))
 		addressId: string,
 	): Promise<AgentAddressResponseDto> {
-		const address = await this.agentAddressService.findById(agent.id, addressId);
+		const address = await this.agentAddressService.findByCompositeKey(agent.id, addressId);
 		return address as unknown as AgentAddressResponseDto;
 	}
 
@@ -216,7 +217,7 @@ export class AgentAddressController {
 	): Promise<AgentAddressResponseDto> {
 		const address = await this.agentAddressService.create(agent.id, body);
 
-		res.setHeader('Location', `/v1/agents/${agent.id}/addresses/${address.id}`);
+		res.setHeader('Location', `/v1/agents/${agent.id}/addresses/${address.addressId}`);
 
 		return address as unknown as AgentAddressResponseDto;
 	}
@@ -239,8 +240,8 @@ export class AgentAddressController {
 	@ApiParam({
 		name: 'addressId',
 		type: 'string',
-		description: 'Address UUID (junction table ID)',
-		example: '123e4567-e89b-12d3-a456-426614174000',
+		description: 'Address ID (BigInt as string)',
+		example: '12345',
 	})
 	@ApiBody({ type: UpdateAgentAddressDto })
 	@ApiResponse({
@@ -290,8 +291,8 @@ export class AgentAddressController {
 	@ApiParam({
 		name: 'addressId',
 		type: 'string',
-		description: 'Address UUID (junction table ID)',
-		example: '123e4567-e89b-12d3-a456-426614174000',
+		description: 'Address ID (BigInt as string)',
+		example: '12345',
 	})
 	@ApiResponse({
 		status: 204,
