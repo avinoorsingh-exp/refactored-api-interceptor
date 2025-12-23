@@ -130,5 +130,17 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 			property: 'publicProfile',
 			fields: ['id', 'firstName', 'lastName', 'email', 'phone', 'bio'],
 		},
+		// Virtual relations - loaded via AgentRepository.loadPrimaryContacts()
+		// Uses leftJoinAndMapOne with filtered condition on contactMethods
+		primaryEmail: {
+			property: 'primaryEmail',
+			fields: ['id', 'name', 'value', 'channel', 'subType', 'isPrimary'],
+			virtual: true, // Loaded by repository, not ProjectionService
+		},
+		primaryPhone: {
+			property: 'primaryPhone',
+			fields: ['id', 'name', 'value', 'channel', 'subType', 'isPrimary'],
+			virtual: true, // Loaded by repository, not ProjectionService
+		},
 	},
 };

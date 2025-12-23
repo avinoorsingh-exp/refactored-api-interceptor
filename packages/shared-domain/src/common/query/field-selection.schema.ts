@@ -21,6 +21,12 @@ export interface RelationConfig {
   fields: string[];
   /** Nested relations to eagerly load with this relation */
   nested?: string[];
+  /** 
+   * Virtual relation - loaded via custom repository method, not TypeORM join.
+   * When true, ProjectionService skips this relation (repository handles loading).
+   * @example primaryEmail, primaryPhone loaded via loadPrimaryContacts()
+   */
+  virtual?: boolean;
 }
 
 /**

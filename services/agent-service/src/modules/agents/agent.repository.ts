@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, SelectQueryBuilder } from 'typeorm';
 import type { IAgentRepository } from './ports/agent.repository.port.js';
 import type { PageResult } from '../../common/ports/pagination.types.js';
 import { AgentEntity } from '@exprealty/database';
@@ -73,6 +73,10 @@ export class AgentTypeOrmRepository
 	/**
 	 * Maps a TypeORM AgentEntity to a domain Agent type.
 	 * Note: Uses 'as unknown as Agent' to handle branded type conversions.
+	 * 
+	 * TODO: Field projection affects SQL SELECT but mapToDomain always returns full object.
+	 * If response filtering is needed, implement post-processing in controller/service layer
+	 * or create a separate mapToProjectedDomain(entity, selectedFields) method.
 	 */
 	protected mapToDomain(entity: AgentEntity): Agent {
 		const result = {
@@ -83,7 +87,8 @@ export class AgentTypeOrmRepository
 			lastName: entity.lastName,
 			preferredName: entity.preferredName,
 			suffix: entity.suffix as Agent['suffix'],
-			email: '', // TODO: Get from contactMethods
+			// Use primaryEmail if loaded, otherwise empty
+			email: entity.primaryEmail?.value || '',
 			birthDate: entity.birthDate?.toISOString().split('T')[0] || '',
 			lifecycleStatus: entity.lifecycleStatus,
 			createdAt: entity.created,
@@ -110,6 +115,9 @@ export class AgentTypeOrmRepository
 			...(entity.sponsorConfiguration && { sponsorConfiguration: entity.sponsorConfiguration }),
 			...(entity.activeLocations && { activeLocation: entity.activeLocations }),
 			...(entity.publicProfile && { publicProfile: entity.publicProfile }),
+			// Virtual relations - loaded via loadPrimaryContacts()
+			...(entity.primaryEmail && { primaryEmail: entity.primaryEmail }),
+			...(entity.primaryPhone && { primaryPhone: entity.primaryPhone }),
 		};
 		return result as unknown as Agent;
 	}
@@ -155,13 +163,6 @@ export class AgentTypeOrmRepository
 		return entity ? this.mapToDomain(entity) : null;
 	}
 
-	/**
-	 * Finds agents with pagination, filtering, sorting, and search.
-	 */
-	async findPage(query: Partial<QueryParams>, selection?: FieldSelection): Promise<PageResult<Agent>> {
-		return this.findWithQuery(query, selection);
-	}
-
 	// Override create to handle entity mapping
 	async create(data: Omit<Agent, 'id' | 'createdAt' | 'updatedAt'>): Promise<Agent> {
 		const entity = this.repo.create({
@@ -169,5 +170,84 @@ export class AgentTypeOrmRepository
 		});
 		const saved = await this.repo.save(entity);
 		return this.mapToDomain(saved);
+	}
+
+	/**
+	 * DRY PRINCIPLE: Reusable method for loading primary contacts
+	 * 
+	 * Uses TypeORM's leftJoinAndMapOne to join contactMethods with
+	 * a filtered condition and map directly to virtual properties.
+	 * 
+	 * @param qb - Query builder
+	 * @param alias - Base entity alias (usually 'agent')
+	 * @param types - Contact types to load (e.g., ['email', 'phone'])
+	 * 
+	 * @example
+	 * // Loads primaryEmail and primaryPhone
+	 * this.loadPrimaryContacts(qb, 'agent', ['email', 'phone']);
+	 * // Results in:
+	 * // LEFT JOIN contact_method primaryEmail ON ... AND channel = 'email' AND is_primary = true
+	 * // LEFT JOIN contact_method primaryPhone ON ... AND channel = 'phone' AND is_primary = true
+	 */
+	protected loadPrimaryContacts<T>(
+		qb: SelectQueryBuilder<T>,
+		alias: string,
+		types: string[],
+	): void {
+		for (const type of types) {
+			// Build relation alias: email -> primaryEmail, phone -> primaryPhone
+			const relationAlias = `primary${type.charAt(0).toUpperCase() + type.slice(1)}`;
+
+			// Use leftJoinAndMapOne to:
+			// 1. Join contactMethods with filtered condition
+			// 2. Map result directly to virtual property (entity.primaryEmail)
+			qb.leftJoinAndMapOne(
+				`${alias}.${relationAlias}`,      // Maps to entity.primaryEmail / entity.primaryPhone
+				`${alias}.contactMethods`,         // Source relation
+				relationAlias,                     // Alias for the join
+				`${relationAlias}.channel = :${relationAlias}Channel AND ${relationAlias}.isPrimary = true`,
+				{ [`${relationAlias}Channel`]: type },
+			);
+		}
+	}
+
+	/**
+	 * Extract primary contact types from includes.
+	 * Detects primaryEmail, primaryPhone, etc. in the includes array.
+	 * 
+	 * @returns Array of contact types (e.g., ['email', 'phone'])
+	 */
+	private extractPrimaryContactTypes(include?: string[]): string[] {
+		if (!include) return [];
+
+		const primaryContactTypes: string[] = [];
+		for (const item of include) {
+			if (item.startsWith('primary')) {
+				// primaryEmail -> email, primaryPhone -> phone
+				const type = item.replace('primary', '').toLowerCase();
+				if (type) primaryContactTypes.push(type);
+			}
+		}
+		return primaryContactTypes;
+	}
+
+	/**
+	 * Finds agents with pagination, filtering, sorting, and search.
+	 * Handles primary contact loading via custom joins.
+	 */
+	async findPage(
+		query: Partial<QueryParams>,
+		selection?: FieldSelection,
+	): Promise<PageResult<Agent>> {
+		const primaryContactTypes = this.extractPrimaryContactTypes(selection?.include);
+
+		if (primaryContactTypes.length > 0) {
+			// Use customizeQuery callback to add primary contact joins
+			return this.findWithQuery(query, selection, (qb) => {
+				this.loadPrimaryContacts(qb, this.getAlias(), primaryContactTypes);
+			});
+		}
+
+		return this.findWithQuery(query, selection);
 	}
 }

@@ -45,10 +45,10 @@ export type AgentLifecycleStatus =
 export class AgentEntity extends AuditableEntity {
 	/**
 	 * Primary key (UUID).
+	 * Not searchable - users search by name/agentId, not UUID.
 	 * @public
 	 */
 	@PrimaryGeneratedColumn('uuid')
-	@Searchable({ weight: 3, behavior: 'exact', description: 'Unique agent identifier (UUID)' })
 	@Filterable()
 	@Sortable()
 	id!: string
@@ -356,4 +356,57 @@ export class AgentEntity extends AuditableEntity {
 	 */
 	@OneToOne('PublicProfileEntity', 'agent')
 	publicProfile?: PublicProfileEntity
+
+	/**
+	 * Primary email contact method
+	 * 
+	 * Virtual property - loaded via custom query
+	 * Use ?includes=primaryEmail to load
+	 * Sortable/filterable via projection config
+	 * 
+	 * @see AgentRepository.loadPrimaryContacts()
+	 * @see AGENT_PROJECTION_CONFIG.relations.primaryEmail
+	 */
+	primaryEmail?: ContactMethodEntity;
+
+  	/**
+	 * Primary phone contact method
+	 * 
+	 * Virtual property - loaded via custom query
+	 * Use ?includes=primaryPhone to load
+	 * Sortable/filterable via projection config
+	 * 
+	 * @see AgentRepository.loadPrimaryContacts()
+	 * @see AGENT_PROJECTION_CONFIG.relations.primaryPhone
+	 */
+	primaryPhone?: ContactMethodEntity;
+
+    // ========================================
+	// Helper Methods
+	// ========================================
+
+	/**
+	 * Get primary contact method by type
+	 * 
+	 * Use after loading contactMethods relation
+	 */
+	getPrimaryContactByType(type: string): ContactMethodEntity | undefined {
+		return this.contactMethods?.find(
+		(c) => c.channel === type && c.isPrimary,
+		);
+	}
+
+	/**
+	 * Get email address for primary email
+	 */
+	getPrimaryEmailAddress(): string | undefined {
+		return this.primaryEmail?.value;
+	}
+
+	/**
+	 * Get phone number for primary phone
+	 */
+	getPrimaryPhoneNumber(): string | undefined {
+		return this.primaryPhone?.value;
+	}
 }
