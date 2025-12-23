@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import type { IAgentRepository } from './ports/agent.repository.port.js';
 import type { PageResult } from '../../common/ports/pagination.types.js';
-import { AgentEntity } from '@exprealty/database';
+import { AgentEntity, AddressEntity } from '@exprealty/database';
 import type { Agent, QueryParams, FieldSelection } from '@exprealty/shared-domain';
 import { QueryService } from '../../common/query/query.service.js';
 import { LoggerService } from '../../core/logger.service.js';
@@ -107,6 +107,7 @@ export class AgentTypeOrmRepository
 			...(entity.agentOffice && { agentOffice: entity.agentOffice }),
 			...(entity.office && { office: entity.office }),
 			...(entity.mls && { mls: entity.mls }),
+			...(entity.addresses && { address: entity.addresses }),
 			...(entity.agentAddresses && { agentAddress: entity.agentAddresses }),
 			...(entity.externalReferences && { externalReference: entity.externalReferences }),
 			...(entity.languages && { language: entity.languages }),
@@ -215,23 +216,43 @@ export class AgentTypeOrmRepository
 
 	/**
 	 * Loads the primary address for an agent.
-	 * Uses leftJoinAndMapOne to join agentAddresses with isPrimary = true filter.
-	 * Also loads the nested address entity.
+	 * Uses two LEFT JOINs: first to junction table, then to address.
+	 * Maps address directly to entity.primaryAddress (like loadPrimaryContacts).
+	 * Uses addSelect to ensure fields are in DISTINCT query.
 	 */
 	protected loadPrimaryAddress<T>(
 		qb: SelectQueryBuilder<T>,
 		alias: string,
 	): void {
-		// Join agent_address where isPrimary = true
-		qb.leftJoinAndMapOne(
-			`${alias}.primaryAddress`,
+		const junctionAlias = 'primaryAddressJunction';
+		const addressAlias = 'primaryAddress';
+
+		// LEFT JOIN to junction table with isPrimary = true filter
+		qb.leftJoin(
 			`${alias}.agentAddresses`,
-			'primaryAddress',
-			'primaryAddress.isPrimary = true',
+			junctionAlias,
+			`${junctionAlias}.isPrimary = true`,
 		);
 
-		// Also join the nested address entity
-		qb.leftJoinAndSelect('primaryAddress.address', 'primaryAddressDetails');
+		// LEFT JOIN and map the address directly to entity.primaryAddress
+		// Uses leftJoinAndMapOne to map the nested address relation
+		qb.leftJoin(`${junctionAlias}.address`, addressAlias)
+
+		// Explicitly select address fields with addSelect
+		// This ensures they're included in the outer DISTINCT query
+		qb.addSelect([
+			`${addressAlias}.id`,
+			`${addressAlias}.line1`,
+			`${addressAlias}.line2`,
+			`${addressAlias}.city`,
+			`${addressAlias}.stateId`,
+			`${addressAlias}.postalCode`,
+			`${addressAlias}.county`,
+			`${addressAlias}.unit`,
+			`${addressAlias}.type`,
+			`${addressAlias}.role`,
+			`${addressAlias}.label`,
+		]);
 	}
 
 	/**

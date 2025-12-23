@@ -1,4 +1,5 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, OneToOne, JoinColumn, ManyToMany , JoinTable} from 'typeorm'
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, OneToOne, JoinColumn, ManyToMany, JoinTable } from 'typeorm'
+import { AddressEntity } from './address.entity.js'
 import { AgentCompanyEntity } from './agent-company.entity.js'
 import { AuditableEntity } from './auditable.entity.js'
 import { MLSEntity } from './mls.entity.js'
@@ -278,8 +279,30 @@ export class AgentEntity extends AuditableEntity {
 	mls?: MLSEntity[];
 
 	/**
+	 * Many-to-Many relationship with Address.
+	 * TypeORM handles agent_address join table transparently.
+	 * Uses agent.id (UUID) and address.id (BigInt) as join columns.
+	 * For include=address - hides junction table like MLS.
+	 * @public
+	 */
+	@ManyToMany(() => AddressEntity)
+	@JoinTable({
+		name: 'agent_address',
+		schema: 'core',
+		joinColumn: {
+			name: 'agent_id',
+			referencedColumnName: 'id', // References Agent.id (UUID primary key)
+		},
+		inverseJoinColumn: {
+			name: 'address_id',
+			referencedColumnName: 'id', // References Address.id (BigInt primary key)
+		},
+	})
+	addresses?: AddressEntity[];
+
+	/**
 	 * One-to-Many relationship with AgentAddress (junction table).
-	 * Links agent to their addresses with primary designation.
+	 * Use this when you need junction metadata like isPrimary.
 	 * @public
 	 */
 	@OneToMany('AgentAddressEntity', 'agent')
@@ -386,12 +409,12 @@ export class AgentEntity extends AuditableEntity {
 	 * 
 	 * Virtual property - loaded via custom query
 	 * Use ?include=primaryAddress to load
-	 * Returns the AgentAddressEntity with nested AddressEntity
+	 * Returns the AddressEntity directly (like primaryEmail)
 	 * 
 	 * @see AgentRepository.loadPrimaryAddress()
 	 * @see AGENT_PROJECTION_CONFIG.relations.primaryAddress
 	 */
-	primaryAddress?: AgentAddressEntity;
+	primaryAddress?: AddressEntity;
 
     // ========================================
 	// Helper Methods
