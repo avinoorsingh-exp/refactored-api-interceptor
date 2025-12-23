@@ -10,6 +10,7 @@ import {
 	HttpStatus,
 	Res,
 	UseInterceptors,
+	UseGuards,
 } from '@nestjs/common';
 import { Response } from 'express';
 import {
@@ -35,6 +36,9 @@ import {
 } from './dto/index.js';
 import { PaginationInterceptor } from '../../../common/pagination/pagination.interceptor.js';
 import { LoggerService } from '../../../core/logger.service.js';
+import { AgentExistsGuard } from '../../../common/guards/agent-exists.guard.js';
+import { Agent } from '../../../common/decorators/agent.decorator.js';
+import type { Agent as AgentType } from '@exprealty/shared-domain';
 
 /**
  * UUID validation schema for contact method ID.
@@ -44,9 +48,13 @@ const ContactMethodIdSchema = z.string().uuid({ message: 'errors.contactMethod.i
 /**
  * Controller for Contact Method nested endpoints under Agent.
  * Routes: GET/POST/PUT /v1/agents/:id/contactmethods
+ * 
+ * Uses AgentExistsGuard to validate agent exists before processing.
+ * The validated agent is available via @Agent() decorator.
  */
 @ApiTags('agents')
 @Controller('v1/agents/:id/contactmethods')
+@UseGuards(AgentExistsGuard)
 export class ContactMethodController {
 	constructor(
 		private readonly contactMethodService: ContactMethodService,
@@ -92,11 +100,10 @@ export class ContactMethodController {
 		description: 'Agent not found',
 	})
 	async findAll(
-		@Param('id', new ZodValidationPipe(AgentIdParamSchema.shape.id, 'agent.validation'))
-		agentId: string,
+		@Agent() agent: AgentType,
 		@Query() query: { offset?: number; limit?: number },
 	): Promise<{ items: ContactMethodResponseDto[]; total: number }> {
-		const result = await this.contactMethodService.findByAgentId(agentId, {
+		const result = await this.contactMethodService.findByAgentId(agent.id, {
 			offset: query.offset ?? 0,
 			limit: query.limit ?? 25,
 		});
@@ -138,12 +145,11 @@ export class ContactMethodController {
 		description: 'Agent or contact method not found',
 	})
 	async findById(
-		@Param('id', new ZodValidationPipe(AgentIdParamSchema.shape.id, 'agent.validation'))
-		agentId: string,
+		@Agent() agent: AgentType,
 		@Param('contactMethodId', new ZodValidationPipe(ContactMethodIdSchema, 'contactmethod.validation'))
 		contactMethodId: string,
 	): Promise<ContactMethodResponseDto> {
-		return this.contactMethodService.findById(agentId, contactMethodId) as unknown as Promise<ContactMethodResponseDto>;
+		return this.contactMethodService.findById(agent.id, contactMethodId) as unknown as Promise<ContactMethodResponseDto>;
 	}
 
 	/**
@@ -187,20 +193,19 @@ export class ContactMethodController {
 	})
 	@ApiResponse({
 		status: 409,
-		description: 'Conflict - duplicate name',
+		description: 'Conflict - duplicate name or primary already exists',
 	})
 	async create(
-		@Param('id', new ZodValidationPipe(AgentIdParamSchema.shape.id, 'agent.validation'))
-		agentId: string,
+		@Agent() agent: AgentType,
 		@Body(new ZodValidationPipe(CreateContactMethodInput, 'contactmethod.validation'))
 		body: CreateContactMethodDto,
 		@Res({ passthrough: true }) res: Response,
 	): Promise<ContactMethodResponseDto> {
-		this.logger.info(`Creating contact method for agent ${agentId}`);
+		this.logger.info(`Creating contact method for agent ${agent.id}`);
 
-		const contactMethod = await this.contactMethodService.create(agentId, body);
+		const contactMethod = await this.contactMethodService.create(agent.id, body);
 
-		res.setHeader('Location', `/v1/agents/${agentId}/contactmethods/${contactMethod.id}`);
+		res.setHeader('Location', `/v1/agents/${agent.id}/contactmethods/${contactMethod.id}`);
 
 		return contactMethod as unknown as ContactMethodResponseDto;
 	}
@@ -245,18 +250,17 @@ export class ContactMethodController {
 	})
 	@ApiResponse({
 		status: 409,
-		description: 'Conflict - duplicate name',
+		description: 'Conflict - duplicate name or primary already exists',
 	})
 	async update(
-		@Param('id', new ZodValidationPipe(AgentIdParamSchema.shape.id, 'agent.validation'))
-		agentId: string,
+		@Agent() agent: AgentType,
 		@Param('contactMethodId', new ZodValidationPipe(ContactMethodIdSchema, 'contactmethod.validation'))
 		contactMethodId: string,
 		@Body(new ZodValidationPipe(UpdateContactMethodInput, 'contactmethod.validation'))
 		body: UpdateContactMethodDto,
 	): Promise<ContactMethodResponseDto> {
-		this.logger.info(`Updating contact method ${contactMethodId} for agent ${agentId}`);
+		this.logger.info(`Updating contact method ${contactMethodId} for agent ${agent.id}`);
 
-		return this.contactMethodService.update(agentId, contactMethodId, body) as unknown as Promise<ContactMethodResponseDto>;
+		return this.contactMethodService.update(agent.id, contactMethodId, body) as unknown as Promise<ContactMethodResponseDto>;
 	}
 }

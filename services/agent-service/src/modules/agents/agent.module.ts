@@ -30,6 +30,7 @@ import { ProjectionService } from '../../common/query/projection.service.js';
 import { ContactMethodController } from './contact-methods/contact-method.controller.js';
 import { ContactMethodService } from './contact-methods/contact-method.service.js';
 import { ContactMethodTypeOrmRepository } from './contact-methods/contact-method.repository.js';
+import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 
 /**
  * Module for Agent aggregate.
@@ -93,6 +94,7 @@ import { ContactMethodTypeOrmRepository } from './contact-methods/contact-method
 		AgentService,
 		ContactMethodService,
 		ProjectionService,
+		AgentExistsGuard,
 		// Provide the repository adapter under the port token
 		{
 			provide: 'IAgentRepository',
@@ -102,7 +104,12 @@ import { ContactMethodTypeOrmRepository } from './contact-methods/contact-method
 			provide: 'IContactMethodRepository',
 			useClass: ContactMethodTypeOrmRepository,
 		},
+		// Provide AgentService under AGENT_SERVICE token for AgentExistsGuard
+		{
+			provide: 'AGENT_SERVICE',
+			useExisting: AgentService,
+		},
 	],
-	exports: [AgentService, ContactMethodService],
+	exports: [AgentService, ContactMethodService, AgentExistsGuard],
 })
 export class AgentModule {}

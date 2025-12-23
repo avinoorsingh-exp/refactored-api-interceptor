@@ -1,0 +1,976 @@
+{
+  "info": {
+    "name": "ContactMethods API - CRUD & Validation Tests",
+    "description": "Tests for ContactMethod nested resource under Agent. Tests CRUD operations, uniqueness constraints, and business rules.\n\nPre-requisite: A valid agent must exist in the database. Set the agentId variable before running tests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "agentId",
+      "value": "",
+      "type": "string",
+      "description": "Valid agent UUID - must be set before running tests"
+    },
+    {
+      "key": "contactMethodId",
+      "value": "",
+      "type": "string",
+      "description": "Created contact method ID - set by Create tests"
+    },
+    {
+      "key": "contactMethodId2",
+      "value": "",
+      "type": "string",
+      "description": "Second contact method ID for conflict tests"
+    }
+  ],
+  "item": [
+    {
+      "name": "Setup - Get Agent ID",
+      "item": [
+        {
+          "name": "Get First Agent (for testing)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has data array', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "    pm.expect(jsonData.data.length).to.be.greaterThan(0);",
+                  "});",
+                  "",
+                  "pm.test('Set agentId variable', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var agentId = jsonData.data[0].id;",
+                  "    pm.collectionVariables.set('agentId', agentId);",
+                  "    console.log('Using agent ID:', agentId);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents?offset=0&limit=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents"],
+              "query": [
+                {"key": "offset", "value": "0"},
+                {"key": "limit", "value": "1"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "AC-1: CRUD Operations",
+      "item": [
+        {
+          "name": "Create Contact Method (Email Primary)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response has Location header', function () {",
+                  "    pm.response.to.have.header('Location');",
+                  "});",
+                  "",
+                  "pm.test('Response contains contact method data', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('name', 'Work Email');",
+                  "    pm.expect(jsonData).to.have.property('channel', 'email');",
+                  "    pm.expect(jsonData).to.have.property('value', 'test@example.com');",
+                  "    pm.expect(jsonData).to.have.property('isPrimary', true);",
+                  "    pm.collectionVariables.set('contactMethodId', jsonData.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Work Email\",\n  \"channel\": \"email\",\n  \"subType\": \"work\",\n  \"value\": \"test@example.com\",\n  \"isPrimary\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods"]
+            }
+          }
+        },
+        {
+          "name": "Create Contact Method (Phone Primary)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response contains phone data', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('channel', 'phone');",
+                  "    pm.expect(jsonData).to.have.property('isPrimary', true);",
+                  "    pm.collectionVariables.set('contactMethodId2', jsonData.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mobile Phone\",\n  \"channel\": \"phone\",\n  \"subType\": \"mobile\",\n  \"value\": \"+1-555-123-4567\",\n  \"isPrimary\": true,\n  \"smsOptIn\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods"]
+            }
+          }
+        },
+        {
+          "name": "Get Contact Method by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response contains correct contact method', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.id).to.equal(pm.collectionVariables.get('contactMethodId'));",
+                  "    pm.expect(jsonData).to.have.property('name');",
+                  "    pm.expect(jsonData).to.have.property('channel');",
+                  "    pm.expect(jsonData).to.have.property('value');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods/{{contactMethodId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods", "{{contactMethodId}}"]
+            }
+          }
+        },
+        {
+          "name": "List All Contact Methods",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has data array with pagination', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('data');",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "    pm.expect(jsonData).to.have.property('meta');",
+                  "    pm.expect(jsonData.meta).to.have.property('total');",
+                  "});",
+                  "",
+                  "pm.test('Returns created contact methods', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.length).to.be.greaterThan(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods?offset=0&limit=25",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods"],
+              "query": [
+                {"key": "offset", "value": "0"},
+                {"key": "limit", "value": "25"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Contact Method",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response contains updated data', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('name', 'Updated Work Email');",
+                  "    pm.expect(jsonData).to.have.property('value', 'updated@example.com');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Work Email\",\n  \"value\": \"updated@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods/{{contactMethodId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods", "{{contactMethodId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "AC-2: Pagination",
+      "item": [
+        {
+          "name": "Pagination - Default (offset=0, limit=25)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Has pagination metadata', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.meta).to.have.property('total');",
+                  "    pm.expect(jsonData.meta).to.have.property('limit', 25);",
+                  "    pm.expect(jsonData.meta).to.have.property('offset', 0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods"]
+            }
+          }
+        },
+        {
+          "name": "Pagination - Custom limit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Respects limit parameter', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.meta).to.have.property('limit', 5);",
+                  "    pm.expect(jsonData.data.length).to.be.at.most(5);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods?offset=0&limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods"],
+              "query": [
+                {"key": "offset", "value": "0"},
+                {"key": "limit", "value": "5"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Pagination - With offset",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Respects offset parameter', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.meta).to.have.property('offset', 1);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods?offset=1&limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods"],
+              "query": [
+                {"key": "offset", "value": "1"},
+                {"key": "limit", "value": "5"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "AC-3: Scoped Uniqueness - Name per Agent",
+      "item": [
+        {
+          "name": "Conflict - Duplicate Name (same agent)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "",
+                  "pm.test('Error message indicates name conflict', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.detail).to.include('already exists');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Work Email\",\n  \"channel\": \"email\",\n  \"value\": \"duplicate@example.com\",\n  \"isPrimary\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods"]
+            }
+          }
+        },
+        {
+          "name": "Update Conflict - Duplicate Name",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "",
+                  "pm.test('Error indicates name conflict on update', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.detail).to.include('already exists');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mobile Phone\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods/{{contactMethodId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods", "{{contactMethodId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "AC-4: Primary Uniqueness per Channel",
+      "item": [
+        {
+          "name": "Conflict - Second Primary Email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "",
+                  "pm.test('Error indicates primary conflict', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.detail).to.include('primary');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Another Primary Email\",\n  \"channel\": \"email\",\n  \"value\": \"second-primary@example.com\",\n  \"isPrimary\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods"]
+            }
+          }
+        },
+        {
+          "name": "Conflict - Second Primary Phone",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "",
+                  "pm.test('Error indicates primary phone conflict', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.detail).to.include('primary');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Another Primary Phone\",\n  \"channel\": \"phone\",\n  \"value\": \"+1-555-987-6543\",\n  \"isPrimary\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods"]
+            }
+          }
+        },
+        {
+          "name": "Success - Non-Primary Same Channel",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Non-primary contact method created', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('isPrimary', false);",
+                  "    pm.expect(jsonData).to.have.property('channel', 'email');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Personal Email\",\n  \"channel\": \"email\",\n  \"subType\": \"personal\",\n  \"value\": \"personal@example.com\",\n  \"isPrimary\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "AC-5: Agent Guard Validation",
+      "item": [
+        {
+          "name": "404 - Non-existent Agent (List)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Error indicates agent not found', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.detail).to.include('Agent');",
+                  "    pm.expect(jsonData.detail).to.include('not found');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/00000000-0000-0000-0000-000000000000/contactmethods",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "00000000-0000-0000-0000-000000000000", "contactmethods"]
+            }
+          }
+        },
+        {
+          "name": "404 - Non-existent Agent (Create)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Error indicates agent not found', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.detail).to.include('Agent');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Email\",\n  \"channel\": \"email\",\n  \"value\": \"test@example.com\",\n  \"isPrimary\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/00000000-0000-0000-0000-000000000000/contactmethods",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "00000000-0000-0000-0000-000000000000", "contactmethods"]
+            }
+          }
+        },
+        {
+          "name": "400 - Invalid Agent UUID Format",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error indicates invalid UUID', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.detail).to.include('uuid');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/invalid-uuid/contactmethods",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "invalid-uuid", "contactmethods"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "AC-6: Validation Errors",
+      "item": [
+        {
+          "name": "400 - Missing Required Fields",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Response is Problem Details format', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('type');",
+                  "    pm.expect(jsonData).to.have.property('title');",
+                  "    pm.expect(jsonData).to.have.property('status', 400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods"]
+            }
+          }
+        },
+        {
+          "name": "400 - Invalid Channel Value",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error indicates invalid channel', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.detail).to.include('channel');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test\",\n  \"channel\": \"invalid\",\n  \"value\": \"test@example.com\",\n  \"isPrimary\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods"]
+            }
+          }
+        },
+        {
+          "name": "400 - Invalid SubType Value",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error indicates invalid subType', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.detail).to.include('subType');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test\",\n  \"channel\": \"phone\",\n  \"subType\": \"invalid\",\n  \"value\": \"+1-555-123-4567\",\n  \"isPrimary\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods"]
+            }
+          }
+        },
+        {
+          "name": "404 - Contact Method Not Found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Error indicates contact method not found', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.detail).to.include('Contact method');",
+                  "    pm.expect(jsonData.detail).to.include('not found');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods/00000000-0000-0000-0000-000000000000",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods", "00000000-0000-0000-0000-000000000000"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Edge Cases",
+      "item": [
+        {
+          "name": "Valid SubTypes - mobile",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('SubType is set correctly', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.subType).to.equal('mobile');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Mobile Test\",\n  \"channel\": \"phone\",\n  \"subType\": \"mobile\",\n  \"value\": \"+1-555-111-2222\",\n  \"isPrimary\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods"]
+            }
+          }
+        },
+        {
+          "name": "Valid SubTypes - home",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('SubType is set correctly', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.subType).to.equal('home');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Home Phone\",\n  \"channel\": \"phone\",\n  \"subType\": \"home\",\n  \"value\": \"+1-555-333-4444\",\n  \"isPrimary\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods"]
+            }
+          }
+        },
+        {
+          "name": "Valid SubTypes - fax",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('SubType is set correctly', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.subType).to.equal('fax');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Office Fax\",\n  \"channel\": \"phone\",\n  \"subType\": \"fax\",\n  \"value\": \"+1-555-555-6666\",\n  \"isPrimary\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods"]
+            }
+          }
+        },
+        {
+          "name": "SMS Opt-In True",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('SMS opt-in is set correctly', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.smsOptIn).to.equal(true);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"SMS Phone\",\n  \"channel\": \"phone\",\n  \"subType\": \"mobile\",\n  \"value\": \"+1-555-777-8888\",\n  \"isPrimary\": false,\n  \"smsOptIn\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/contactmethods",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "contactmethods"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
