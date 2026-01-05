@@ -208,13 +208,14 @@ export class AgentEntity extends AuditableEntity {
 
 	/**
 	 * Foreign key to AgentCompany.
+	 * Nullable to support legacy data migration.
 	 * @public
 	 */
-	@Column({ name: 'agent_company_id', type: 'uuid' })
+	@Column({ name: 'agent_company_id', type: 'uuid', nullable: true })
 	@Searchable({ weight: 3, behavior: 'exact', description: 'Agent company ID reference (UUID)' })
 	@Filterable()
 	@Sortable()
-	agentCompanyId!: string
+	agentCompanyId?: string
 
 	// ==========================================
 	// RELATIONSHIPS

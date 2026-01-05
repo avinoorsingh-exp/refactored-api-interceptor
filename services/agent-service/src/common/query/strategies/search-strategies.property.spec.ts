@@ -333,7 +333,8 @@ describe('Search Strategies - Property-Based Tests', () => {
 
               expect(mockQb.orWhere).toHaveBeenCalled();
               const [query] = mockQb.orWhere.mock.calls[0];
-              expect(query).toContain('BETWEEN');
+              // DateSearchStrategy uses >= AND < for month ranges
+              expect(query).toMatch(/>= .* AND .* </);
             },
           ),
           { numRuns: 100 },
@@ -354,8 +355,9 @@ describe('Search Strategies - Property-Based Tests', () => {
 
               expect(mockQb.orWhere).toHaveBeenCalled();
               const [query, params] = mockQb.orWhere.mock.calls[0];
-              expect(query).toContain('=');
-              expect(params.param_0_date).toBe(searchTerm);
+              // DateSearchStrategy uses >= AND <= for full day range on timestamps
+              expect(query).toMatch(/>= .* AND .* <=/);
+              expect(params.param_0_dayStart).toContain(searchTerm);
             },
           ),
           { numRuns: 100 },

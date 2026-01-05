@@ -66,10 +66,12 @@ const BaseAgent = z
 			.optional()
 			.describe('Primary key for agent'),
 
-		// FK → AgentCompany.id
+		// FK → AgentCompany.id (nullable for legacy data migration)
 		agentCompanyId: z
 			.string()
 			.uuid({ message: 'errors.agent.agentCompanyId.invalid' })
+			.nullable()
+			.optional()
 			.describe('Foreign key to AgentCompany'),
 
 		firstName: NameBranded.describe('Agent’s given name (2–50 chars)'),

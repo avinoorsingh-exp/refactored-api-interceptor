@@ -13,8 +13,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * 2. Make primary_state column nullable
  *
  * CORE.PAY_PLAN:
- * 1. Change agent_percentage to numeric(10,8)
- * 2. Change cap to numeric(10,8)
+ * 1. Change agent_percentage to decimal(18,8)
+ * 2. Change cap to decimal(18,8)
  *
  * This migration is idempotent - safe to run multiple times.
  */
