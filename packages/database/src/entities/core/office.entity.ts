@@ -64,11 +64,11 @@ export class OfficeEntity extends AuditableEntity {
 	 * Office phone number.
 	 * @public
 	 */
-	@Column({ type: 'text' })
+	@Column({ type: 'text', nullable: true })
 	@Searchable({ weight: 5, behavior: 'partial', description: 'Office phone number' })
 	@Filterable()
 	@Sortable()
-	phone!: string
+	phone?: string
 
 	/**
 	 * Office lifecycle status.
@@ -84,11 +84,11 @@ export class OfficeEntity extends AuditableEntity {
 	 * Primary state (e.g., "California", "TX").
 	 * @public
 	 */
-	@Column({ name: 'primary_state', type: 'varchar', length: 200 })
+	@Column({ name: 'primary_state', type: 'varchar', length: 200, nullable: true })
 	@Searchable({ weight: 6, behavior: 'partial', description: 'Primary state of operation' })
 	@Filterable()
 	@Sortable()
-	primaryState!: string
+	primaryState?: string
 
 	/**
 	 * Foreign key to Company.

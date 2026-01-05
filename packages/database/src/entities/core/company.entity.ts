@@ -38,9 +38,9 @@ export class CompanyEntity extends AuditableEntity implements Company {
 	 * Company email address.
 	 * @public
 	 */
-	@Column({ type: 'text', unique: true })
+	@Column({ type: 'text', nullable: true })
 	@Searchable({ weight: 7, behavior: 'partial', description: 'Company email address' })
 	@Filterable()
 	@Sortable()
-	email!: Email
+	email?: Email
 }

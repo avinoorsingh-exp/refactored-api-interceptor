@@ -12,8 +12,8 @@ export const PayPlanBaseSchema = z
 		id: z.string().uuid(),
 		name: trimmedStringMinMax(1, 255, 'Pay plan name must be between 1 and 255 characters'),
 		active: z.boolean(),
-		agentPercentage: z.number().min(0).max(100), // decimal percentage
-		cap: z.number().min(0), // decimal cap amount
+		agentPercentage: z.number(), // decimal(18,8) - accepts any numeric value
+		cap: z.number(), // decimal(18,8) - accepts any numeric value
 	})
 	.merge(AuditableSchema)
 	.describe('Base PayPlan')
@@ -53,6 +53,7 @@ export const CreatePayPlanInputSchema = PayPlanBaseSchema.omit({
 	created: true,
 	lastModified: true,
 	modifiedBy: true,
+	mxid: true,
 })
 
 /**
@@ -71,6 +72,7 @@ export const UpdatePayPlanInputSchema = PayPlanBaseSchema.omit({
 	created: true,
 	lastModified: true,
 	modifiedBy: true,
+	mxid: true,
 }).partial()
 
 /**

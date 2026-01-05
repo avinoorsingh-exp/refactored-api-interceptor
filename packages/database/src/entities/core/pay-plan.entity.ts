@@ -25,12 +25,12 @@ export class PayPlanEntity extends AuditableEntity {
 	@Sortable()
 	active!: boolean
 
-	@Column({ name: 'agent_percentage', type: 'decimal', precision: 5, scale: 2 })
+	@Column({ name: 'agent_percentage', type: 'decimal', precision: 18, scale: 8 })
 	@Filterable()
 	@Sortable()
 	agentPercentage!: number
 
-	@Column({ type: 'decimal', precision: 10, scale: 2 })
+	@Column({ type: 'decimal', precision: 18, scale: 8 })
 	@Filterable()
 	@Sortable()
 	cap!: number

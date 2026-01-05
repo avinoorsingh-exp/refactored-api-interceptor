@@ -50,3 +50,4 @@ coverage-unit
 docs/ERD/**
 .kiro/**
 .claude/settings.json
+docs/miro/*
