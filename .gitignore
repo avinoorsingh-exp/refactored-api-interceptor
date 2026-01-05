@@ -49,3 +49,4 @@ coverage-unit
 **/*Zone.Identifier*
 docs/ERD/**
 .kiro/**
+.claude/settings.json
