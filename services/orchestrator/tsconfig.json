@@ -6,9 +6,9 @@
     "noEmit": false,
     "declaration": false,
     "declarationMap": false,  // <-- Must be false when declaration is false
-    "sourceMap": false,
+    "sourceMap": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src/**/*", "test/**/*"],
-  "exclude": ["node_modules", "dist", "**/*spec.ts", "**/*.e2e-spec.ts"]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
 }
