@@ -83,6 +83,9 @@ export class AgentServiceController {
           ...(headers['accept'] && { 'accept': headers['accept'] }),
           ...(headers['user-agent'] && { 'user-agent': headers['user-agent'] }),
           ...(headers['authorization'] && { 'authorization': headers['authorization'] }),  // Forward auth if present
+          // Forward proxy headers for correct URL generation (e.g., Link header pagination)
+          'x-forwarded-host': (Array.isArray(headers['x-forwarded-host']) ? headers['x-forwarded-host'][0] : headers['x-forwarded-host']) || headers.host as string,
+          'x-forwarded-proto': (Array.isArray(headers['x-forwarded-proto']) ? headers['x-forwarded-proto'][0] : headers['x-forwarded-proto']) || req.protocol,
         },
       })
 
