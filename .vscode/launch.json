@@ -1,0 +1,68 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "Debug Agent Service",
+			"type": "node",
+			"request": "launch",
+			"runtimeArgs": ["--nolazy", "-r", "ts-node/register"],
+			"args": ["${workspaceFolder}/services/agent-service/src/main.ts"],
+			"cwd": "${workspaceFolder}/services/agent-service",
+			"sourceMaps": true,
+			"envFile": "${workspaceFolder}/services/agent-service/.env.local",
+			"console": "integratedTerminal",
+			"internalConsoleOptions": "neverOpen",
+			"skipFiles": ["<node_internals>/**", "node_modules/**"],
+			"resolveSourceMapLocations": [
+				"${workspaceFolder}/**",
+				"!**/node_modules/**"
+			]
+		},
+		{
+			"name": "Debug Orchestrator",
+			"type": "node",
+			"request": "launch",
+			"runtimeArgs": ["--nolazy", "-r", "ts-node/register"],
+			"args": ["${workspaceFolder}/services/orchestrator/src/main.ts"],
+			"cwd": "${workspaceFolder}/services/orchestrator",
+			"sourceMaps": true,
+			"envFile": "${workspaceFolder}/services/orchestrator/.env.local",
+			"console": "integratedTerminal",
+			"internalConsoleOptions": "neverOpen",
+			"skipFiles": ["<node_internals>/**", "node_modules/**"],
+			"resolveSourceMapLocations": [
+				"${workspaceFolder}/**",
+				"!**/node_modules/**"
+			]
+		},
+		{
+			"name": "Debug Agent Service (Attach)",
+			"type": "node",
+			"request": "attach",
+			"port": 9229,
+			"restart": true,
+			"sourceMaps": true,
+			"skipFiles": ["<node_internals>/**", "node_modules/**"],
+			"localRoot": "${workspaceFolder}/services/agent-service",
+			"remoteRoot": "/app"
+		},
+		{
+			"name": "Debug Orchestrator (Attach)",
+			"type": "node",
+			"request": "attach",
+			"port": 9230,
+			"restart": true,
+			"sourceMaps": true,
+			"skipFiles": ["<node_internals>/**", "node_modules/**"],
+			"localRoot": "${workspaceFolder}/services/orchestrator",
+			"remoteRoot": "/app"
+		}
+	],
+	"compounds": [
+		{
+			"name": "Debug Both Services",
+			"configurations": ["Debug Agent Service", "Debug Orchestrator"],
+			"stopAll": true
+		}
+	]
+}

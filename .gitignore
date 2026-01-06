@@ -21,6 +21,9 @@ services/*/src/**/*.d.ts
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/DEBUG.md
 .idea
 .DS_Store
 *.suo
