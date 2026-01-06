@@ -4,15 +4,13 @@
 		{
 			"name": "Debug Agent Service",
 			"type": "node",
-			"request": "launch",
-			"runtimeArgs": ["--nolazy", "-r", "ts-node/register"],
-			"args": ["${workspaceFolder}/services/agent-service/src/main.ts"],
-			"cwd": "${workspaceFolder}/services/agent-service",
+			"request": "attach",
+			"port": 9229,
+			"restart": true,
 			"sourceMaps": true,
-			"envFile": "${workspaceFolder}/services/agent-service/.env.local",
-			"console": "integratedTerminal",
-			"internalConsoleOptions": "neverOpen",
 			"skipFiles": ["<node_internals>/**", "node_modules/**"],
+			"preLaunchTask": "Start Agent Service (Debug)",
+			"outFiles": ["${workspaceFolder}/services/agent-service/dist/**/*.js"],
 			"resolveSourceMapLocations": [
 				"${workspaceFolder}/**",
 				"!**/node_modules/**"
@@ -21,41 +19,37 @@
 		{
 			"name": "Debug Orchestrator",
 			"type": "node",
-			"request": "launch",
-			"runtimeArgs": ["--nolazy", "-r", "ts-node/register"],
-			"args": ["${workspaceFolder}/services/orchestrator/src/main.ts"],
-			"cwd": "${workspaceFolder}/services/orchestrator",
+			"request": "attach",
+			"port": 9231,
+			"restart": true,
 			"sourceMaps": true,
-			"envFile": "${workspaceFolder}/services/orchestrator/.env.local",
-			"console": "integratedTerminal",
-			"internalConsoleOptions": "neverOpen",
 			"skipFiles": ["<node_internals>/**", "node_modules/**"],
+			"preLaunchTask": "Start Orchestrator (Debug)",
+			"outFiles": ["${workspaceFolder}/services/orchestrator/dist/**/*.js"],
 			"resolveSourceMapLocations": [
 				"${workspaceFolder}/**",
 				"!**/node_modules/**"
 			]
 		},
 		{
-			"name": "Debug Agent Service (Attach)",
+			"name": "Attach to Agent Service",
 			"type": "node",
 			"request": "attach",
 			"port": 9229,
 			"restart": true,
 			"sourceMaps": true,
 			"skipFiles": ["<node_internals>/**", "node_modules/**"],
-			"localRoot": "${workspaceFolder}/services/agent-service",
-			"remoteRoot": "/app"
+			"outFiles": ["${workspaceFolder}/services/agent-service/dist/**/*.js"]
 		},
 		{
-			"name": "Debug Orchestrator (Attach)",
+			"name": "Attach to Orchestrator",
 			"type": "node",
 			"request": "attach",
-			"port": 9230,
+			"port": 9231,
 			"restart": true,
 			"sourceMaps": true,
 			"skipFiles": ["<node_internals>/**", "node_modules/**"],
-			"localRoot": "${workspaceFolder}/services/orchestrator",
-			"remoteRoot": "/app"
+			"outFiles": ["${workspaceFolder}/services/orchestrator/dist/**/*.js"]
 		}
 	],
 	"compounds": [

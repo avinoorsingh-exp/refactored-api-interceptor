@@ -140,10 +140,10 @@ export type UpdateContactMethodInputType = z.infer<typeof UpdateContactMethodInp
  */
 export const ContactMethodIdParamSchema = z.object({
 	/**
-	 * Contact method ID (UUID).
+	 * Contact method ID (BigInt as string from legacy system).
 	 * @public
 	 */
-	id: z.string().uuid({ message: 'errors.contactMethod.id.invalid' }),
+	id: z.string().regex(/^\d+$/, { message: 'errors.contactMethod.id.invalid' }),
 })
 
 /**

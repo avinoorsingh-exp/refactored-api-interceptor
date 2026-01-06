@@ -41,9 +41,9 @@ import { Agent } from '../../../common/decorators/agent.decorator.js';
 import type { Agent as AgentType } from '@exprealty/shared-domain';
 
 /**
- * UUID validation schema for contact method ID.
+ * BigInt validation schema for contact method ID (legacy system uses numeric IDs).
  */
-const ContactMethodIdSchema = z.string().uuid({ message: 'errors.contactMethod.id.invalid' });
+const ContactMethodIdSchema = z.string().regex(/^\d+$/, { message: 'errors.contactMethod.id.invalid' });
 
 /**
  * Controller for Contact Method nested endpoints under Agent.

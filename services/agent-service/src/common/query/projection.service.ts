@@ -150,7 +150,9 @@ export class ProjectionService {
             nestedAlias,
           );
 
-          // For nested relations, select all fields (add nestedFields config if specific fields needed)
+          // Select all fields from nested relation using leftJoinAndSelect behavior
+          // This ensures the nested entity data is included in the result
+          qb.addSelect(nestedAlias);
         }
       }
     }

@@ -84,11 +84,17 @@ export function loadEnv(options: EnvLoadOptions = {}) {
 		maybeLoad(path.join(serviceDir, filename))
 	}
 
-	// 3) explicit extra file (e.g., ".env.agent")
+	// 3) explicit extra file (e.g., ".env.agentservice")
+	// Load .local version first (higher precedence for local debugging)
+	// e.g., .env.agentservice.local takes precedence over .env.agentservice
 	if (options.extraEnvFile) {
 		const explicitPath = path.isAbsolute(options.extraEnvFile)
 			? options.extraEnvFile
-			: path.join(repoRoot, options.extraEnvFile)
+			: path.join(serviceDir, options.extraEnvFile)
+
+		// Load .local version first (for local debugging - has higher precedence)
+		maybeLoad(`${explicitPath}.local`)
+		// Then load the standard file (for Docker/production defaults)
 		maybeLoad(explicitPath)
 	}
 }
