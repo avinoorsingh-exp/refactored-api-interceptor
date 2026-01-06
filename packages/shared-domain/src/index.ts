@@ -359,6 +359,8 @@ export {
 export {
 	ContactMethodChannelSchema,
 	ContactMethodSubTypeSchema,
+	EmailSubTypeSchema,
+	PhoneSubTypeSchema,
 	ContactMethodBaseSchema,
 	ContactMethodExpandedSchema,
 	type ContactMethod,
