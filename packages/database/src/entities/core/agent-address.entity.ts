@@ -39,6 +39,13 @@ export class AgentAddressEntity {
 	isPrimary!: boolean
 
 	/**
+	 * Legacy database ID for data migration.
+	 * @public
+	 */
+	@Column({ name: 'mxid', type: 'bigint', nullable: true })
+	mxid?: string
+
+	/**
 	 * Many-to-One relationship with Agent.
 	 * @public
 	 */

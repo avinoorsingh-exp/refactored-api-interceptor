@@ -9,6 +9,7 @@ const BaseAgentAddress = z.strictObject({
 	agentId: z.string().uuid({ message: 'errors.agentAddress.agentId.invalid' }),
 	addressId: z.string({ message: 'errors.agentAddress.addressId.invalid' }),
 	isPrimary: z.boolean().default(false),
+	mxid: z.string().nullable().optional().describe('Legacy database ID for data migration'),
 })
 
 /**

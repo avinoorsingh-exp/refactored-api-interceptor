@@ -1,4 +1,4 @@
-import { Entity, PrimaryColumn, ManyToOne, JoinColumn } from 'typeorm'
+import { Entity, PrimaryColumn, Column, ManyToOne, JoinColumn } from 'typeorm'
 import { AgentEntity } from './agent.entity.js'
 import { MLSEntity } from './mls.entity.js'
 
@@ -15,6 +15,13 @@ export class AgentMLSEntity {
 
 	@PrimaryColumn({ name: 'mls_id', type: 'bigint' })
 	mlsId!: string
+
+	/**
+	 * Legacy database ID for data migration.
+	 * @public
+	 */
+	@Column({ name: 'mxid', type: 'bigint', nullable: true })
+	mxid?: string
 
 	@ManyToOne(() => AgentEntity, { onDelete: 'CASCADE' })
 	@JoinColumn({ name: 'agent_id' })

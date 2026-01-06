@@ -1,11 +1,9 @@
-// packages/agents-model/src/entities/agent.ts
+// packages/shared-domain/src/schemas/agent.ts
 import { z } from 'zod'
 import {
 	NameBranded,
-	EmailBranded,
-	DateOnlyISO,
-	InstantUTC,
 } from '../value-objects/index.js'
+import { AuditableSchema } from './audit.js'
 
 // --- Related entities
 import { AgentCompanyExpandedSchema } from './agent-company.js'
@@ -56,49 +54,59 @@ export const AgentLifecycleStatus = lifecycleEnum(
 ).describe('Agent lifecycle status')
 
 /**
- * @internal
+ * Base schema for Agent entity.
+ * Used for list views and minimal data fetching for performance.
+ * Contains only essential fields without relationships.
+ * 
+ * @public
  */
-const BaseAgent = z
-	.strictObject({
+export const AgentBaseSchema = z
+	.object({
 		id: z
 			.string()
 			.uuid({ message: 'errors.agent.id.invalid' })
-			.optional()
-			.describe('Primary key for agent'),
+			.describe('Primary key (UUID)'),
 
-		// FK → AgentCompany.id (nullable for legacy data migration)
+		agentId: z
+			.string()
+			.regex(/^\d+$/, { message: 'errors.agent.agentId.invalid' })
+			.describe('Auto-generated agent ID (bigint as string)'),
+
+		title: AgentTitle.nullable().optional().describe('Agent title (Mr, Mrs, Ms, Miss)'),
+
+		firstName: NameBranded.describe('Agent first/given name'),
+		middleName: NameBranded.nullable().optional().describe('Agent middle name'),
+		lastName: NameBranded.describe('Agent last/family name'),
+		suffix: AgentSuffix.nullable().optional().describe('Name suffix (Jr, Sr, PhD, etc.)'),
+		preferredName: NameBranded.nullable().optional().describe('Display/preferred name'),
+
+		birthDate: z.coerce.date().nullable().optional().describe('Agent birth date'),
+
+		lifecycleStatus: AgentLifecycleStatus.describe('Agent lifecycle status'),
+
+		systemId: z.number().int().nullable().optional().describe('System ID reference'),
+
 		agentCompanyId: z
 			.string()
 			.uuid({ message: 'errors.agent.agentCompanyId.invalid' })
 			.nullable()
 			.optional()
-			.describe('Foreign key to AgentCompany'),
+			.describe('Foreign key to AgentCompany (UUID)'),
 
-		firstName: NameBranded.describe('Agent’s given name (2–50 chars)'),
-		lastName: NameBranded.describe('Agent’s family name (2–50 chars)'),
-		preferredName: NameBranded.optional().describe('Display/preferred name'),
-		suffix: AgentSuffix.optional().describe('Optional suffix'),
-
-		email: EmailBranded.describe('Agent’s email (validated)'),
-
-		birthDate: DateOnlyISO.describe('Birth date as YYYY-MM-DD'),
-
-		createdAt: InstantUTC.optional().describe('When the agent record was created (UTC)'),
-		updatedAt: InstantUTC.optional().describe(
-			'When the agent record was last updated (UTC)',
-		),
+		seedAgent: z.boolean().default(false).describe('Whether agent is a seed agent'),
+		joinDate: z.coerce.date().nullable().optional().describe('Date when agent joined'),
+		anniversaryDate: z.coerce.date().nullable().optional().describe('Agent anniversary date'),
+		terminationDate: z.coerce.date().nullable().optional().describe('Date when agent was terminated'),
+		isStaff: z.boolean().default(false).describe('Whether agent is staff member'),
 	})
-	.describe('Base Agent (flat, with foreign keys)')
+	.merge(AuditableSchema)
+	.describe('Base Agent for list views')
 
 /**
  * Zod schema for a persisted agent entity.
  * @public
  */
-export const AgentSchema = BaseAgent.required({
-	id: true,
-	createdAt: true,
-	updatedAt: true,
-}).describe('Persisted Agent')
+export const AgentSchema = AgentBaseSchema.describe('Persisted Agent')
 
 /**
  * TypeScript type for a persisted agent.
@@ -109,19 +117,22 @@ export type Agent = z.infer<typeof AgentSchema>
 /**
  * Zod schema for creating a new agent.
  * Accepts untrimmed strings and pipes them through validation.
+ * Omits system-generated fields (id, timestamps, agentId).
  * @public
  */
-export const CreateAgentInput = BaseAgent.omit({
+export const CreateAgentInputSchema = AgentBaseSchema.omit({
 	id: true,
-	createdAt: true,
-	updatedAt: true,
+	agentId: true,
+	created: true,
+	lastModified: true,
+	modifiedBy: true,
+	mxid: true,
 })
 	.extend({
-		firstName: z.string().trim().pipe(NameBranded),
-		lastName: z.string().trim().pipe(NameBranded),
-		preferredName: z.string().trim().pipe(NameBranded).optional(),
-		email: z.string().trim().pipe(EmailBranded),
-		birthDate: z.string().trim().pipe(DateOnlyISO),
+		firstName: z.string().trim().min(2).max(50).pipe(NameBranded),
+		lastName: z.string().trim().min(2).max(50).pipe(NameBranded),
+		middleName: z.string().trim().min(1).max(50).pipe(NameBranded).nullable().optional(),
+		preferredName: z.string().trim().min(2).max(50).pipe(NameBranded).nullable().optional(),
 	})
 	.describe('Payload to create an agent')
 
@@ -129,14 +140,14 @@ export const CreateAgentInput = BaseAgent.omit({
  * TypeScript type for agent creation payload.
  * @public
  */
-export type CreateAgentInput = z.infer<typeof CreateAgentInput>
+export type CreateAgentInput = z.infer<typeof CreateAgentInputSchema>
 
 /**
  * Zod schema for updating an existing agent.
  * All fields are optional for partial updates.
  * @public
  */
-export const UpdateAgentInput = CreateAgentInput.partial().describe(
+export const UpdateAgentInputSchema = CreateAgentInputSchema.partial().describe(
 	'Partial update payload for an agent',
 )
 
@@ -144,7 +155,7 @@ export const UpdateAgentInput = CreateAgentInput.partial().describe(
  * TypeScript type for agent update payload.
  * @public
  */
-export type UpdateAgentInput = z.infer<typeof UpdateAgentInput>
+export type UpdateAgentInput = z.infer<typeof UpdateAgentInputSchema>
 
 // ---------------------------------------------------------------------------
 // EXPANDED AGENT (includes optional relations)
@@ -199,3 +210,17 @@ export const AgentIdParamSchema = z.object({
  * @public
  */
 export type AgentIdParam = z.infer<typeof AgentIdParamSchema>
+
+// ---------------------------------------------------------------------------
+// LEGACY EXPORTS (for backward compatibility)
+// ---------------------------------------------------------------------------
+
+/**
+ * @deprecated Use CreateAgentInputSchema instead
+ */
+export const CreateAgentInput = CreateAgentInputSchema
+
+/**
+ * @deprecated Use UpdateAgentInputSchema instead
+ */
+export const UpdateAgentInput = UpdateAgentInputSchema

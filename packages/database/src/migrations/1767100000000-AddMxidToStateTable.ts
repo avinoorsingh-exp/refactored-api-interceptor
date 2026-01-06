@@ -1,44 +1,23 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 /**
- * Migration to add mxid column to all tables that extend AuditableEntity.
+ * Migration to add mxid column to tables that were missed in the original
+ * AddMxidToAuditableTables migration.
  *
  * The mxid column is a nullable bigint used for storing legacy database IDs
  * during data migration from the legacy system.
  *
  * Affected tables:
- * - agent, social, contact_method, public_profile, license, country,
- *   artifact, program, office, mls, address, region, email_forward,
- *   pay_plan, agent_company, company, w9, state, agent_address, agent_mls
+ * - state: Extends SearchableAuditableEntity, was accidentally omitted
+ * - agent_address: Junction table for Agent-Address many-to-many relationship
+ * - agent_mls: Junction table for Agent-MLS many-to-many relationship
  *
  * This migration is idempotent - safe to run multiple times.
  */
-export class AddMxidToAuditableTables1766800000000 implements MigrationInterface {
-	name = 'AddMxidToAuditableTables1766800000000';
+export class AddMxidToStateTable1767100000000 implements MigrationInterface {
+	name = 'AddMxidToStateTable1767100000000';
 
-	// All tables that extend AuditableEntity + junction tables
-	private readonly tables = [
-		'agent',
-		'social',
-		'contact_method',
-		'public_profile',
-		'license',
-		'country',
-		'artifact',
-		'program',
-		'office',
-		'mls',
-		'address',
-		'region',
-		'email_forward',
-		'pay_plan',
-		'agent_company',
-		'company',
-		'w9',
-		'state',
-		'agent_address',
-		'agent_mls',
-	];
+	private readonly tables = ['state', 'agent_address', 'agent_mls'];
 
 	public async up(queryRunner: QueryRunner): Promise<void> {
 		for (const table of this.tables) {
