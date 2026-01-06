@@ -69,7 +69,7 @@ describe('QueryService', () => {
         logicalOperator: 'AND' as const,
       };
 
-      const result = service.normalize({ filter: JSON.stringify(filter) });
+      const result = service.normalize({ filter: JSON.stringify(filter) } as unknown as Partial<QueryParams>);
 
       expect(result.filter).toBeDefined();
       expect(result.filter?.conditions).toHaveLength(1);
@@ -81,7 +81,7 @@ describe('QueryService', () => {
         conditions: [{ field: 'name', direction: 'ASC' as const }],
       };
 
-      const result = service.normalize({ sort: JSON.stringify(sort) });
+      const result = service.normalize({ sort: JSON.stringify(sort) } as unknown as Partial<QueryParams>);
 
       expect(result.sort).toBeDefined();
       expect(result.sort?.conditions).toHaveLength(1);
@@ -92,7 +92,7 @@ describe('QueryService', () => {
       const result = service.normalize({
         search: 'test query',
         searchFields: 'name',  // comma-separated string
-      });
+      } as unknown as Partial<QueryParams>);
 
       expect(result.search).toBeDefined();
       expect(result.search?.query).toBe('test query');
@@ -108,7 +108,7 @@ describe('QueryService', () => {
       };
 
       const result = service.normalizeWithValidation(
-        { filter: JSON.stringify(filter) },
+        { filter: JSON.stringify(filter) } as unknown as Partial<QueryParams>,
         MockEntity,
       );
 
@@ -123,7 +123,7 @@ describe('QueryService', () => {
 
       expect(() =>
         service.normalizeWithValidation(
-          { filter: JSON.stringify(filter) },
+          { filter: JSON.stringify(filter) } as unknown as Partial<QueryParams>,
           MockEntity,
         ),
       ).toThrow(/Invalid filter fields/);
@@ -135,7 +135,7 @@ describe('QueryService', () => {
       };
 
       const result = service.normalizeWithValidation(
-        { sort: JSON.stringify(sort) },
+        { sort: JSON.stringify(sort) } as unknown as Partial<QueryParams>,
         MockEntity,
       );
 
@@ -149,7 +149,7 @@ describe('QueryService', () => {
 
       expect(() =>
         service.normalizeWithValidation(
-          { sort: JSON.stringify(sort) },
+          { sort: JSON.stringify(sort) } as unknown as Partial<QueryParams>,
           MockEntity,
         ),
       ).toThrow(/Invalid sort fields/);
@@ -157,7 +157,7 @@ describe('QueryService', () => {
 
     it('should validate search fields against entity', () => {
       const result = service.normalizeWithValidation(
-        { search: 'test', searchFields: 'name' },  // comma-separated string
+        { search: 'test', searchFields: 'name' } as unknown as Partial<QueryParams>,  // comma-separated string
         MockEntity,
       );
 
@@ -167,7 +167,7 @@ describe('QueryService', () => {
     it('should throw error for invalid search field', () => {
       expect(() =>
         service.normalizeWithValidation(
-          { search: 'test', searchFields: 'invalidField' },  // comma-separated string
+          { search: 'test', searchFields: 'invalidField' } as unknown as Partial<QueryParams>,  // comma-separated string
           MockEntity,
         ),
       ).toThrow(/Invalid search fields/);
@@ -719,6 +719,121 @@ describe('QueryService', () => {
       expect(mockQueryBuilder.addOrderBy).not.toHaveBeenCalled();
     });
   });
+
+  describe('Status and Modified By filtering', () => {
+    it('should filter by isActive (Status) field with eq operator', () => {
+      const filter: Filter = {
+        conditions: [{ field: 'isActive', operator: 'eq', value: true }],
+        logicalOperator: 'AND',
+      };
+
+      // Create a mock that executes the Brackets callback
+      const mockQbWithBrackets = {
+        ...mockQueryBuilder,
+        andWhere: jest.fn().mockImplementation((brackets: any) => {
+          if (typeof brackets === 'function') {
+            brackets(mockQueryBuilder);
+          } else if (brackets && typeof brackets.whereFactory === 'function') {
+            const subQb = {
+              andWhere: jest.fn().mockReturnThis(),
+              orWhere: jest.fn().mockReturnThis(),
+            };
+            brackets.whereFactory(subQb);
+          }
+          return mockQbWithBrackets;
+        }),
+      } as unknown as jest.Mocked<SelectQueryBuilder<MockEntity>>;
+
+      service.applyFilters(mockQbWithBrackets, filter, 'entity');
+
+      expect(mockQbWithBrackets.andWhere).toHaveBeenCalled();
+    });
+
+    it('should filter by modifiedBy (Modified By) field with eq operator', () => {
+      const filter: Filter = {
+        conditions: [{ field: 'modifiedBy', operator: 'eq', value: 'admin' }],
+        logicalOperator: 'AND',
+      };
+
+      // Create a mock that executes the Brackets callback
+      const mockQbWithBrackets = {
+        ...mockQueryBuilder,
+        andWhere: jest.fn().mockImplementation((brackets: any) => {
+          if (typeof brackets === 'function') {
+            brackets(mockQueryBuilder);
+          } else if (brackets && typeof brackets.whereFactory === 'function') {
+            const subQb = {
+              andWhere: jest.fn().mockReturnThis(),
+              orWhere: jest.fn().mockReturnThis(),
+            };
+            brackets.whereFactory(subQb);
+          }
+          return mockQbWithBrackets;
+        }),
+      } as unknown as jest.Mocked<SelectQueryBuilder<MockEntity>>;
+
+      service.applyFilters(mockQbWithBrackets, filter, 'entity');
+
+      expect(mockQbWithBrackets.andWhere).toHaveBeenCalled();
+    });
+
+    it('should filter by modifiedBy (Modified By) field with ilike operator', () => {
+      const filter: Filter = {
+        conditions: [{ field: 'modifiedBy', operator: 'ilike', value: 'admin' }],
+        logicalOperator: 'AND',
+      };
+
+      // Create a mock that executes the Brackets callback
+      const mockQbWithBrackets = {
+        ...mockQueryBuilder,
+        andWhere: jest.fn().mockImplementation((brackets: any) => {
+          if (typeof brackets === 'function') {
+            brackets(mockQueryBuilder);
+          } else if (brackets && typeof brackets.whereFactory === 'function') {
+            const subQb = {
+              andWhere: jest.fn().mockReturnThis(),
+              orWhere: jest.fn().mockReturnThis(),
+            };
+            brackets.whereFactory(subQb);
+          }
+          return mockQbWithBrackets;
+        }),
+      } as unknown as jest.Mocked<SelectQueryBuilder<MockEntity>>;
+
+      service.applyFilters(mockQbWithBrackets, filter, 'entity');
+
+      expect(mockQbWithBrackets.andWhere).toHaveBeenCalled();
+    });
+
+    it('should filter by isActive (Status) field with in operator', () => {
+      const filter: Filter = {
+        conditions: [{ field: 'isActive', operator: 'in', value: [true, false] }],
+        logicalOperator: 'AND',
+      };
+
+      // Create a mock that executes the Brackets callback
+      const mockQbWithBrackets = {
+        ...mockQueryBuilder,
+        andWhere: jest.fn().mockImplementation((brackets: any) => {
+          if (typeof brackets === 'function') {
+            brackets(mockQueryBuilder);
+          } else if (brackets && typeof brackets.whereFactory === 'function') {
+            const subQb = {
+              andWhere: jest.fn().mockReturnThis(),
+              orWhere: jest.fn().mockReturnThis(),
+            };
+            brackets.whereFactory(subQb);
+          }
+          return mockQbWithBrackets;
+        }),
+      } as unknown as jest.Mocked<SelectQueryBuilder<MockEntity>>;
+
+      service.applyFilters(mockQbWithBrackets, filter, 'entity');
+
+      expect(mockQbWithBrackets.andWhere).toHaveBeenCalled();
+    });
+  });
+
 });
 
 
@@ -976,7 +1091,7 @@ describe('QueryService - Property-Based Tests', () => {
             };
 
             expect(() =>
-              service.normalizeWithValidation({ filter: JSON.stringify(filter) }, MockEntity),
+              service.normalizeWithValidation({ filter: JSON.stringify(filter) } as unknown as Partial<QueryParams>, MockEntity),
             ).toThrow(/Invalid filter fields/);
           },
         ),
@@ -994,7 +1109,7 @@ describe('QueryService - Property-Based Tests', () => {
             };
 
             expect(() =>
-              service.normalizeWithValidation({ sort: JSON.stringify(sort) }, MockEntity),
+              service.normalizeWithValidation({ sort: JSON.stringify(sort) } as unknown as Partial<QueryParams>, MockEntity),
             ).toThrow(/Invalid sort fields/);
           },
         ),
@@ -1014,7 +1129,7 @@ describe('QueryService - Property-Based Tests', () => {
           }),
           (invalidField) => {
             expect(() =>
-              service.normalizeWithValidation({ search: 'test', searchFields: invalidField }, MockEntity),
+              service.normalizeWithValidation({ search: 'test', searchFields: invalidField } as unknown as Partial<QueryParams>, MockEntity),
             ).toThrow(/Invalid search fields/);
           },
         ),

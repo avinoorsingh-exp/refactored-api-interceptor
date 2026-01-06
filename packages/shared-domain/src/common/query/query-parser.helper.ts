@@ -1,4 +1,3 @@
-
 import { FilterCondition, FilterOperator } from './index.js';
 import { OPERATOR_ALIASES } from './constants.js';
 
@@ -22,9 +21,12 @@ export function parseFilterValue(value: string, operator: FilterOperator): any {
     return [parseFilterValue(start.trim(), 'eq'), parseFilterValue(end.trim(), 'eq')];
   }
 
-  // Handle boolean
-  if (value === 'true') return true;
-  if (value === 'false') return false;
+  const lowerValue = value.toLowerCase().trim();
+  const TRUE_VALUES = new Set(['true', 'yes', '1', 'y', 't', 'active']);
+  const FALSE_VALUES = new Set(['false', 'no', '0', 'n', 'f', 'inactive']);
+  
+  if (TRUE_VALUES.has(lowerValue)) return true;
+  if (FALSE_VALUES.has(lowerValue)) return false;
 
   // Handle numbers
   if (!isNaN(Number(value)) && value.trim() !== '') {
