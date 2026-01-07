@@ -23,7 +23,7 @@ import {
 	ApiQuery,
 } from '@nestjs/swagger';
 import { z } from 'zod';
-import { CreateAgentAddressInput, UpdateAgentAddressInput } from '@exprealty/shared-domain';
+import { CreateAgentAddressInput, UpdateAgentAddressInput, CreateAddressInput } from '@exprealty/shared-domain';
 import { ZodValidationPipe } from '../../../common/zod-validation.pipe.js';
 import { AgentAddressService } from './agent-address.service.js';
 import {
@@ -44,22 +44,11 @@ const AddressIdSchema = z.string({ message: 'errors.address.id.invalid' });
 
 /**
  * Zod schema for creating an agent address with inline address creation.
- * Junction has only isPrimary; all other fields go to Address entity.
+ * Extends CreateAddressInput (which uses trimmed validators) with isPrimary junction metadata.
+ * Address string fields (line1, line2, city, unit, postalCode, county, label) are trimmed.
  */
-const CreateAgentAddressSchema = z.object({
-	// Junction metadata (simplified - only isPrimary)
+const CreateAgentAddressSchema = CreateAddressInput.extend({
 	isPrimary: z.boolean(),
-	// Address data
-	type: z.enum(['personal', 'company']).optional(),
-	role: z.enum(['contact', 'bill_to', 'pay_to', 'ship_to', 'return_to']).optional(),
-	line1: z.string().min(1).max(256),
-	line2: z.string().max(256).optional().nullable(),
-	city: z.string().min(1).max(128),
-	unit: z.string().max(64).optional().nullable(),
-	postalCode: z.string().min(2).max(16),
-	county: z.string().max(128).optional().nullable(),
-	label: z.string().max(256).optional().nullable(),
-	stateId: z.string().uuid().optional().nullable(),
 });
 
 /**
