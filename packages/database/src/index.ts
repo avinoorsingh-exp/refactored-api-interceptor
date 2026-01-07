@@ -14,9 +14,17 @@
 /**
  * Base auditable entity providing audit trail fields.
  * All domain entities should extend this class.
+ * Audit fields are filterable/sortable but NOT searchable by default.
  * @public
  */
 export { AuditableEntity } from './entities/core/auditable.entity.js'
+
+/**
+ * Extended auditable entity with searchable audit fields.
+ * Use this when entities need created/lastModified/modifiedBy in text search.
+ * @public
+ */
+export { SearchableAuditableEntity } from './entities/core/searchable-auditable.entity.js'
 
 // ============================================================================
 // Entities

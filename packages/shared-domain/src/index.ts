@@ -132,7 +132,8 @@ export {
  * @public
  */
 export {
-	CountryCode,
+	AddressType,
+	AddressRoleType,
 	AddressBaseSchema,
 	AddressExpandedSchema,
 	type AddressBase,
@@ -150,10 +151,10 @@ export {
 
 /**
  * Agent-Address association schemas and types.
+ * Uses composite key (agentId, addressId) with isPrimary flag.
  * @public
  */
 export {
-	AddressRole,
 	AgentAddressSchema,
 	type AgentAddress,
 	CreateAgentAddressInput,
@@ -358,6 +359,8 @@ export {
 export {
 	ContactMethodChannelSchema,
 	ContactMethodSubTypeSchema,
+	EmailSubTypeSchema,
+	PhoneSubTypeSchema,
 	ContactMethodBaseSchema,
 	ContactMethodExpandedSchema,
 	type ContactMethod,

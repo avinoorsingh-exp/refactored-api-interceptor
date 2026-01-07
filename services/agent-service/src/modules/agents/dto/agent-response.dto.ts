@@ -57,12 +57,12 @@ export class AgentResponseDto {
 		description: 'Agent birth date',
 		example: '1985-06-15',
 	})
-	birthDate?: string;
+	birthDate?: Date;
 
 	@ApiPropertyOptional({
 		description: 'Agent lifecycle status',
-		example: 'Active',
-		enum: ['Joining', 'Active', 'Inactive', 'Vested', 'Vested Retired', 'Lead Only'],
+		example: 'active',
+		enum: ['joining', 'active', 'inactive', 'vested', 'vested retired', 'lead only'],
 	})
 	lifecycleStatus?: string;
 
@@ -102,21 +102,28 @@ export class AgentResponseDto {
 	})
 	isStaff?: boolean;
 
-	@ApiProperty({
+	@ApiPropertyOptional({
 		description: 'Agent company ID (UUID)',
 		example: '550e8400-e29b-41d4-a716-446655440000',
+		nullable: true,
 	})
-	agentCompanyId!: string;
+	agentCompanyId?: string | null;
 
 	@ApiProperty({
 		description: 'Record creation timestamp',
 		example: '2024-01-15T10:30:00.000Z',
 	})
-	createdAt!: Date;
+	created!: Date;
 
 	@ApiProperty({
 		description: 'Record last modification timestamp',
 		example: '2024-01-15T14:45:00.000Z',
 	})
-	updatedAt!: Date;
+	lastModified!: Date;
+
+	@ApiProperty({
+		description: 'User who last modified the record',
+		example: 'user@example.com',
+	})
+	modifiedBy!: string;
 }

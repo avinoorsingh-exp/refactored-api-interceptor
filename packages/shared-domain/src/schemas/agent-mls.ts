@@ -9,6 +9,7 @@ export const AgentMLSBaseSchema = z
 	.object({
 		agentId: z.string(),
 		mlsId: z.string(),
+		mxid: z.string().nullable().optional().describe('Legacy database ID for data migration'),
 	})
 	.describe('Base AgentMLS junction')
 

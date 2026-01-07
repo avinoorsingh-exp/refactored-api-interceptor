@@ -70,6 +70,8 @@ export class ProjectionService {
 
   /**
    * Apply relation loading based on ?include
+   * Uses leftJoin() + addSelect() for specific fields instead of leftJoinAndSelect()
+   * This allows field projection to work alongside relation loading.
    */
   applyRelations<T>(
     qb: SelectQueryBuilder<T>,
@@ -97,21 +99,40 @@ export class ProjectionService {
       });
     }
 
-    // Load each relation
+    // Load each relation with specific fields
     for (const relationName of requestedRelations) {
       const relationConfig = config.relations[relationName];
+
+      // Skip virtual relations - they are loaded by the repository via custom methods
+      // (e.g., primaryEmail, primaryPhone loaded via loadPrimaryContacts())
+      if (relationConfig.virtual) {
+        this.logger.debug('Skipping virtual relation (handled by repository)', {
+          relationName,
+        });
+        continue;
+      }
+
       const relationAlias = `${alias}_${relationName}`;
 
       this.logger.debug('Loading relation', {
         alias,
         relationName,
         relationAlias,
+        fields: relationConfig.fields,
       });
 
-      qb.leftJoinAndSelect(
+      // Use leftJoin (not leftJoinAndSelect) to avoid selecting all fields
+      qb.leftJoin(
         `${alias}.${relationConfig.property}`,
         relationAlias,
       );
+
+      // Add specific fields from the relation config
+      if (relationConfig.fields && relationConfig.fields.length > 0) {
+        for (const field of relationConfig.fields) {
+          qb.addSelect(`${relationAlias}.${field}`);
+        }
+      }
 
       // Load nested relations if configured
       if (relationConfig.nested && relationConfig.nested.length > 0) {
@@ -122,17 +143,17 @@ export class ProjectionService {
             nestedRelation,
             nestedAlias,
           });
-          qb.leftJoinAndSelect(
+
+          // Use leftJoin for nested too
+          qb.leftJoin(
             `${relationAlias}.${nestedRelation}`,
             nestedAlias,
           );
-        }
-      }
 
-      // If relation has specific fields, project them
-      if (relationConfig.fields.length > 0) {
-        // Note: TypeORM doesn't support .select() on relations in leftJoinAndSelect
-        // Relations will load all fields. For fine-grained control, use subqueries or post-processing
+          // Select all fields from nested relation using leftJoinAndSelect behavior
+          // This ensures the nested entity data is included in the result
+          qb.addSelect(nestedAlias);
+        }
       }
     }
   }

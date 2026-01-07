@@ -1,4 +1,5 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, OneToOne, JoinColumn, ManyToMany , JoinTable} from 'typeorm'
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, OneToOne, JoinColumn, ManyToMany, JoinTable } from 'typeorm'
+import { AddressEntity } from './address.entity.js'
 import { AgentCompanyEntity } from './agent-company.entity.js'
 import { AuditableEntity } from './auditable.entity.js'
 import { MLSEntity } from './mls.entity.js'
@@ -45,10 +46,10 @@ export type AgentLifecycleStatus =
 export class AgentEntity extends AuditableEntity {
 	/**
 	 * Primary key (UUID).
+	 * Not searchable - users search by name/agentId, not UUID.
 	 * @public
 	 */
 	@PrimaryGeneratedColumn('uuid')
-	@Searchable({ weight: 3, behavior: 'exact', description: 'Unique agent identifier (UUID)' })
 	@Filterable()
 	@Sortable()
 	id!: string
@@ -207,13 +208,14 @@ export class AgentEntity extends AuditableEntity {
 
 	/**
 	 * Foreign key to AgentCompany.
+	 * Nullable to support legacy data migration.
 	 * @public
 	 */
-	@Column({ name: 'agent_company_id', type: 'uuid' })
+	@Column({ name: 'agent_company_id', type: 'uuid', nullable: true })
 	@Searchable({ weight: 3, behavior: 'exact', description: 'Agent company ID reference (UUID)' })
 	@Filterable()
 	@Sortable()
-	agentCompanyId!: string
+	agentCompanyId?: string
 
 	// ==========================================
 	// RELATIONSHIPS
@@ -278,8 +280,30 @@ export class AgentEntity extends AuditableEntity {
 	mls?: MLSEntity[];
 
 	/**
+	 * Many-to-Many relationship with Address.
+	 * TypeORM handles agent_address join table transparently.
+	 * Uses agent.id (UUID) and address.id (BigInt) as join columns.
+	 * For include=address - hides junction table like MLS.
+	 * @public
+	 */
+	@ManyToMany(() => AddressEntity)
+	@JoinTable({
+		name: 'agent_address',
+		schema: 'core',
+		joinColumn: {
+			name: 'agent_id',
+			referencedColumnName: 'id', // References Agent.id (UUID primary key)
+		},
+		inverseJoinColumn: {
+			name: 'address_id',
+			referencedColumnName: 'id', // References Address.id (BigInt primary key)
+		},
+	})
+	addresses?: AddressEntity[];
+
+	/**
 	 * One-to-Many relationship with AgentAddress (junction table).
-	 * Links agent to their addresses with primary designation.
+	 * Use this when you need junction metadata like isPrimary.
 	 * @public
 	 */
 	@OneToMany('AgentAddressEntity', 'agent')
@@ -356,4 +380,69 @@ export class AgentEntity extends AuditableEntity {
 	 */
 	@OneToOne('PublicProfileEntity', 'agent')
 	publicProfile?: PublicProfileEntity
+
+	/**
+	 * Primary email contact method
+	 * 
+	 * Virtual property - loaded via custom query
+	 * Use ?includes=primaryEmail to load
+	 * Sortable/filterable via projection config
+	 * 
+	 * @see AgentRepository.loadPrimaryContacts()
+	 * @see AGENT_PROJECTION_CONFIG.relations.primaryEmail
+	 */
+	primaryEmail?: ContactMethodEntity;
+
+  	/**
+	 * Primary phone contact method
+	 * 
+	 * Virtual property - loaded via custom query
+	 * Use ?includes=primaryPhone to load
+	 * Sortable/filterable via projection config
+	 * 
+	 * @see AgentRepository.loadPrimaryContacts()
+	 * @see AGENT_PROJECTION_CONFIG.relations.primaryPhone
+	 */
+	primaryPhone?: ContactMethodEntity;
+
+	/**
+	 * Primary address for the agent
+	 * 
+	 * Virtual property - loaded via custom query
+	 * Use ?include=primaryAddress to load
+	 * Returns the AddressEntity directly (like primaryEmail)
+	 * 
+	 * @see AgentRepository.loadPrimaryAddress()
+	 * @see AGENT_PROJECTION_CONFIG.relations.primaryAddress
+	 */
+	primaryAddress?: AddressEntity;
+
+    // ========================================
+	// Helper Methods
+	// ========================================
+
+	/**
+	 * Get primary contact method by type
+	 * 
+	 * Use after loading contactMethods relation
+	 */
+	getPrimaryContactByType(type: string): ContactMethodEntity | undefined {
+		return this.contactMethods?.find(
+		(c) => c.channel === type && c.isPrimary,
+		);
+	}
+
+	/**
+	 * Get email address for primary email
+	 */
+	getPrimaryEmailAddress(): string | undefined {
+		return this.primaryEmail?.value;
+	}
+
+	/**
+	 * Get phone number for primary phone
+	 */
+	getPrimaryPhoneNumber(): string | undefined {
+		return this.primaryPhone?.value;
+	}
 }

@@ -1,35 +1,44 @@
 import type { Auditable } from '@exprealty/shared-domain'
 import { CreateDateColumn, UpdateDateColumn, Column } from 'typeorm'
-import { Sortable, Filterable, Searchable } from '../../decorators/searchable-decorators.js'
+import { Sortable, Filterable } from '../../decorators/searchable-decorators.js'
 
 /**
  * Base entity class providing audit fields for all domain entities.
- * 
+ *
  * Includes:
  * - created: Timestamp when the record was created (auto-set on insert)
  * - lastModified: Timestamp when the record was last updated (auto-updated)
  * - modifiedBy: User/system identifier who last modified the record
- * 
+ * - mxid: Legacy database ID for data migration (nullable)
+ *
+ * Note: Audit fields are filterable and sortable, but NOT searchable.
+ * General text search should only apply to business-relevant fields (id, name, email, etc.)
+ *
  * @public
  */
 export abstract class AuditableEntity implements Auditable {
 	@CreateDateColumn({ name: 'created', type: 'timestamp with time zone' })
-	@Searchable({ type: 'date', weight: 2, behavior: 'range', description: 'Record creation timestamp' })
 	@Filterable()
 	@Sortable()
 	created!: Date
 
 	@UpdateDateColumn({ name: 'last_modified', type: 'timestamp with time zone' })
-	@Searchable({ type: 'date', weight: 2, behavior: 'range', description: 'Record last modified timestamp' })
 	@Filterable()
 	@Sortable()
 	lastModified!: Date
 
 	@Column({ name: 'modified_by', type: 'text', default: 'system' })
-	@Searchable({ weight: 3, behavior: 'exact', description: 'User or system that last modified the record' })
 	@Filterable()
 	@Sortable()
 	modifiedBy!: string
+
+	/**
+	 * Legacy database ID used during data migration from the legacy system.
+	 * Nullable - only populated for migrated records.
+	 * @public
+	 */
+	@Column({ name: 'mxid', type: 'bigint', nullable: true })
+	mxid?: string
 
 	/**
 	 * Override toJSON to ensure only TypeScript property names (camelCase) are serialized,

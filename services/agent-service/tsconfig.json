@@ -8,7 +8,7 @@
     "noEmit": false,
     "declaration": false,
     "declarationMap": false,  // <-- Must be false when declaration is false
-    "sourceMap": false,
+    "sourceMap": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "esModuleInterop": true,

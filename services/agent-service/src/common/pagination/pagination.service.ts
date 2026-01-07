@@ -48,7 +48,10 @@ export class PaginationService {
         const links: string[] = []
 
         const makeUrl = (page:number) => {
-            const url = new URL(`${req.protocol}://${req.headers.host}${req.originalUrl}`);
+            // Use forwarded headers from proxy, fallback to direct request values
+            const host = req.headers['x-forwarded-host'] || req.headers.host;
+            const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+            const url = new URL(`${protocol}://${host}${req.originalUrl}`);
             // Derive offset from page
             const newOffset = (page - 1) * limit;
             url.searchParams.set('offset', newOffset.toString());

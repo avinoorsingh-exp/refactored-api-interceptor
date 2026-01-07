@@ -186,6 +186,23 @@ export const phoneString = (message?: string) =>
     );
 
 /**
+ * Phone number (E.164 international format, trimmed)
+ * Format: +[country code][subscriber number]
+ * - Starts with + followed by country code (1-3 digits, cannot start with 0)
+ * - Total length: 8-15 digits including country code
+ * Examples: +14155552671, +442071234567, +61412345678
+ */
+export const phoneE164String = (message?: string) =>
+  z.string()
+    .transform((val) => val.trim().replace(/[\s\-\.\(\)]/g, ''))
+    .pipe(
+      z.string().regex(
+        /^\+[1-9]\d{6,14}$/,
+        message || 'Must be a valid E.164 phone number (e.g., +14155552671)'
+      )
+    );
+
+/**
  * Lifecycle status string (trimmed and lowercased)
  * Converts input to lowercase before enum validation
  * Use with .pipe() to validate against enum values

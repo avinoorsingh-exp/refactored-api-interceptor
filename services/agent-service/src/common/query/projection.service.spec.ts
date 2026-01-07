@@ -46,7 +46,9 @@ describe('ProjectionService', () => {
     mockQueryBuilder = {
       select: jest.fn().mockReturnThis(),
       addSelect: jest.fn().mockReturnThis(),
+      leftJoin: jest.fn().mockReturnThis(),
       leftJoinAndSelect: jest.fn().mockReturnThis(),
+      leftJoinAndMapOne: jest.fn().mockReturnThis(),
     } as unknown as jest.Mocked<SelectQueryBuilder<MockEntity>>;
   });
 
@@ -165,7 +167,7 @@ describe('ProjectionService', () => {
     it('should not apply relations when no include specified', () => {
       service.applyRelations(mockQueryBuilder, 'entity', undefined, defaultConfig);
 
-      expect(mockQueryBuilder.leftJoinAndSelect).not.toHaveBeenCalled();
+      expect(mockQueryBuilder.leftJoin).not.toHaveBeenCalled();
     });
 
     it('should not apply relations when selection has no include', () => {
@@ -175,7 +177,7 @@ describe('ProjectionService', () => {
 
       service.applyRelations(mockQueryBuilder, 'entity', selection, defaultConfig);
 
-      expect(mockQueryBuilder.leftJoinAndSelect).not.toHaveBeenCalled();
+      expect(mockQueryBuilder.leftJoin).not.toHaveBeenCalled();
     });
 
     it('should apply requested relations', () => {
@@ -185,7 +187,8 @@ describe('ProjectionService', () => {
 
       service.applyRelations(mockQueryBuilder, 'entity', selection, defaultConfig);
 
-      expect(mockQueryBuilder.leftJoinAndSelect).toHaveBeenCalledWith(
+      // Implementation uses leftJoin + addSelect for field-level control
+      expect(mockQueryBuilder.leftJoin).toHaveBeenCalledWith(
         'entity.company',
         'entity_company',
       );
@@ -198,12 +201,13 @@ describe('ProjectionService', () => {
 
       service.applyRelations(mockQueryBuilder, 'entity', selection, defaultConfig);
 
-      expect(mockQueryBuilder.leftJoinAndSelect).toHaveBeenCalledTimes(2);
-      expect(mockQueryBuilder.leftJoinAndSelect).toHaveBeenCalledWith(
+      // Implementation uses leftJoin + addSelect for field-level control
+      expect(mockQueryBuilder.leftJoin).toHaveBeenCalledTimes(2);
+      expect(mockQueryBuilder.leftJoin).toHaveBeenCalledWith(
         'entity.company',
         'entity_company',
       );
-      expect(mockQueryBuilder.leftJoinAndSelect).toHaveBeenCalledWith(
+      expect(mockQueryBuilder.leftJoin).toHaveBeenCalledWith(
         'entity.region',
         'entity_region',
       );
@@ -340,7 +344,9 @@ describe('ProjectionService - Property-Based Tests', () => {
     mockQueryBuilder = {
       select: jest.fn().mockReturnThis(),
       addSelect: jest.fn().mockReturnThis(),
+      leftJoin: jest.fn().mockReturnThis(),
       leftJoinAndSelect: jest.fn().mockReturnThis(),
+      leftJoinAndMapOne: jest.fn().mockReturnThis(),
     } as unknown as jest.Mocked<SelectQueryBuilder<MockEntity>>;
   });
 
@@ -434,13 +440,13 @@ describe('ProjectionService - Property-Based Tests', () => {
             const uniqueRelations = [...new Set(requestedRelations)];
             const selection: FieldSelection = { include: uniqueRelations };
 
-            mockQueryBuilder.leftJoinAndSelect.mockClear();
+            mockQueryBuilder.leftJoin.mockClear();
 
             // Should not throw
             service.applyRelations(mockQueryBuilder, 'entity', selection, defaultConfig);
 
-            // Invariant: leftJoinAndSelect called for each unique relation
-            expect(mockQueryBuilder.leftJoinAndSelect).toHaveBeenCalledTimes(uniqueRelations.length);
+            // Invariant: leftJoin called for each unique relation (uses leftJoin + addSelect)
+            expect(mockQueryBuilder.leftJoin).toHaveBeenCalledTimes(uniqueRelations.length);
           },
         ),
         { numRuns: 30 },

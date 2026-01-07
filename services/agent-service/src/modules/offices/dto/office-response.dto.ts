@@ -23,11 +23,12 @@ export class OfficeResponseDto {
 	})
 	name!: string;
 
-	@ApiProperty({
+	@ApiPropertyOptional({
 		description: 'Office phone number',
 		example: '555-123-4567',
+		nullable: true,
 	})
-	phone!: string;
+	phone?: string | null;
 
 	@ApiProperty({
 		description: 'Office lifecycle status',
@@ -36,11 +37,12 @@ export class OfficeResponseDto {
 	})
 	lifecycleStatus!: string;
 
-	@ApiProperty({
+	@ApiPropertyOptional({
 		description: 'Primary state of operation',
 		example: 'California',
+		nullable: true,
 	})
-	primaryState!: string;
+	primaryState?: string | null;
 
 	@ApiProperty({
 		description: 'Parent company ID (bigint as string)',

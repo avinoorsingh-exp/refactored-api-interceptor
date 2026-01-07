@@ -185,6 +185,72 @@ describe('PaginationService', () => {
 
       expect(link).toBeNull();
     });
+
+    it('should use X-Forwarded-Host when present (proxy scenario)', () => {
+      const req: any = {
+        protocol: 'http',
+        get: () => 'internal-nlb.example.com',
+        originalUrl: '/items?offset=0&limit=25',
+        headers: {
+          host: 'internal-nlb.example.com',
+          'x-forwarded-host': 'public-api.example.com',
+        },
+      };
+      const meta = svc.buildMeta({ total: 100, offset: 0, limit: 25 });
+      const link = svc.buildLinkHeader(req as any, meta, { includeFirstLast: true });
+
+      expect(link).toContain('public-api.example.com');
+      expect(link).not.toContain('internal-nlb.example.com');
+    });
+
+    it('should use X-Forwarded-Proto when present (proxy scenario)', () => {
+      const req: any = {
+        protocol: 'http',
+        get: () => 'api.test',
+        originalUrl: '/items?offset=0&limit=25',
+        headers: {
+          host: 'api.test',
+          'x-forwarded-proto': 'https',
+        },
+      };
+      const meta = svc.buildMeta({ total: 100, offset: 0, limit: 25 });
+      const link = svc.buildLinkHeader(req as any, meta, { includeFirstLast: true });
+
+      expect(link).toContain('https://');
+      expect(link).not.toContain('http://');
+    });
+
+    it('should use both X-Forwarded-Host and X-Forwarded-Proto when present', () => {
+      const req: any = {
+        protocol: 'http',
+        get: () => 'internal-nlb.example.com',
+        originalUrl: '/items?offset=25&limit=25',
+        headers: {
+          host: 'internal-nlb.example.com:3000',
+          'x-forwarded-host': 'public-api.example.com',
+          'x-forwarded-proto': 'https',
+        },
+      };
+      const meta = svc.buildMeta({ total: 100, offset: 25, limit: 25 });
+      const link = svc.buildLinkHeader(req as any, meta, { includeFirstLast: true });
+
+      expect(link).toContain('https://public-api.example.com');
+      expect(link).not.toContain('internal-nlb');
+      expect(link).not.toContain(':3000');
+    });
+
+    it('should fallback to host/protocol when X-Forwarded headers not present', () => {
+      const req: any = {
+        protocol: 'http',
+        get: () => 'api.test',
+        originalUrl: '/items?offset=0&limit=25',
+        headers: { host: 'api.test' },
+      };
+      const meta = svc.buildMeta({ total: 100, offset: 0, limit: 25 });
+      const link = svc.buildLinkHeader(req as any, meta, { includeFirstLast: true });
+
+      expect(link).toContain('http://api.test');
+    });
   });
 
   describe('setPaginationHeaders', () => {

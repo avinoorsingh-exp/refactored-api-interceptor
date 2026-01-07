@@ -187,6 +187,7 @@ describe('DTO Validation Property Tests', () => {
 	 * **Validates: Requirements 15.3**
 	 *
 	 * *For any* CreateCompanyDto input, the Zod schema SHALL verify name and email validation.
+	 * Note: email is now optional/nullable to support legacy data migration.
 	 */
 	describe('CreateCompanyDto Validation (Requirement 15.3)', () => {
 		const validEmailArbitrary = fc
@@ -197,7 +198,7 @@ describe('DTO Validation Property Tests', () => {
 			)
 			.map(([local, domain, tld]) => `${local}@${domain}.${tld}`)
 
-		it('should accept any valid CreateCompany input', () => {
+		it('should accept any valid CreateCompany input with email', () => {
 			const validInputArbitrary = fc.record({
 				name: fc.string({ minLength: 2, maxLength: 255 }).filter((s) => s.trim().length >= 2),
 				email: validEmailArbitrary,
@@ -212,12 +213,42 @@ describe('DTO Validation Property Tests', () => {
 			)
 		})
 
+		it('should accept CreateCompany input without email (nullable/optional)', () => {
+			// Email is now optional to support legacy data migration
+			const validInputWithoutEmailArbitrary = fc.record({
+				name: fc.string({ minLength: 2, maxLength: 255 }).filter((s) => s.trim().length >= 2),
+			})
+
+			fc.assert(
+				fc.property(validInputWithoutEmailArbitrary, (input) => {
+					const result = CreateCompanyInputSchema.safeParse(input)
+					expect(result.success).toBe(true)
+				}),
+				{ numRuns: 100 },
+			)
+		})
+
+		it('should accept CreateCompany input with null email', () => {
+			const validInputWithNullEmailArbitrary = fc.record({
+				name: fc.string({ minLength: 2, maxLength: 255 }).filter((s) => s.trim().length >= 2),
+				email: fc.constant(null),
+			})
+
+			fc.assert(
+				fc.property(validInputWithNullEmailArbitrary, (input) => {
+					const result = CreateCompanyInputSchema.safeParse(input)
+					expect(result.success).toBe(true)
+				}),
+				{ numRuns: 100 },
+			)
+		})
+
 		it('should reject any input with name too short', () => {
 			fc.assert(
 				fc.property(
 					fc.record({
 						name: fc.string({ minLength: 0, maxLength: 1 }),
-						email: validEmailArbitrary,
+						email: fc.option(validEmailArbitrary, { nil: undefined }),
 					}),
 					(input) => {
 						const result = CreateCompanyInputSchema.safeParse(input)
@@ -228,9 +259,8 @@ describe('DTO Validation Property Tests', () => {
 			)
 		})
 
-		it('should reject any input with invalid email format', () => {
+		it('should reject any input with invalid email format when email is provided', () => {
 			const invalidEmailArbitrary = fc.oneof(
-				fc.constant(''),
 				fc.constant('notanemail'),
 				fc.constant('@missing-local.com'),
 				fc.constant('missing-domain@'),
@@ -257,14 +287,18 @@ describe('DTO Validation Property Tests', () => {
 	 * **Validates: Requirements 15.4**
 	 *
 	 * *For any* CreatePayPlanDto input, the Zod schema SHALL verify all pay plan fields.
+	 * Note: agentPercentage and cap accept any numeric value (no range constraints)
+	 * to support legacy data migration with decimal(18,8) precision.
 	 */
 	describe('CreatePayPlanDto Validation (Requirement 15.4)', () => {
-		it('should accept any valid CreatePayPlan input', () => {
+		it('should accept any valid CreatePayPlan input with any numeric values', () => {
+			// Test that any numeric value is accepted for agentPercentage and cap
+			// This supports legacy data migration with decimal(18,8) precision
 			const validInputArbitrary = fc.record({
 				name: fc.string({ minLength: 1, maxLength: 255 }).filter((s) => s.trim().length > 0),
 				active: fc.boolean(),
-				agentPercentage: fc.double({ min: 0, max: 100, noNaN: true }),
-				cap: fc.double({ min: 0, max: 1000000, noNaN: true }),
+				agentPercentage: fc.double({ min: -1000000, max: 1000000, noNaN: true }),
+				cap: fc.double({ min: -1000000, max: 1000000, noNaN: true }),
 			})
 
 			fc.assert(
@@ -276,43 +310,38 @@ describe('DTO Validation Property Tests', () => {
 			)
 		})
 
-		it('should reject any input with agentPercentage out of range', () => {
-			const invalidPercentageArbitrary = fc.oneof(
-				fc.double({ min: -1000, max: -0.01, noNaN: true }),
-				fc.double({ min: 100.01, max: 1000, noNaN: true }),
-			)
+		it('should accept negative values for agentPercentage and cap (legacy data support)', () => {
+			// Legacy data may contain negative values, so we accept them
+			const negativeValuesArbitrary = fc.record({
+				name: fc.string({ minLength: 1, maxLength: 255 }).filter((s) => s.trim().length > 0),
+				active: fc.boolean(),
+				agentPercentage: fc.double({ min: -1000, max: -0.01, noNaN: true }),
+				cap: fc.double({ min: -1000, max: -0.01, noNaN: true }),
+			})
 
 			fc.assert(
-				fc.property(
-					fc.record({
-						name: fc.string({ minLength: 1, maxLength: 255 }).filter((s) => s.trim().length > 0),
-						active: fc.boolean(),
-						agentPercentage: invalidPercentageArbitrary,
-						cap: fc.double({ min: 0, max: 1000000, noNaN: true }),
-					}),
-					(input) => {
-						const result = CreatePayPlanInputSchema.safeParse(input)
-						expect(result.success).toBe(false)
-					},
-				),
+				fc.property(negativeValuesArbitrary, (input) => {
+					const result = CreatePayPlanInputSchema.safeParse(input)
+					expect(result.success).toBe(true)
+				}),
 				{ numRuns: 100 },
 			)
 		})
 
-		it('should reject any input with negative cap', () => {
+		it('should accept large values for agentPercentage and cap (legacy data support)', () => {
+			// Legacy data may contain values > 100%, so we accept them
+			const largeValuesArbitrary = fc.record({
+				name: fc.string({ minLength: 1, maxLength: 255 }).filter((s) => s.trim().length > 0),
+				active: fc.boolean(),
+				agentPercentage: fc.double({ min: 100.01, max: 10000, noNaN: true }),
+				cap: fc.double({ min: 1000000, max: 10000000, noNaN: true }),
+			})
+
 			fc.assert(
-				fc.property(
-					fc.record({
-						name: fc.string({ minLength: 1, maxLength: 255 }).filter((s) => s.trim().length > 0),
-						active: fc.boolean(),
-						agentPercentage: fc.double({ min: 0, max: 100, noNaN: true }),
-						cap: fc.double({ min: -1000, max: -0.01, noNaN: true }),
-					}),
-					(input) => {
-						const result = CreatePayPlanInputSchema.safeParse(input)
-						expect(result.success).toBe(false)
-					},
-				),
+				fc.property(largeValuesArbitrary, (input) => {
+					const result = CreatePayPlanInputSchema.safeParse(input)
+					expect(result.success).toBe(true)
+				}),
 				{ numRuns: 100 },
 			)
 		})

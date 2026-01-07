@@ -81,8 +81,15 @@ export class ContactMethodTypeOrmRepository implements IContactMethodRepository 
 		return entity ? this.mapToDomain(entity) : null;
 	}
 
-	async findByName(name: string): Promise<ContactMethod | null> {
-		const entity = await this.repo.findOne({ where: { name } });
+	async findByAgentAndName(agentId: string, name: string): Promise<ContactMethod | null> {
+		const entity = await this.repo.findOne({ where: { agentId, name } });
+		return entity ? this.mapToDomain(entity) : null;
+	}
+
+	async findPrimaryByAgentAndChannel(agentId: string, channel: 'email' | 'phone'): Promise<ContactMethod | null> {
+		const entity = await this.repo.findOne({
+			where: { agentId, channel, isPrimary: true },
+		});
 		return entity ? this.mapToDomain(entity) : null;
 	}
 

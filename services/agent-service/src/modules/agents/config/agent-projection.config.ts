@@ -38,6 +38,7 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		'agentOffice',
 		'office',
 		'mls',
+		'address',
 		'agentAddress',
 		'externalReference',
 		'language',
@@ -95,10 +96,16 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 			fields: ['id', 'name', 'shortName', 'lifecycleStatus', 'orgType', 'website'],
 			// TypeORM handles junction table transparently via @ManyToMany
 		},
+		address: {
+			property: 'addresses',
+			fields: ['id', 'type', 'role', 'line1', 'line2', 'city', 'unit', 'postalCode', 'county', 'label', 'stateId'],
+			nested: ['state'], // Include state entity for address.state projection
+			// TypeORM handles junction table transparently via @ManyToMany (like mls)
+		},
 		agentAddress: {
 			property: 'agentAddresses',
-			fields: ['id', 'addressId', 'isPrimary', 'addressType'],
-			nested: ['address'], // Include the nested address entity
+			fields: ['addressId', 'isPrimary'],
+			nested: ['address'], // Use this when you need junction metadata like isPrimary
 		},
 		externalReference: {
 			property: 'externalReferences',
@@ -129,6 +136,25 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		publicProfile: {
 			property: 'publicProfile',
 			fields: ['id', 'firstName', 'lastName', 'email', 'phone', 'bio'],
+		},
+		// Virtual relations - loaded via AgentRepository.loadPrimaryContacts()
+		// Uses leftJoinAndMapOne with filtered condition on contactMethods
+		primaryEmail: {
+			property: 'primaryEmail',
+			fields: ['id', 'name', 'value', 'channel', 'subType', 'isPrimary'],
+			virtual: true, // Loaded by repository, not ProjectionService
+		},
+		primaryPhone: {
+			property: 'primaryPhone',
+			fields: ['id', 'name', 'value', 'channel', 'subType', 'isPrimary'],
+			virtual: true, // Loaded by repository, not ProjectionService
+		},
+		// Virtual relation - loaded via AgentRepository.loadPrimaryAddress()
+		// Maps address directly (like primaryEmail), not the junction table
+		primaryAddress: {
+			property: 'primaryAddress',
+			fields: ['id', 'type', 'role', 'line1', 'line2', 'city', 'unit', 'postalCode', 'county', 'label', 'stateId'],
+			virtual: true, // Loaded by repository, not ProjectionService
 		},
 	},
 };

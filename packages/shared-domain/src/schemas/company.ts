@@ -16,7 +16,7 @@ export const CompanyBaseSchema = z
 			.regex(/^\d+$/, { message: 'errors.company.id.invalid' })
 			.describe('Primary key (bigint as string)'),
 		name: NameBranded.describe('Company name'),
-		email: EmailBranded.describe('Company email address'),
+		email: EmailBranded.nullable().optional().describe('Company email address'),
 	})
 	.merge(AuditableSchema)
 	.describe('Base Company for list views')
@@ -76,10 +76,11 @@ export const CreateCompanyInputSchema = CompanyBaseSchema.omit({
 	created: true,
 	lastModified: true,
 	modifiedBy: true,
+	mxid: true,
 })
 	.extend({
 		name: z.string().trim().min(2).max(255).pipe(NameBranded),
-		email: z.string().trim().email().pipe(EmailBranded),
+		email: z.string().trim().email().pipe(EmailBranded).nullable().optional(),
 	})
 	.describe('Payload to create a company')
 

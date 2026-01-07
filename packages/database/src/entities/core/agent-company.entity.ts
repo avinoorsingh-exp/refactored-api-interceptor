@@ -2,29 +2,35 @@ import {
 	Entity,
 	Column,
 	PrimaryGeneratedColumn,
-	CreateDateColumn,
-	UpdateDateColumn,
 } from 'typeorm'
+import { AuditableEntity } from './auditable.entity.js'
+import { Searchable, Filterable, Sortable, SearchValidators } from '../../decorators/searchable-decorators.js'
 
 /**
  * TypeORM entity for AgentCompany table.
+ * Represents an agent's company/brokerage for commission payments.
  * Database representation of the domain AgentCompany type.
  * @public
  */
 @Entity({ name: 'agent_company', schema: 'core' })
-export class AgentCompanyEntity {
+export class AgentCompanyEntity extends AuditableEntity {
 	/**
 	 * Primary key (UUID).
 	 * @public
 	 */
 	@PrimaryGeneratedColumn('uuid')
+	@Filterable()
+	@Sortable()
 	id!: string
 
 	/**
-	 * Legacy system ID for migration compatibility.
+	 * Legacy system ID for migration compatibility (BigInt).
 	 * @public
 	 */
-	@Column({ name: 'legacy_id', type: 'uuid' })
+	@Column({ name: 'legacy_id', type: 'bigint' })
+	@Searchable({ type: 'integer', weight: 3, behavior: 'exact', description: 'Legacy system identifier', validate: SearchValidators.bigint })
+	@Filterable()
+	@Sortable()
 	legacyId!: string
 
 	/**
@@ -32,6 +38,9 @@ export class AgentCompanyEntity {
 	 * @public
 	 */
 	@Column({ type: 'text', unique: true })
+	@Searchable({ weight: 8, behavior: 'partial', description: 'Company email address' })
+	@Filterable()
+	@Sortable()
 	email!: string
 
 	/**
@@ -39,6 +48,9 @@ export class AgentCompanyEntity {
 	 * @public
 	 */
 	@Column({ type: 'text' })
+	@Searchable({ weight: 10, behavior: 'partial', description: 'Company/brokerage name' })
+	@Filterable()
+	@Sortable()
 	name!: string
 
 	/**
@@ -46,6 +58,8 @@ export class AgentCompanyEntity {
 	 * @public
 	 */
 	@Column({ type: 'text' })
+	@Searchable({ weight: 5, behavior: 'partial', description: 'Company phone number' })
+	@Filterable()
 	phone!: string
 
 	/**
@@ -67,19 +81,6 @@ export class AgentCompanyEntity {
 	 * @public
 	 */
 	@Column({ name: 'use_ssn', type: 'boolean', default: false })
+	@Filterable()
 	useSsn!: boolean
-
-	/**
-	 * Timestamp when record was created (UTC).
-	 * @public
-	 */
-	@CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
-	createdAt!: Date
-
-	/**
-	 * Timestamp when record was last updated (UTC).
-	 * @public
-	 */
-	@UpdateDateColumn({ name: 'updated_at', type: 'timestamp with time zone' })
-	updatedAt!: Date
 }

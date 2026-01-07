@@ -4,6 +4,7 @@ import {
 	PrimaryGeneratedColumn,
 	ManyToOne,
 	JoinColumn,
+	Index,
 } from 'typeorm'
 import { AgentEntity } from './agent.entity.js'
 import { AuditableEntity } from './auditable.entity.js'
@@ -11,9 +12,16 @@ import { AuditableEntity } from './auditable.entity.js'
 /**
  * TypeORM entity for ContactMethod table.
  * Stores phone, email, and other contact methods for agents.
+ * 
+ * Uniqueness constraints:
+ * - Name must be unique per agent (not globally)
+ * - Only one primary contact method per channel per agent (enforced via partial unique index)
+ * 
  * @public
  */
 @Entity({ name: 'contact_method', schema: 'core' })
+@Index('idx_contact_method_agent_name', ['agentId', 'name'], { unique: true })
+@Index('idx_contact_method_agent_channel', ['agentId', 'channel'])
 export class ContactMethodEntity extends AuditableEntity {
 	/**
 	 * Primary key (BigInt as string for large ID values).
@@ -24,9 +32,10 @@ export class ContactMethodEntity extends AuditableEntity {
 
 	/**
 	 * Contact method name/label.
+	 * Unique per agent (not globally).
 	 * @public
 	 */
-	@Column({ type: 'text', unique: true })
+	@Column({ type: 'text' })
 	name!: string
 
 	/**

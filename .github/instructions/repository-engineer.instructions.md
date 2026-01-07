@@ -47,3 +47,54 @@ Critical rules:
 - Paginate all list endpoints (either offset or cursor)
 - Use transactions for multi-step data mutations
 - Handle database errors and convert to HTTP exceptions
+- Never inject repositories from other aggregates (use guards/services instead)
+
+## Scoped Uniqueness Pattern
+
+When entities require uniqueness within a parent scope (e.g., "name unique per agent" not "globally unique"), use scoped repository methods:
+
+**Port interface:**
+```typescript
+export interface IContactMethodRepository extends IRepository<ContactMethod, string> {
+  findByAgentId(agentId: string, query?: Partial<QueryParams>): Promise<PageResult<ContactMethod>>;
+  
+  // Scoped uniqueness - find by parent + unique field
+  findByAgentAndName(agentId: string, name: string): Promise<ContactMethod | null>;
+  
+  // Business rule support - e.g., "only one primary per channel per agent"
+  findPrimaryByAgentAndChannel(agentId: string, channel: string): Promise<ContactMethod | null>;
+}
+```
+
+**Repository implementation:**
+```typescript
+async findByAgentAndName(agentId: string, name: string): Promise<ContactMethod | null> {
+  const entity = await this.repo.findOne({
+    where: { agentId, name },
+  });
+  return entity ? this.mapToDomain(entity) : null;
+}
+
+async findPrimaryByAgentAndChannel(agentId: string, channel: string): Promise<ContactMethod | null> {
+  const entity = await this.repo.findOne({
+    where: { agentId, channel, isPrimary: true },
+  });
+  return entity ? this.mapToDomain(entity) : null;
+}
+```
+
+**Database constraint (multi-layer defense):**
+```sql
+-- Unique name per agent
+CREATE UNIQUE INDEX idx_contact_method_agent_name ON contact_method(agent_id, name);
+
+-- Partial unique index: only one primary per channel per agent
+CREATE UNIQUE INDEX idx_contact_method_agent_channel_primary 
+  ON contact_method(agent_id, channel) 
+  WHERE is_primary = true;
+```
+
+This pattern provides:
+1. Service-level validation with helpful error messages
+2. Database-level constraint as safety net
+3. No global uniqueness that would cause false conflicts

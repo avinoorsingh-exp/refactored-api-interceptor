@@ -40,9 +40,9 @@ export const OfficeBaseSchema = z
 			.describe('Primary key (bigint as string)'),
 		website: UrlBranded.nullable().optional(),
 		name: trimmedStringMinMax(1, 255, 'Office name must be between 1 and 255 characters'),
-		phone: z.string().max(20),
+		phone: z.string().max(20).nullable().optional(),
 		lifecycleStatus: OfficeLifecycleStatus,
-		primaryState: z.string().max(200),
+		primaryState: z.string().max(200).nullable().optional(),
 		companyId: z
 			.string()
 			.regex(/^\d+$/, { message: 'errors.office.companyId.invalid' })
@@ -97,10 +97,11 @@ export const CreateOfficeInputSchema = OfficeBaseSchema.omit({
 	created: true,
 	lastModified: true,
 	modifiedBy: true,
+	mxid: true,
 })
 	.extend({
-		phone: trimmedStringMinMax(1, 20, 'Phone must be between 1 and 20 characters'),
-		primaryState: trimmedStringMinMax(1, 200, 'Primary state must be between 1 and 200 characters'),
+		phone: trimmedStringMinMax(1, 20, 'Phone must be between 1 and 20 characters').nullable().optional(),
+		primaryState: trimmedStringMinMax(1, 200, 'Primary state must be between 1 and 200 characters').nullable().optional(),
 	})
 	.describe('Input schema for creating a new office')
 

@@ -132,3 +132,65 @@ Critical rules:
 - Include i18nType in custom exceptions for client-side localization
 - Version APIs (/v1/resource)
 - Log with correlation ID from request headers
+
+## Cross-Aggregate Validation with Guards
+
+When nested resources require parent entity validation (e.g., `/v1/agents/:id/contactmethods`), use guards instead of injecting cross-aggregate repositories:
+
+**Pattern: AgentExistsGuard for nested resources**
+
+```typescript
+// In controller - apply guard at class level
+@ApiTags('contact-methods')
+@Controller('v1/agents/:id/contactmethods')
+@UseGuards(AgentExistsGuard)  // Validates agent exists BEFORE any method
+export class ContactMethodController {
+  constructor(private readonly service: ContactMethodService) {}
+
+  @Get()
+  async findByAgentId(@Agent() agent: AgentType, @Query() query: any) {
+    // agent is guaranteed to exist - validated by guard
+    return this.service.findByAgentId(agent.id, query);
+  }
+}
+```
+
+**Why use guards instead of service-level validation:**
+1. **Separation of concerns**: Guards handle authorization/validation, services handle business logic
+2. **Single responsibility**: Services don't need cross-aggregate repository dependencies
+3. **Testability**: Easier to mock guards than cross-aggregate repositories
+4. **Consistency**: All routes on the controller get automatic parent validation
+5. **Performance**: Guard can cache validated entity on request for reuse
+
+**Guard implementation pattern:**
+```typescript
+@Injectable()
+export class AgentExistsGuard implements CanActivate {
+  constructor(@Inject('AGENT_SERVICE') private readonly agentService: AgentService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest();
+    const agentId = request.params.id ?? request.params.agentId;
+
+    const agent = await this.agentService.findById(agentId);
+    if (!agent) {
+      throw new NotFoundException({ message: `Agent with id '${agentId}' not found`, i18nType: 'agent.not_found' });
+    }
+
+    request.agent = agent; // Attach for controller access via @Agent() decorator
+    return true;
+  }
+}
+```
+
+**Module registration:**
+```typescript
+@Module({
+  providers: [
+    AgentExistsGuard,
+    { provide: 'AGENT_SERVICE', useExisting: AgentService },
+    // ... other providers
+  ],
+})
+export class AgentModule {}
+```

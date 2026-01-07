@@ -29,22 +29,11 @@ export class AgentService {
 	 *
 	 * @param dto - Agent data to create (validated by Zod)
 	 * @returns The created Agent entity
-	 * @throws ConflictException if an Agent with the same email already exists
 	 */
 	async create(dto: CreateAgentInput): Promise<Agent> {
 		const startTime = Date.now();
 
 		try {
-			// Check for existing agent with same email
-			const existing = await this.repository.findByEmail(dto.email);
-
-			if (existing) {
-				throw new ConflictException({
-					message: `An agent with email '${dto.email}' already exists`,
-					i18nType: 'agent.duplicate_email',
-				});
-			}
-
 			// Create Agent via repository
 			const savedAgent = await this.repository.create(dto as any);
 
@@ -194,7 +183,6 @@ export class AgentService {
 	 * @param dto - Updated Agent data (partial)
 	 * @returns The updated Agent entity
 	 * @throws NotFoundException if Agent with the given id does not exist
-	 * @throws ConflictException if the new email already exists
 	 */
 	async update(id: string, dto: UpdateAgentInput): Promise<Agent> {
 		const startTime = Date.now();
@@ -208,17 +196,6 @@ export class AgentService {
 					message: `Agent with id '${id}' not found`,
 					i18nType: 'agent.not_found',
 				});
-			}
-
-			// Check for duplicate email if email is being updated
-			if (dto.email && dto.email !== existing.email) {
-				const duplicateEmail = await this.repository.findByEmail(dto.email);
-				if (duplicateEmail) {
-					throw new ConflictException({
-						message: `An agent with email '${dto.email}' already exists`,
-						i18nType: 'agent.duplicate_email',
-					});
-				}
 			}
 
 			// Update Agent via repository

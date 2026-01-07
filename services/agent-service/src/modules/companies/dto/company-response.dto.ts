@@ -1,9 +1,10 @@
-import { ApiProperty } from '@nestjs/swagger'
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 
 /**
  * DTO for company response.
  * Used for API responses.
  * Per AC7: includes id, name, email, created, last_modified, modified_by
+ * Note: email is optional to support legacy data migration
  */
 export class CompanyResponseDto {
 	@ApiProperty({
@@ -18,12 +19,13 @@ export class CompanyResponseDto {
 	})
 	name!: string
 
-	@ApiProperty({
+	@ApiPropertyOptional({
 		description: 'Company email address',
 		example: 'contact@acme.com',
 		format: 'email',
+		nullable: true,
 	})
-	email!: string
+	email?: string | null
 
 	@ApiProperty({
 		description: 'Timestamp when the company was created',
