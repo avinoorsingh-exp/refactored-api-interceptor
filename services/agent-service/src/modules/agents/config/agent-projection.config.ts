@@ -8,8 +8,8 @@ import { ProjectionConfig } from '@exprealty/shared-domain';
  * This config controls the top-level includes.
  */
 export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
-	// Always included (primary key)
-	required: ['id'],
+	// Always included (primary key + default sort field)
+	required: ['id', 'agentId'],
 
 	// Allowed fields for projection
 	allowed: [
