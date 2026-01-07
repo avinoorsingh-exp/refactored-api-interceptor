@@ -74,8 +74,11 @@ export abstract class BaseTypeOrmRepository<
 	/**
 	 * Maps a TypeORM entity to a domain model.
 	 * Override in subclasses to customize mapping.
+	 *
+	 * @param entity - The TypeORM entity to map
+	 * @param selection - Optional field selection (includes) to inform mapping
 	 */
-	protected abstract mapToDomain(entity: TEntity): TDomain
+	protected abstract mapToDomain(entity: TEntity, selection?: FieldSelection): TDomain
 
 	/**
 	 * Maps domain data to entity data for persistence.
@@ -175,7 +178,7 @@ export abstract class BaseTypeOrmRepository<
 		const [entities, total] = await qb.getManyAndCount()
 
 		return {
-			items: entities.map((e) => this.mapToDomain(e)),
+			items: entities.map((e) => this.mapToDomain(e, selection)),
 			total,
 		}
 	}
@@ -253,7 +256,7 @@ export abstract class BaseTypeOrmRepository<
 		}
 
 		// Map entities to domain models
-		const items = entities.map((e) => this.mapToDomain(e))
+		const items = entities.map((e) => this.mapToDomain(e, selection))
 
 		// Extract cursors from entities
 		const nextCursor = hasNext && entities.length > 0

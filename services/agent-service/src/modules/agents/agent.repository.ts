@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import type { IAgentRepository } from './ports/agent.repository.port.js';
 import type { PageResult } from '../../common/ports/pagination.types.js';
-import { AgentEntity, AddressEntity } from '@exprealty/database';
+import { AgentEntity } from '@exprealty/database';
 import type { Agent, QueryParams, FieldSelection } from '@exprealty/shared-domain';
 import { QueryService } from '../../common/query/query.service.js';
 import { LoggerService } from '../../core/logger.service.js';
@@ -21,12 +21,16 @@ const AGENT_QUERY_CONFIG: BaseQueryConfig = {
 		'id', 'agentId', 'title', 'firstName', 'middleName', 'lastName', 'suffix',
 		'preferredName', 'birthDate', 'lifecycleStatus', 'systemId', 'seedAgent',
 		'joinDate', 'anniversaryDate', 'terminationDate', 'isStaff', 'agentCompanyId',
+		// Relational filter fields (handled specially in findPage)
+		'email', 'country',
 	],
 	allowedSortFields: [
 		'id', 'agentId', 'title', 'firstName', 'middleName', 'lastName', 'suffix',
 		'preferredName', 'birthDate', 'lifecycleStatus', 'systemId', 'seedAgent',
 		'joinDate', 'anniversaryDate', 'terminationDate', 'isStaff', 'agentCompanyId',
 		'created', 'lastModified',
+		// Relational sort fields (handled specially in findPage)
+		'primaryEmail',
 	],
 	allowedSearchFields: [
 		'id', 'agentId', 'title', 'firstName', 'middleName', 'lastName', 'suffix',
@@ -36,6 +40,18 @@ const AGENT_QUERY_CONFIG: BaseQueryConfig = {
 	projectionConfig: AGENT_PROJECTION_CONFIG,
 	useStrategySearch: true, // Enable type-aware search for numeric fields
 };
+
+/**
+ * Relational filter fields that require custom JOIN handling.
+ * These are extracted from filter conditions and applied separately.
+ */
+const RELATIONAL_FILTER_FIELDS = ['email', 'country'] as const;
+
+/**
+ * Relational sort fields that require custom JOIN handling.
+ * These are extracted from sort conditions and applied separately.
+ */
+const RELATIONAL_SORT_FIELDS = ['primaryEmail'] as const;
 
 /**
  * TypeORM adapter implementing IAgentRepository port.
@@ -76,8 +92,13 @@ export class AgentTypeOrmRepository
 	 *
 	 * All scalar fields are always included to ensure consistent API responses.
 	 * Relations are only included if they were loaded (via ?include=).
+	 * Virtual relations (primaryEmail, primaryPhone, primaryAddress) are included
+	 * as null when requested but not found, rather than being omitted.
+	 *
+	 * @param entity - The TypeORM entity to map
+	 * @param selection - Optional field selection to inform virtual relation handling
 	 */
-	protected mapToDomain(entity: AgentEntity): Agent {
+	protected mapToDomain(entity: AgentEntity, selection?: FieldSelection): Agent {
 		const result: Record<string, unknown> = {
 			// Primary key
 			id: entity.id,
@@ -115,6 +136,9 @@ export class AgentTypeOrmRepository
 			mxid: (entity as any).mxid ?? null,
 		};
 
+		// Get the list of requested includes
+		const requestedIncludes = selection?.include ?? [];
+
 		// Map relations only if loaded (singular names following GraphQL conventions)
 		if (entity.agentCompany) result.agentCompany = entity.agentCompany;
 		if (entity.agentOffice) result.agentOffice = entity.agentOffice;
@@ -130,12 +154,25 @@ export class AgentTypeOrmRepository
 		if (entity.activeLocations) result.activeLocation = entity.activeLocations;
 		if (entity.publicProfile) result.publicProfile = entity.publicProfile;
 
-		// Virtual relations - loaded via loadPrimaryContacts()
-		if (entity.primaryEmail) result.primaryEmail = entity.primaryEmail;
-		if (entity.primaryPhone) result.primaryPhone = entity.primaryPhone;
+		// Virtual relations - include as null if requested but not found
+		// This ensures consistent API responses when include= is specified
+		if (requestedIncludes.includes('primaryEmail')) {
+			result.primaryEmail = entity.primaryEmail ?? null;
+		} else if (entity.primaryEmail) {
+			result.primaryEmail = entity.primaryEmail;
+		}
 
-		// Virtual relation - loaded via loadPrimaryAddress()
-		if (entity.primaryAddress) result.primaryAddress = entity.primaryAddress;
+		if (requestedIncludes.includes('primaryPhone')) {
+			result.primaryPhone = entity.primaryPhone ?? null;
+		} else if (entity.primaryPhone) {
+			result.primaryPhone = entity.primaryPhone;
+		}
+
+		if (requestedIncludes.includes('primaryAddress')) {
+			result.primaryAddress = entity.primaryAddress ?? null;
+		} else if (entity.primaryAddress) {
+			result.primaryAddress = entity.primaryAddress;
+		}
 
 		return result as unknown as Agent;
 	}
@@ -253,10 +290,12 @@ export class AgentTypeOrmRepository
 	}
 
 	/**
-	 * Loads the primary address for an agent.
-	 * Uses two LEFT JOINs: first to junction table, then to address.
+	 * Loads the primary address for an agent with nested state and country.
+	 * Uses LEFT JOINs: junction table → address → state → country.
 	 * Maps address directly to entity.primaryAddress (like loadPrimaryContacts).
-	 * Uses addSelect to ensure fields are in DISTINCT query.
+	 *
+	 * @param qb - Query builder
+	 * @param alias - Base entity alias (usually 'agent')
 	 */
 	protected loadPrimaryAddress<T>(
 		qb: SelectQueryBuilder<T>,
@@ -264,6 +303,8 @@ export class AgentTypeOrmRepository
 	): void {
 		const junctionAlias = 'primaryAddressJunction';
 		const addressAlias = 'primaryAddress';
+		const stateAlias = 'primaryAddressState';
+		const countryAlias = 'primaryAddressCountry';
 
 		// LEFT JOIN to junction table with isPrimary = true filter
 		qb.leftJoin(
@@ -272,9 +313,14 @@ export class AgentTypeOrmRepository
 			`${junctionAlias}.isPrimary = true`,
 		);
 
-		// LEFT JOIN and map the address directly to entity.primaryAddress
-		// Uses leftJoinAndMapOne to map the nested address relation
-		qb.leftJoin(`${junctionAlias}.address`, addressAlias)
+		// LEFT JOIN address from junction table
+		qb.leftJoin(`${junctionAlias}.address`, addressAlias);
+
+		// LEFT JOIN state from address
+		qb.leftJoin(`${addressAlias}.state`, stateAlias);
+
+		// LEFT JOIN country from state
+		qb.leftJoin(`${stateAlias}.country`, countryAlias);
 
 		// Explicitly select address fields with addSelect
 		// This ensures they're included in the outer DISTINCT query
@@ -290,6 +336,22 @@ export class AgentTypeOrmRepository
 			`${addressAlias}.type`,
 			`${addressAlias}.role`,
 			`${addressAlias}.label`,
+		]);
+
+		// Select state fields
+		qb.addSelect([
+			`${stateAlias}.id`,
+			`${stateAlias}.name`,
+			`${stateAlias}.code`,
+			`${stateAlias}.countryId`,
+		]);
+
+		// Select country fields
+		qb.addSelect([
+			`${countryAlias}.id`,
+			`${countryAlias}.name`,
+			`${countryAlias}.alpha2`,
+			`${countryAlias}.alpha3`,
 		]);
 	}
 
@@ -321,8 +383,211 @@ export class AgentTypeOrmRepository
 	}
 
 	/**
+	 * Extract relational filter conditions from the query filter.
+	 * Returns the extracted conditions and the remaining standard conditions.
+	 */
+	private extractRelationalFilters(filter?: {
+		conditions?: Array<{ field: string; operator: string; value: any }>;
+		logicalOperator?: string;
+	}): {
+		emailFilters: Array<{ field: string; operator: string; value: any }>;
+		countryFilters: Array<{ field: string; operator: string; value: any }>;
+		standardConditions: Array<{ field: string; operator: string; value: any }>;
+	} {
+		const emailFilters: Array<{ field: string; operator: string; value: any }> = [];
+		const countryFilters: Array<{ field: string; operator: string; value: any }> = [];
+		const standardConditions: Array<{ field: string; operator: string; value: any }> = [];
+
+		if (!filter?.conditions) {
+			return { emailFilters, countryFilters, standardConditions };
+		}
+
+		for (const condition of filter.conditions) {
+			if (condition.field === 'email') {
+				emailFilters.push(condition);
+			} else if (condition.field === 'country') {
+				countryFilters.push(condition);
+			} else {
+				standardConditions.push(condition);
+			}
+		}
+
+		return { emailFilters, countryFilters, standardConditions };
+	}
+
+	/**
+	 * Extract relational sort conditions from the query sort.
+	 * Returns the extracted conditions and the remaining standard conditions.
+	 */
+	private extractRelationalSorts(sort?: {
+		conditions?: Array<{ field: string; direction: 'ASC' | 'DESC' }>;
+	}): {
+		primaryEmailSort: { field: string; direction: 'ASC' | 'DESC' } | null;
+		standardConditions: Array<{ field: string; direction: 'ASC' | 'DESC' }>;
+	} {
+		let primaryEmailSort: { field: string; direction: 'ASC' | 'DESC' } | null = null;
+		const standardConditions: Array<{ field: string; direction: 'ASC' | 'DESC' }> = [];
+
+		if (!sort?.conditions) {
+			return { primaryEmailSort, standardConditions };
+		}
+
+		for (const condition of sort.conditions) {
+			if (condition.field === 'primaryEmail') {
+				primaryEmailSort = condition;
+			} else {
+				standardConditions.push(condition);
+			}
+		}
+
+		return { primaryEmailSort, standardConditions };
+	}
+
+	/**
+	 * Apply email filter conditions to the query builder.
+	 * Joins contactMethods and filters where channel='email'.
+	 */
+	private applyEmailFilters<T>(
+		qb: SelectQueryBuilder<T>,
+		alias: string,
+		filters: Array<{ field: string; operator: string; value: any }>,
+	): void {
+		if (filters.length === 0) return;
+
+		const emailAlias = 'emailFilter';
+
+		// Join contactMethods for email filtering
+		qb.leftJoin(
+			`${alias}.contactMethods`,
+			emailAlias,
+			`${emailAlias}.channel = :emailFilterChannel`,
+			{ emailFilterChannel: 'email' },
+		);
+
+		// Apply each email filter condition
+		filters.forEach((condition, index) => {
+			const paramName = `emailFilter_${index}`;
+			this.applyRelationalFilterCondition(qb, `${emailAlias}.value`, condition, paramName);
+		});
+	}
+
+	/**
+	 * Apply country filter conditions to the query builder.
+	 * Joins agentAddresses → address → state → country.
+	 */
+	private applyCountryFilters<T>(
+		qb: SelectQueryBuilder<T>,
+		alias: string,
+		filters: Array<{ field: string; operator: string; value: any }>,
+	): void {
+		if (filters.length === 0) return;
+
+		const junctionAlias = 'countryFilterJunction';
+		const addressAlias = 'countryFilterAddress';
+		const stateAlias = 'countryFilterState';
+		const countryAlias = 'countryFilter';
+
+		// Join through the relation chain
+		qb.leftJoin(`${alias}.agentAddresses`, junctionAlias);
+		qb.leftJoin(`${junctionAlias}.address`, addressAlias);
+		qb.leftJoin(`${addressAlias}.state`, stateAlias);
+		qb.leftJoin(`${stateAlias}.country`, countryAlias);
+
+		// Apply each country filter condition (search by name or alpha2)
+		filters.forEach((condition, index) => {
+			const paramName = `countryFilter_${index}`;
+			// Support filtering by country name or alpha2 code
+			if (condition.operator === 'eq') {
+				// Exact match: check both name and alpha2
+				qb.andWhere(
+					`(${countryAlias}.name = :${paramName} OR ${countryAlias}.alpha2 = :${paramName})`,
+					{ [paramName]: condition.value },
+				);
+			} else if (condition.operator === 'ilike' || condition.operator === 'contains') {
+				qb.andWhere(`${countryAlias}.name ILIKE :${paramName}`, {
+					[paramName]: `%${condition.value}%`,
+				});
+			} else {
+				// Default to name field for other operators
+				this.applyRelationalFilterCondition(qb, `${countryAlias}.name`, condition, paramName);
+			}
+		});
+	}
+
+	/**
+	 * Apply a single relational filter condition.
+	 */
+	private applyRelationalFilterCondition<T>(
+		qb: SelectQueryBuilder<T>,
+		fieldPath: string,
+		condition: { field: string; operator: string; value: any },
+		paramName: string,
+	): void {
+		const { operator, value } = condition;
+
+		switch (operator) {
+			case 'eq':
+				qb.andWhere(`${fieldPath} = :${paramName}`, { [paramName]: value });
+				break;
+			case 'ne':
+				qb.andWhere(`${fieldPath} != :${paramName}`, { [paramName]: value });
+				break;
+			case 'ilike':
+			case 'contains':
+				qb.andWhere(`${fieldPath} ILIKE :${paramName}`, { [paramName]: `%${value}%` });
+				break;
+			case 'startsWith':
+				qb.andWhere(`${fieldPath} ILIKE :${paramName}`, { [paramName]: `${value}%` });
+				break;
+			case 'endsWith':
+				qb.andWhere(`${fieldPath} ILIKE :${paramName}`, { [paramName]: `%${value}` });
+				break;
+			case 'in':
+				qb.andWhere(`${fieldPath} IN (:...${paramName})`, { [paramName]: value });
+				break;
+			case 'isNull':
+				qb.andWhere(`${fieldPath} IS NULL`);
+				break;
+			case 'isNotNull':
+				qb.andWhere(`${fieldPath} IS NOT NULL`);
+				break;
+			default:
+				qb.andWhere(`${fieldPath} = :${paramName}`, { [paramName]: value });
+		}
+	}
+
+	/**
+	 * Apply primaryEmail sort to the query builder.
+	 * Ensures primaryEmail is joined and sorts by the value field.
+	 */
+	private applyPrimaryEmailSort<T>(
+		qb: SelectQueryBuilder<T>,
+		alias: string,
+		sortCondition: { field: string; direction: 'ASC' | 'DESC' },
+		needsJoin: boolean,
+	): void {
+		const primaryEmailAlias = 'primaryEmail';
+
+		// Only add join if not already joined via include
+		if (needsJoin) {
+			qb.leftJoin(
+				`${alias}.contactMethods`,
+				primaryEmailAlias,
+				`${primaryEmailAlias}.channel = :primaryEmailSortChannel AND ${primaryEmailAlias}.isPrimary = true`,
+				{ primaryEmailSortChannel: 'email' },
+			);
+			// Select the value field for sorting
+			qb.addSelect(`${primaryEmailAlias}.value`);
+		}
+
+		// Apply the sort - use addOrderBy to append to existing sorts
+		qb.addOrderBy(`${primaryEmailAlias}.value`, sortCondition.direction, 'NULLS LAST');
+	}
+
+	/**
 	 * Finds agents with pagination, filtering, sorting, and search.
 	 * Handles primary contact and address loading via custom joins.
+	 * Supports relational filtering (email, country) and sorting (primaryEmail).
 	 */
 	async findPage(
 		query: Partial<QueryParams>,
@@ -331,18 +596,70 @@ export class AgentTypeOrmRepository
 		const primaryContactTypes = this.extractPrimaryContactTypes(selection?.include);
 		const hasPrimaryAddress = this.hasPrimaryAddressInclude(selection?.include);
 
-		if (primaryContactTypes.length > 0 || hasPrimaryAddress) {
-			// Use customizeQuery callback to add primary contact/address joins
-			return this.findWithQuery(query, selection, (qb) => {
+		// Extract relational filters and sorts
+		const { emailFilters, countryFilters, standardConditions } = this.extractRelationalFilters(
+			query.filter as any,
+		);
+		const { primaryEmailSort, standardConditions: standardSortConditions } =
+			this.extractRelationalSorts(query.sort as any);
+
+		// Check if we have any relational operations
+		const hasRelationalFilters = emailFilters.length > 0 || countryFilters.length > 0;
+		const hasRelationalSort = primaryEmailSort !== null;
+		const needsCustomQuery =
+			primaryContactTypes.length > 0 ||
+			hasPrimaryAddress ||
+			hasRelationalFilters ||
+			hasRelationalSort;
+
+		// Build modified query params without relational fields
+		const modifiedQuery: Partial<QueryParams> = { ...query };
+		if (hasRelationalFilters && query.filter) {
+			modifiedQuery.filter = {
+				...query.filter,
+				conditions: standardConditions,
+			} as any;
+		}
+		if (hasRelationalSort && query.sort) {
+			modifiedQuery.sort = {
+				...query.sort,
+				conditions: standardSortConditions,
+			} as any;
+		}
+
+		if (needsCustomQuery) {
+			// Check if primaryEmail is already being included (so we don't double-join)
+			const primaryEmailIncluded = primaryContactTypes.includes('email');
+
+			return this.findWithQuery(modifiedQuery, selection, (qb) => {
+				// Add virtual relation joins for includes
 				if (primaryContactTypes.length > 0) {
 					this.loadPrimaryContacts(qb, this.getAlias(), primaryContactTypes);
 				}
 				if (hasPrimaryAddress) {
 					this.loadPrimaryAddress(qb, this.getAlias());
 				}
+
+				// Apply relational filters
+				if (emailFilters.length > 0) {
+					this.applyEmailFilters(qb, this.getAlias(), emailFilters);
+				}
+				if (countryFilters.length > 0) {
+					this.applyCountryFilters(qb, this.getAlias(), countryFilters);
+				}
+
+				// Apply relational sort
+				if (primaryEmailSort) {
+					this.applyPrimaryEmailSort(
+						qb,
+						this.getAlias(),
+						primaryEmailSort,
+						!primaryEmailIncluded,
+					);
+				}
 			});
 		}
 
-		return this.findWithQuery(query, selection);
+		return this.findWithQuery(modifiedQuery, selection);
 	}
 }
