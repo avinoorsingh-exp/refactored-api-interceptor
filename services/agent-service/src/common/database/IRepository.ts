@@ -124,6 +124,7 @@ export abstract class BaseTypeOrmRepository<
 		params: Partial<QueryParams>,
         selection?: FieldSelection,
 		customizeQuery?: (qb: SelectQueryBuilder<TEntity>) => void,
+		options?: { skipDefaultSort?: boolean },
 	): Promise<{ items: TDomain[]; total: number }> {
 		const entityClass = this.getEntityClass()
 		const alias = this.getAlias()
@@ -166,8 +167,8 @@ export abstract class BaseTypeOrmRepository<
 			this.queryService.applyAll(qb, normalized, alias)
 		}
 
-		// Apply default sort if no sort specified
-		if ((!normalized.sort || normalized.sort.conditions.length === 0) && config.defaultSort) {
+		// Apply default sort if no sort specified (unless skipDefaultSort is set for relational sorts)
+		if ((!normalized.sort || normalized.sort.conditions.length === 0) && config.defaultSort && !options?.skipDefaultSort) {
 			qb.orderBy(`${alias}.${config.defaultSort.field}`, config.defaultSort.direction)
 		}
 

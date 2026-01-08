@@ -356,11 +356,15 @@ export class AgentTypeOrmRepository
 	/**
 	 * Extract relational filter conditions from the query filter.
 	 * Returns the extracted conditions and the remaining standard conditions.
+	 *
+	 * Handles both formats:
+	 * - Raw array format from query string: [{field, operator, value}, ...]
+	 * - Normalized format after Zod parsing: {conditions: [{field, operator, value}, ...], logicalOperator}
 	 */
-	private extractRelationalFilters(filter?: {
-		conditions?: Array<{ field: string; operator: string; value: any }>;
-		logicalOperator?: string;
-	}): {
+	private extractRelationalFilters(filter?:
+		| Array<{ field: string; operator: string; value: any }>
+		| { conditions?: Array<{ field: string; operator: string; value: any }>; logicalOperator?: string }
+	): {
 		emailFilters: Array<{ field: string; operator: string; value: any }>;
 		countryFilters: Array<{ field: string; operator: string; value: any }>;
 		standardConditions: Array<{ field: string; operator: string; value: any }>;
@@ -369,11 +373,14 @@ export class AgentTypeOrmRepository
 		const countryFilters: Array<{ field: string; operator: string; value: any }> = [];
 		const standardConditions: Array<{ field: string; operator: string; value: any }> = [];
 
-		if (!filter?.conditions) {
+		// Handle both array format (raw) and object format (normalized)
+		const conditions = Array.isArray(filter) ? filter : filter?.conditions;
+
+		if (!conditions) {
 			return { emailFilters, countryFilters, standardConditions };
 		}
 
-		for (const condition of filter.conditions) {
+		for (const condition of conditions) {
 			if (condition.field === 'email') {
 				emailFilters.push(condition);
 			} else if (condition.field === 'country') {
@@ -389,21 +396,29 @@ export class AgentTypeOrmRepository
 	/**
 	 * Extract relational sort conditions from the query sort.
 	 * Returns the extracted conditions and the remaining standard conditions.
+	 *
+	 * Handles both formats:
+	 * - Raw array format from query string: [{field, direction}, ...]
+	 * - Normalized format after Zod parsing: {conditions: [{field, direction}, ...]}
 	 */
-	private extractRelationalSorts(sort?: {
-		conditions?: Array<{ field: string; direction: 'ASC' | 'DESC' }>;
-	}): {
+	private extractRelationalSorts(sort?:
+		| Array<{ field: string; direction: 'ASC' | 'DESC' }>
+		| { conditions?: Array<{ field: string; direction: 'ASC' | 'DESC' }> }
+	): {
 		primaryEmailSort: { field: string; direction: 'ASC' | 'DESC' } | null;
 		standardConditions: Array<{ field: string; direction: 'ASC' | 'DESC' }>;
 	} {
 		let primaryEmailSort: { field: string; direction: 'ASC' | 'DESC' } | null = null;
 		const standardConditions: Array<{ field: string; direction: 'ASC' | 'DESC' }> = [];
 
-		if (!sort?.conditions) {
+		// Handle both array format (raw) and object format (normalized)
+		const conditions = Array.isArray(sort) ? sort : sort?.conditions;
+
+		if (!conditions) {
 			return { primaryEmailSort, standardConditions };
 		}
 
-		for (const condition of sort.conditions) {
+		for (const condition of conditions) {
 			if (condition.field === 'primaryEmail') {
 				primaryEmailSort = condition;
 			} else {
@@ -551,8 +566,8 @@ export class AgentTypeOrmRepository
 			qb.addSelect(`${primaryEmailAlias}.value`);
 		}
 
-		// Apply the sort - use addOrderBy to append to existing sorts
-		qb.addOrderBy(`${primaryEmailAlias}.value`, sortCondition.direction, 'NULLS LAST');
+		// Apply the sort - use orderBy since this is the primary requested sort
+		qb.orderBy(`${primaryEmailAlias}.value`, sortCondition.direction, 'NULLS LAST');
 	}
 
 	/**
@@ -590,18 +605,12 @@ export class AgentTypeOrmRepository
 		// Build modified query params without relational fields
 		const modifiedQuery: Partial<QueryParams> = { ...query };
 		if (hasRelationalFilters && filterObj) {
-			// Rebuild filter as JSON string (downstream code parses it again)
-			modifiedQuery.filter = JSON.stringify({
-				...filterObj,
-				conditions: standardConditions,
-			}) as any;
+			// Rebuild filter as JSON string in raw array format (downstream code parses it again)
+			modifiedQuery.filter = JSON.stringify(standardConditions) as any;
 		}
 		if (hasRelationalSort && sortObj) {
-			// Rebuild sort as JSON string (downstream code parses it again)
-			modifiedQuery.sort = JSON.stringify({
-				...sortObj,
-				conditions: standardSortConditions,
-			}) as any;
+			// Rebuild sort as JSON string in raw array format (downstream code parses it again)
+			modifiedQuery.sort = JSON.stringify(standardSortConditions) as any;
 		}
 
 		if (needsCustomQuery) {
@@ -634,7 +643,7 @@ export class AgentTypeOrmRepository
 						!primaryEmailIncluded,
 					);
 				}
-			});
+			}, { skipDefaultSort: hasRelationalSort });
 		}
 
 		return this.findWithQuery(modifiedQuery, selection);
