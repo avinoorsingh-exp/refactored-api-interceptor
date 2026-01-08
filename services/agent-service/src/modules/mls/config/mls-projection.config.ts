@@ -4,8 +4,8 @@ import { ProjectionConfig } from '@exprealty/shared-domain';
  * Projection configuration for MLS entity
  */
 export const MLS_PROJECTION_CONFIG: ProjectionConfig = {
-	// Always included (primary key)
-	required: ['id'],
+	// Always included (primary key + default sort field)
+	required: ['id', 'name'],
 
 	// Allowed fields for projection
 	allowed: [
