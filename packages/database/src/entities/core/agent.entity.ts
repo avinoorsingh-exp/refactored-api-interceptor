@@ -212,7 +212,6 @@ export class AgentEntity extends AuditableEntity {
 	 * @public
 	 */
 	@Column({ name: 'agent_company_id', type: 'uuid', nullable: true })
-	@Searchable({ weight: 3, behavior: 'exact', description: 'Agent company ID reference (UUID)' })
 	@Filterable()
 	@Sortable()
 	agentCompanyId?: string
