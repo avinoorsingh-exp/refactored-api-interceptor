@@ -9,7 +9,6 @@ import { AuditableSchema } from './audit.js'
 import { AgentCompanyExpandedSchema } from './agent-company.js'
 import { AgentAddressSchema } from './agent-address.js'
 import { AddressExpandedSchema } from './address.js'
-import { lifecycleEnum } from './base-schemas.js'
 
 // Allowed suffixes
 /**
@@ -31,27 +30,59 @@ export const AgentTitle = z
 	.describe('Agent title prefix')
 
 /**
- * Agent lifecycle status values (lowercase).
+ * Agent lifecycle status values (PascalCase - matches migration data).
  * @public
  */
 export const AGENT_LIFECYCLE_VALUES = [
-	'joining',
-	'active',
-	'inactive',
-	'vested',
-	'vested retired',
-	'lead only',
+	'Joining',
+	'Active',
+	'InActive',
+	'Vested',
+	'VestedRetired',
+	'LeadOnly',
 ] as const;
 
 /**
+ * Case-insensitive mapping from input to canonical PascalCase value.
+ * Used for validating and normalizing lifecycle status input.
+ */
+const LIFECYCLE_STATUS_MAP: Record<string, typeof AGENT_LIFECYCLE_VALUES[number]> = {
+	joining: 'Joining',
+	active: 'Active',
+	inactive: 'InActive',
+	vested: 'Vested',
+	vestedretired: 'VestedRetired',
+	'vested retired': 'VestedRetired',
+	leadonly: 'LeadOnly',
+	'lead only': 'LeadOnly',
+	// Also accept PascalCase as-is
+	Joining: 'Joining',
+	Active: 'Active',
+	InActive: 'InActive',
+	Vested: 'Vested',
+	VestedRetired: 'VestedRetired',
+	LeadOnly: 'LeadOnly',
+};
+
+/**
  * Agent lifecycle status options.
- * Automatically lowercases input before validation.
+ * Accepts case-insensitive input and normalizes to PascalCase.
  * @public
  */
-export const AgentLifecycleStatus = lifecycleEnum(
-	AGENT_LIFECYCLE_VALUES,
-	'errors.agent.lifecycle_status.invalid'
-).describe('Agent lifecycle status')
+export const AgentLifecycleStatus = z.string()
+	.transform((val) => {
+		const trimmed = val.trim();
+		const normalized = LIFECYCLE_STATUS_MAP[trimmed] || LIFECYCLE_STATUS_MAP[trimmed.toLowerCase()];
+		return normalized || trimmed;
+	})
+	.pipe(
+		z.enum(AGENT_LIFECYCLE_VALUES, {
+			errorMap: () => ({
+				message: 'errors.agent.lifecycle_status.invalid'
+			})
+		})
+	)
+	.describe('Agent lifecycle status')
 
 /**
  * Base schema for Agent entity.

@@ -60,8 +60,8 @@ export class CreateAgentDto {
 
 	@ApiProperty({
 		description: 'Agent lifecycle status',
-		example: 'active',
-		enum: ['joining', 'active', 'inactive', 'vested', 'vested retired', 'lead only'],
+		example: 'Active',
+		enum: ['Joining', 'Active', 'InActive', 'Vested', 'VestedRetired', 'LeadOnly'],
 	})
 	lifecycleStatus!: string;
 

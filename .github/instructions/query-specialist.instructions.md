@@ -171,6 +171,164 @@ qb.leftJoin(
 qb.leftJoin('agentOfficePrimary.office', 'primaryOffice');
 ```
 
+## Virtual Relations (NEW)
+
+Virtual relations require custom loading logic that can't be handled by the standard `ProjectionService`. They are marked with `virtual: true` in the projection config.
+
+### When to Use Virtual Relations
+- **Filtered JOINs**: Load only records matching a condition (e.g., `isPrimary = true`)
+- **Computed relations**: Relations derived from other data
+- **Complex JOIN conditions**: JOINs that can't be expressed with standard TypeORM decorators
+
+### How Virtual Relations Work
+1. **ProjectionService skips them**: When `virtual: true`, `applyRelations()` skips the relation
+2. **Repository loads them**: Repository implements custom loading via `leftJoinAndMapOne`
+3. **MapToDomain handles them**: The mapping method handles the loaded data
+
+### Example: primaryEmail Virtual Relation
+```typescript
+// 1. Projection config marks it as virtual
+relations: {
+  primaryEmail: {
+    property: 'primaryEmail',
+    fields: ['id', 'name', 'value', 'channel', 'subType', 'isPrimary'],
+    virtual: true,  // ✅ ProjectionService will skip this
+  },
+}
+
+// 2. Repository loads it with filtered JOIN
+protected loadPrimaryContacts(qb, alias, types) {
+  for (const type of types) {
+    const relationAlias = `primary${type.charAt(0).toUpperCase() + type.slice(1)}`;
+    qb.leftJoinAndMapOne(
+      `${alias}.${relationAlias}`,      // Maps to entity.primaryEmail
+      `${alias}.contactMethods`,         // Source relation
+      relationAlias,
+      `${relationAlias}.channel = :${relationAlias}Channel AND ${relationAlias}.isPrimary = true`,
+      { [`${relationAlias}Channel`]: type },
+    );
+  }
+}
+```
+
+## Relational Sorting and Filtering (NEW)
+
+Standard sorting/filtering validates fields against entity decorators (`@Sortable`, `@Filterable`). Virtual/relational fields aren't on the entity, so they require special handling in the repository.
+
+### The Problem
+```
+GET /agents?sort=[{"field":"primaryEmail","direction":"ASC"}]
+
+// Without special handling:
+1. QueryService.normalizeWithValidation() checks @Sortable fields on AgentEntity
+2. primaryEmail is NOT on the entity (it's a virtual relation)
+3. Validation fails with "Invalid sort field: primaryEmail"
+```
+
+### The Solution Pattern
+Repositories that support relational sorting/filtering must:
+1. **Define relational fields in the query config** (for documentation, not validation)
+2. **Extract relational fields before validation** (handle both array and object formats)
+3. **Apply custom JOINs in the query** (via customizeQuery callback)
+4. **Skip default sort when relational sort is applied** (pass `skipDefaultSort: true`)
+
+### Implementation Steps
+
+#### Step 1: Define Relational Fields
+```typescript
+const RELATIONAL_SORT_FIELDS = ['primaryEmail'] as const;
+const RELATIONAL_FILTER_FIELDS = ['email', 'country'] as const;
+
+const AGENT_QUERY_CONFIG: BaseQueryConfig = {
+  allowedSortFields: [
+    'id', 'firstName', 'lastName', // ... entity fields
+    'primaryEmail',  // ✅ Relational sort field (for documentation)
+  ],
+  // ...
+};
+```
+
+#### Step 2: Extract Relational Fields
+Handle both formats:
+- **Raw array**: `[{field, direction}]` (from JSON.parse of query string)
+- **Normalized object**: `{conditions: [{field, direction}]}` (after Zod parsing)
+
+```typescript
+private extractRelationalSorts(sort?:
+  | Array<{ field: string; direction: 'ASC' | 'DESC' }>
+  | { conditions?: Array<{ field: string; direction: 'ASC' | 'DESC' }> }
+) {
+  let primaryEmailSort = null;
+  const standardConditions = [];
+
+  // ✅ Handle both formats
+  const conditions = Array.isArray(sort) ? sort : sort?.conditions;
+
+  if (!conditions) return { primaryEmailSort, standardConditions };
+
+  for (const condition of conditions) {
+    if (condition.field === 'primaryEmail') {
+      primaryEmailSort = condition;
+    } else {
+      standardConditions.push(condition);
+    }
+  }
+
+  return { primaryEmailSort, standardConditions };
+}
+```
+
+#### Step 3: Override findPage()
+```typescript
+async findPage(query, selection) {
+  const sortObj = typeof query.sort === 'string' ? JSON.parse(query.sort) : query.sort;
+  const { primaryEmailSort, standardConditions } = this.extractRelationalSorts(sortObj);
+  const hasRelationalSort = primaryEmailSort !== null;
+
+  // Build modified query WITHOUT relational fields
+  const modifiedQuery = { ...query };
+  if (hasRelationalSort && sortObj) {
+    modifiedQuery.sort = JSON.stringify(standardConditions); // ✅ Raw array format
+  }
+
+  return this.findWithQuery(modifiedQuery, selection, (qb) => {
+    if (primaryEmailSort) {
+      this.applyPrimaryEmailSort(qb, this.getAlias(), primaryEmailSort);
+    }
+  }, { skipDefaultSort: hasRelationalSort }); // ✅ Prevent default sort override
+}
+```
+
+#### Step 4: Apply Custom JOIN for Sort
+```typescript
+private applyPrimaryEmailSort(qb, alias, sortCondition, needsJoin = true) {
+  const primaryEmailAlias = 'primaryEmail';
+
+  if (needsJoin) {
+    qb.leftJoin(
+      `${alias}.contactMethods`,
+      primaryEmailAlias,
+      `${primaryEmailAlias}.channel = :channel AND ${primaryEmailAlias}.isPrimary = true`,
+      { channel: 'email' },
+    );
+    qb.addSelect(`${primaryEmailAlias}.value`);
+  }
+
+  // ✅ Use orderBy (not addOrderBy) since this is the primary sort
+  qb.orderBy(`${primaryEmailAlias}.value`, sortCondition.direction, 'NULLS LAST');
+}
+```
+
+### Query Format Handling
+
+| Stage | sort format | Example |
+|-------|-------------|---------|
+| URL query string | JSON string | `?sort=[{"field":"primaryEmail","direction":"ASC"}]` |
+| After JSON.parse | Array | `[{field: "primaryEmail", direction: "ASC"}]` |
+| After Zod parsing | Object | `{conditions: [{field: "primaryEmail", direction: "ASC"}]}` |
+
+**Critical**: Extraction methods must handle the **array format** because they run before Zod parsing.
+
 ## Type Casting Rules (NEW)
 
 ### Rule 1: Search Operations (Always Cast)
@@ -449,5 +607,14 @@ if (error.code === '22P02') { // Invalid input syntax
 
 ❌ **Over-fetching data** → Poor performance
 ✅ Use field selection + pagination
+
+❌ **Sorting on virtual relation fails validation** → "Invalid sort field: primaryEmail"
+✅ Extract relational sort before validation, apply custom JOIN in repository
+
+❌ **Default sort overrides relational sort** → User's sort request ignored
+✅ Pass `{ skipDefaultSort: true }` to findWithQuery when relational sort applied
+
+❌ **Extraction expects normalized format but receives array** → Extraction returns empty
+✅ Handle both `[{...}]` (raw) and `{conditions: [{...}]}` (normalized) formats
 
 This comprehensive query system provides type safety, validation, efficient data loading, and excellent error handling across the entire query pipeline.

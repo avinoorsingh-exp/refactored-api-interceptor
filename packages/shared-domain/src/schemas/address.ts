@@ -75,7 +75,7 @@ export const AddressBaseSchema = z
 		postalCode: PostalCode,
 		county: County.nullable().optional(),
 		label: Label.nullable().optional(),
-		stateId: z.string().uuid({ message: 'errors.address.stateId.invalid' }),
+		stateId: z.string().uuid({ message: 'errors.address.stateId.invalid' }).nullable().optional(),
 		created: InstantUTC,
 		lastModified: InstantUTC,
 		modifiedBy: z.string().optional(),
@@ -139,7 +139,7 @@ export const CreateAddressInput = z.object({
 	postalCode: PostalCode,
 	county: County.optional().nullable(),
 	label: Label.optional().nullable(),
-	stateId: z.string().uuid(),
+	stateId: z.string().uuid().nullable().optional(),
 })
 
 /**
