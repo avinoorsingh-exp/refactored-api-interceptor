@@ -1,4 +1,3 @@
-
 import {
   CallHandler,
   ExecutionContext,
@@ -62,19 +61,9 @@ export class PaginationInterceptor implements NestInterceptor {
     const req = http.getRequest<Request>();
     const res = http.getResponse<Response>();
 
-    
     // Parse & normalize query with Zod (coercion + defaults + caps).
-    // Values > LIMIT_MAX are clamped to LIMIT_MAX (no error thrown).
-    // Invalid values (non-integers, negative offset) will throw 400.
+    // If invalid (limit > 50, negative, etc.), this will throw 400.
     const normalized: NormalizedPagination = this.parseAndNormalizeQuery(req.query);
-
-    // Update req.query with normalized/clamped values so downstream code uses correct values
-    // This ensures controllers and services receive the clamped limit value
-    // Use Object.assign to ensure proper mutation of Express query object
-    Object.assign(req.query, {
-      offset: String(normalized.offset),
-      limit: String(normalized.limit),
-    });
 
     const {
       countLess = false,
