@@ -2,12 +2,16 @@ import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Producer } from 'kafkajs';
 import { KafkaClientService } from './kafka-client.service.js';
 import { LoggerService } from '../../core/logger.service.js';
+import { ConfigService } from '../../core/config.service.js';
 
 /**
  * Kafka Producer Service
  * 
  * Provides functionality to produce messages to Kafka topics.
  * Manages producer lifecycle and connection.
+ * 
+ * Note: Kafka producer is disabled when NODE_ENV === 'local' to prevent
+ * connection attempts in local development environments.
  */
 @Injectable()
 export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
@@ -16,6 +20,7 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
 
 	constructor(
 		private readonly kafkaClientService: KafkaClientService,
+		private readonly configService: ConfigService,
 		loggerService: LoggerService,
 	) {
 		this.logger = loggerService;
@@ -23,6 +28,14 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
 	}
 
 	async onModuleInit() {
+		const nodeEnv = this.configService.get('NODE_ENV');
+		
+		// Skip Kafka producer initialization in local environment
+		if (nodeEnv === 'local') {
+			this.logger.info('Kafka producer skipped - NODE_ENV is "local". Kafka integration only runs in AWS environments.');
+			return;
+		}
+
 		// Attempt to connect, but don't fail startup if connection fails
 		try {
 			await this.connect();
@@ -35,6 +48,13 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
 	}
 
 	async onModuleDestroy() {
+		const nodeEnv = this.configService.get('NODE_ENV');
+		
+		// Skip Kafka producer shutdown in local environment
+		if (nodeEnv === 'local') {
+			return;
+		}
+
 		await this.disconnect();
 	}
 

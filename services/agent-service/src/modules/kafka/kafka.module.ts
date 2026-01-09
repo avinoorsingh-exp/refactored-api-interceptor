@@ -3,12 +3,16 @@ import { KafkaClientService } from './kafka-client.service.js';
 import { KafkaProducerService } from './kafka-producer.service.js';
 import { EnterpriseAgentUpdatedConsumer } from './consumers/enterprise-agent-updated.consumer.js';
 import { LoggerService } from '../../core/logger.service.js';
+import { ConfigService } from '../../core/config.service.js';
 
 /**
  * Kafka Module
  * 
  * Provides Kafka consumer and producer functionality.
  * Automatically starts consumers on module initialization.
+ * 
+ * Note: Kafka integration is disabled when NODE_ENV === 'local' to prevent
+ * connection attempts in local development environments.
  */
 @Module({
 	providers: [
@@ -24,12 +28,21 @@ import { LoggerService } from '../../core/logger.service.js';
 export class KafkaModule implements OnModuleInit, OnModuleDestroy {
 	constructor(
 		private readonly logger: LoggerService,
+		private readonly configService: ConfigService,
 		private readonly enterpriseAgentUpdatedConsumer: EnterpriseAgentUpdatedConsumer,
 	) {
 		this.logger.setContext('KafkaModule');
 	}
 
 	async onModuleInit() {
+		const nodeEnv = this.configService.get('NODE_ENV');
+		
+		// Skip Kafka initialization in local environment
+		if (nodeEnv === 'local') {
+			this.logger.info('Kafka module skipped - NODE_ENV is "local". Kafka integration only runs in AWS environments.');
+			return;
+		}
+
 		this.logger.info('Initializing Kafka module...');
 		try {
 			await this.enterpriseAgentUpdatedConsumer.start();
@@ -45,6 +58,13 @@ export class KafkaModule implements OnModuleInit, OnModuleDestroy {
 	}
 
 	async onModuleDestroy() {
+		const nodeEnv = this.configService.get('NODE_ENV');
+		
+		// Skip Kafka shutdown in local environment
+		if (nodeEnv === 'local') {
+			return;
+		}
+
 		this.logger.info('Shutting down Kafka module...');
 		try {
 			await this.enterpriseAgentUpdatedConsumer.stop();

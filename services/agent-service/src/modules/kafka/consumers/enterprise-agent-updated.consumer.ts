@@ -30,10 +30,25 @@ export class EnterpriseAgentUpdatedConsumer implements OnModuleInit, OnModuleDes
 	}
 
 	async onModuleInit() {
+		const nodeEnv = this.configService.get('NODE_ENV');
+		
+		// Skip Kafka consumer initialization in local environment
+		if (nodeEnv === 'local') {
+			this.logger.info('Kafka consumer skipped - NODE_ENV is "local". Kafka integration only runs in AWS environments.');
+			return;
+		}
+
 		await this.start();
 	}
 
 	async onModuleDestroy() {
+		const nodeEnv = this.configService.get('NODE_ENV');
+		
+		// Skip Kafka consumer shutdown in local environment
+		if (nodeEnv === 'local') {
+			return;
+		}
+
 		await this.stop();
 	}
 
