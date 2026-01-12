@@ -1,3 +1,4 @@
+
 import 'reflect-metadata';
 
 const SEARCHABLE_FIELDS_KEY = Symbol('searchableFields');
@@ -258,7 +259,6 @@ export interface SearchableOptions {
  */
 export function Searchable(options: SearchableOptions = {}) {
   return function (target: any, propertyKey: string) {
-   
     // Store in simple array for backward compatibility (getSearchableFields)
     const existingFields = Reflect.getMetadata(SEARCHABLE_FIELDS_KEY, target.constructor) || [];
     Reflect.defineMetadata(
@@ -385,15 +385,7 @@ export function Sortable() {
  * @returns Array of property names marked with @Searchable
  */
 export function getSearchableFields(target: any): string[] {
-  // Try multiple locations where metadata might be stored
-  let fields = Reflect.getMetadata(SEARCHABLE_FIELDS_KEY, target);
-  if (!fields || fields.length === 0) {
-    fields = Reflect.getMetadata(SEARCHABLE_FIELDS_KEY, target.prototype);
-  }
-  if (!fields || fields.length === 0) {
-    fields = Reflect.getMetadata(SEARCHABLE_FIELDS_KEY, target.constructor);
-  }
-  return fields || [];
+  return Reflect.getMetadata(SEARCHABLE_FIELDS_KEY, target) || [];
 }
 
 /**
@@ -401,133 +393,21 @@ export function getSearchableFields(target: any): string[] {
  * @returns Map of property names to their SearchableOptions
  */
 export function getSearchableFieldsConfig(target: any): Map<string, SearchableOptions> {
-  // The decorator stores on target.constructor where target is the prototype
-  // When we pass the class directly, metadata is on the class itself
-  // So check the class first, then prototype.constructor (which is also the class)
-  
-  // Try the class directly first (this is where the decorator stores it)
-  let config = Reflect.getMetadata(SEARCHABLE_CONFIG_KEY, target);
-  // If target is a class and has prototype, check if metadata is on prototype.constructor
-  // (The decorator stores on prototype.constructor, which is the class when target is the class)
-  if ((!config || config.size === 0) && target && target.prototype) {
-    const prototypeConstructor = target.prototype.constructor;
-    if (prototypeConstructor && prototypeConstructor !== Object && prototypeConstructor === target) {
-      // prototype.constructor is the class itself, check it
-      config = Reflect.getMetadata(SEARCHABLE_CONFIG_KEY, prototypeConstructor); 
-    }
-    // Also check prototype itself
-    if ((!config || config.size === 0)) {
-      config = Reflect.getMetadata(SEARCHABLE_CONFIG_KEY, target.prototype);  
-    }
-  }
-  // If still not found, try target.constructor (for cases where target is an instance)
-  if ((!config || config.size === 0) && target && target.constructor && 
-      target.constructor !== Object && target.constructor !== target) {
-    config = Reflect.getMetadata(SEARCHABLE_CONFIG_KEY, target.constructor);
-  }
-  const result = config || new Map();
-  return result;
+  return Reflect.getMetadata(SEARCHABLE_CONFIG_KEY, target) || new Map();
 }
 
-/**
- * Get filterable field names, traversing the inheritance chain
- * @returns Array of property names marked with @Filterable from this class and parent classes
- */
 export function getFilterableFields(target: any): string[] {
-  const fields = new Set<string>();
-  
-  // Get the class constructor (decorators store metadata on constructor)
-  let cls: any;
-  if (typeof target === 'function') {
-    cls = target; // It's a class constructor
-  } else if (target && target.constructor && typeof target.constructor === 'function') {
-    cls = target.constructor; // It's an instance or prototype
-  } else {
-    // Fallback: return empty array if we can't determine the class
-    return [];
-  }
-  
-  // Traverse up the inheritance chain
-  let currentClass = cls;
-  while (currentClass && currentClass !== Object && currentClass !== Function.prototype) {
-    // Get fields from this class constructor (where decorators store metadata)
-    const classFields = Reflect.getMetadata(FILTERABLE_FIELDS_KEY, currentClass) || [];
-    classFields.forEach((field: string) => fields.add(field));
-    
-    // Move to parent class
-    currentClass = Object.getPrototypeOf(currentClass);
-  }
-  
-  return Array.from(fields);
+  return Reflect.getMetadata(FILTERABLE_FIELDS_KEY, target) || [];
 }
 
 /**
- * Get filterable fields with their configuration options, traversing the inheritance chain
- * @returns Map of property names to their FilterableOptions from this class and parent classes
+ * Get filterable fields with their configuration options
+ * @returns Map of property names to their FilterableOptions
  */
 export function getFilterableFieldsConfig(target: any): Map<string, FilterableOptions> {
-  const config = new Map<string, FilterableOptions>();
-  
-  // Get the class constructor (decorators store metadata on constructor)
-  let cls: any;
-  if (typeof target === 'function') {
-    cls = target; // It's a class constructor
-  } else if (target && target.constructor && typeof target.constructor === 'function') {
-    cls = target.constructor; // It's an instance or prototype
-  } else {
-    // Fallback: return empty map if we can't determine the class
-    return new Map();
-  }
-  
-  // Traverse up the inheritance chain (parent classes first, then child classes)
-  // This way child class config overrides parent class config
-  const classChain: any[] = [];
-  let currentClass = cls;
-  while (currentClass && currentClass !== Object && currentClass !== Function.prototype) {
-    classChain.push(currentClass);
-    currentClass = Object.getPrototypeOf(currentClass);
-  }
-  
-  // Process from parent to child (so child overrides parent)
-  classChain.reverse().forEach((currentClass) => {
-    const classConfig = Reflect.getMetadata(FILTERABLE_CONFIG_KEY, currentClass) || new Map();
-    classConfig.forEach((value: FilterableOptions, key: string) => {
-      // Child class config overrides parent class config
-      config.set(key, value);
-    });
-  });
-  
-  return config;
+  return Reflect.getMetadata(FILTERABLE_CONFIG_KEY, target) || new Map();
 }
 
-/**
- * Get sortable field names, traversing the inheritance chain
- * @returns Array of property names marked with @Sortable from this class and parent classes
- */
 export function getSortableFields(target: any): string[] {
-  const fields = new Set<string>();
-  
-  // Get the class constructor (decorators store metadata on constructor)
-  let cls: any;
-  if (typeof target === 'function') {
-    cls = target; // It's a class constructor
-  } else if (target && target.constructor && typeof target.constructor === 'function') {
-    cls = target.constructor; // It's an instance or prototype
-  } else {
-    // Fallback: return empty array if we can't determine the class
-    return [];
-  }
-  
-  // Traverse up the inheritance chain
-  let currentClass = cls;
-  while (currentClass && currentClass !== Object && currentClass !== Function.prototype) {
-    // Get fields from this class constructor (where decorators store metadata)
-    const classFields = Reflect.getMetadata(SORTABLE_FIELDS_KEY, currentClass) || [];
-    classFields.forEach((field: string) => fields.add(field));
-    
-    // Move to parent class
-    currentClass = Object.getPrototypeOf(currentClass);
-  }
-  
-  return Array.from(fields);
+  return Reflect.getMetadata(SORTABLE_FIELDS_KEY, target) || [];
 }

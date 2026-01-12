@@ -37,7 +37,6 @@ export class StateEntity extends SearchableAuditableEntity {
 	code!: string
 
 	@Column({ name: 'is_active', type: 'boolean' })
-	@Searchable({ type: 'boolean', weight: 3, behavior: 'exact', description: 'Whether the state is active' })
 	@Filterable()
 	@Sortable()
 	isActive!: boolean
