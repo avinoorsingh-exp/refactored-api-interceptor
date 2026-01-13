@@ -147,6 +147,17 @@ export const numericString = (message?: string) =>
     );
 
 /**
+ * BigInt string validator.
+ * Validates that the string contains only digits (PostgreSQL bigint as string).
+ * Use for primary keys and foreign keys that are bigint in the database.
+ * 
+ * @example
+ * id: bigIntString('errors.address.id.invalid')
+ */
+export const bigIntString = (message?: string) =>
+  z.string().regex(/^\d+$/, { message: message || 'Must be a valid numeric ID' });
+
+/**
  * ZIP code (US 5-digit, trimmed)
  */
 export const zipCodeString = (message?: string) =>
@@ -182,6 +193,23 @@ export const phoneString = (message?: string) =>
       z.string().regex(
         /^(\+1[-.]?)?\(?([0-9]{3})\)?[-.]?([0-9]{3})[-.]?([0-9]{4})$/,
         message || 'Must be a valid US phone number'
+      )
+    );
+
+/**
+ * Phone number (E.164 international format, trimmed)
+ * Format: +[country code][subscriber number]
+ * - Starts with + followed by country code (1-3 digits, cannot start with 0)
+ * - Total length: 8-15 digits including country code
+ * Examples: +14155552671, +442071234567, +61412345678
+ */
+export const phoneE164String = (message?: string) =>
+  z.string()
+    .transform((val) => val.trim().replace(/[\s\-\.\(\)]/g, ''))
+    .pipe(
+      z.string().regex(
+        /^\+[1-9]\d{6,14}$/,
+        message || 'Must be a valid E.164 phone number (e.g., +14155552671)'
       )
     );
 

@@ -50,7 +50,8 @@
 		"helmet": "^8.1.0",
 		"compression": "^1.8.0",
 		"class-validator": "^0.14.2",
-		"class-transformer": "^0.5.1"
+		"class-transformer": "^0.5.1",
+		"kafkajs": "^2.2.4"
 	},
 	"devDependencies": {
 		"@nestjs/cli": "^10.3.0",

@@ -9,14 +9,14 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * Affected tables:
  * - agent, social, contact_method, public_profile, license, country,
  *   artifact, program, office, mls, address, region, email_forward,
- *   pay_plan, agent_company, company, w9
+ *   pay_plan, agent_company, company, w9, state, agent_address, agent_mls
  *
  * This migration is idempotent - safe to run multiple times.
  */
 export class AddMxidToAuditableTables1766800000000 implements MigrationInterface {
 	name = 'AddMxidToAuditableTables1766800000000';
 
-	// All tables that extend AuditableEntity
+	// All tables that extend AuditableEntity + junction tables
 	private readonly tables = [
 		'agent',
 		'social',
@@ -35,6 +35,9 @@ export class AddMxidToAuditableTables1766800000000 implements MigrationInterface
 		'agent_company',
 		'company',
 		'w9',
+		'state',
+		'agent_address',
+		'agent_mls',
 	];
 
 	public async up(queryRunner: QueryRunner): Promise<void> {

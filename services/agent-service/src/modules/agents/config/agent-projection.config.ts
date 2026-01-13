@@ -8,8 +8,8 @@ import { ProjectionConfig } from '@exprealty/shared-domain';
  * This config controls the top-level includes.
  */
 export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
-	// Always included (primary key)
-	required: ['id'],
+	// Always included (primary key + default sort field)
+	required: ['id', 'agentId'],
 
 	// Allowed fields for projection
 	allowed: [
@@ -99,6 +99,7 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		address: {
 			property: 'addresses',
 			fields: ['id', 'type', 'role', 'line1', 'line2', 'city', 'unit', 'postalCode', 'county', 'label', 'stateId'],
+			nested: ['state'], // Include state entity for address.state projection
 			// TypeORM handles junction table transparently via @ManyToMany (like mls)
 		},
 		agentAddress: {

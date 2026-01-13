@@ -5,7 +5,7 @@ import { ConfigModule } from './core/config.module.js'
 import { LoggerModule } from './core/logger.module.js'
 import { QueryModule } from './common/query/query.module.js'
 import { MetadataModule } from './modules/metadata/metadata.module.js'
-import { AgentController } from './app.controller.js'
+import { AgentController, RootHealthController } from './app.controller.js'
 import { CountriesModule } from './modules/countries/countries.module.js'
 import { CompaniesModule } from './modules/companies/companies.module.js'
 import { RegionsModule } from './modules/regions/regions.module.js'
@@ -14,6 +14,7 @@ import { PayPlansModule } from './modules/pay-plans/pay-plans.module.js'
 import { OfficesModule } from './modules/offices/offices.module.js'
 import { MLSModule } from './modules/mls/mls.module.js'
 import { AgentModule } from './modules/agents/agent.module.js'
+import { KafkaModule } from './modules/kafka/kafka.module.js'
 import { CorrelationIdMiddleware } from './common/correlation-id.middleware.js'
 
 @Module({
@@ -31,8 +32,9 @@ import { CorrelationIdMiddleware } from './common/correlation-id.middleware.js'
     OfficesModule,
     MLSModule,
     AgentModule,
+    KafkaModule,
 	],
-	controllers: [AgentController],
+	controllers: [AgentController, RootHealthController],
 	providers: [],
 })
 export class AppModule implements NestModule {

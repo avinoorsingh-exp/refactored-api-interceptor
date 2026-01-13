@@ -89,6 +89,7 @@ export class AddressEntity extends AuditableEntity {
 
 	/**
 	 * Foreign key to State entity.
+	 * Optional - addresses may not have a state (e.g., international addresses).
 	 * @public
 	 */
 	@Column({ name: 'state_id', type: 'uuid', nullable: true })
@@ -98,7 +99,7 @@ export class AddressEntity extends AuditableEntity {
 	 * Many-to-One relationship with State.
 	 * @public
 	 */
-	@ManyToOne(() => StateEntity, { nullable: true })
+	@ManyToOne(() => StateEntity)
 	@JoinColumn({ name: 'state_id' })
 	state?: StateEntity
 }

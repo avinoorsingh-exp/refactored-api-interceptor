@@ -26,16 +26,17 @@ import type { PublicProfileEntity } from './public-profile.entity.js'
 export type AgentTitle = 'Mr' | 'Mrs' | 'Ms' | 'Miss'
 
 /**
- * Agent lifecycle status enum values (lowercase).
+ * Agent lifecycle status enum values (PascalCase).
+ * Matches migration data format.
  * @public
  */
 export type AgentLifecycleStatus =
-	| 'joining'
-	| 'active'
-	| 'inactive'
-	| 'vested'
-	| 'vested retired'
-	| 'lead only'
+	| 'Joining'
+	| 'Active'
+	| 'InActive'
+	| 'Vested'
+	| 'VestedRetired'
+	| 'LeadOnly'
 
 /**
  * TypeORM entity for Agent table.
@@ -137,11 +138,11 @@ export class AgentEntity extends AuditableEntity {
 
 	/**
 	 * Agent lifecycle status.
-	 * Defaults to 'joining' for new agents.
+	 * Defaults to 'Joining' for new agents.
 	 * @public
 	 */
-	@Column({ name: 'lifecycle_status', type: 'text', default: 'joining' })
-	@Searchable({ weight: 7, behavior: 'exact', description: 'Agent lifecycle status (Joining, Active, Inactive, Vested, Vested Retired, Lead Only)' })
+	@Column({ name: 'lifecycle_status', type: 'text', default: 'Joining' })
+	@Searchable({ weight: 7, behavior: 'exact', description: 'Agent lifecycle status (Joining, Active, InActive, Vested, VestedRetired, LeadOnly)' })
 	@Filterable()
 	@Sortable()
 	lifecycleStatus!: AgentLifecycleStatus
@@ -212,7 +213,6 @@ export class AgentEntity extends AuditableEntity {
 	 * @public
 	 */
 	@Column({ name: 'agent_company_id', type: 'uuid', nullable: true })
-	@Searchable({ weight: 3, behavior: 'exact', description: 'Agent company ID reference (UUID)' })
 	@Filterable()
 	@Sortable()
 	agentCompanyId?: string

@@ -7,10 +7,11 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
  */
 export class UpdateAgentDto {
 	@ApiPropertyOptional({
-		description: 'Agent company ID (UUID)',
-		example: '550e8400-e29b-41d4-a716-446655440000',
+		description: 'Agent title (Mr, Mrs, Ms, Miss)',
+		example: 'Mr',
+		enum: ['Mr', 'Mrs', 'Ms', 'Miss'],
 	})
-	agentCompanyId?: string;
+	title?: string;
 
 	@ApiPropertyOptional({
 		description: 'Agent first/given name',
@@ -21,18 +22,20 @@ export class UpdateAgentDto {
 	firstName?: string;
 
 	@ApiPropertyOptional({
+		description: 'Agent middle name',
+		example: 'Michael',
+		minLength: 1,
+		maxLength: 50,
+	})
+	middleName?: string;
+
+	@ApiPropertyOptional({
 		description: 'Agent last/family name',
 		example: 'Smith',
 		minLength: 2,
 		maxLength: 50,
 	})
 	lastName?: string;
-
-	@ApiPropertyOptional({
-		description: 'Agent preferred/display name',
-		example: 'Johnny',
-	})
-	preferredName?: string;
 
 	@ApiPropertyOptional({
 		description: 'Name suffix (Jr, Sr, II, III, etc.)',
@@ -42,14 +45,66 @@ export class UpdateAgentDto {
 	suffix?: string;
 
 	@ApiPropertyOptional({
-		description: 'Agent email address',
-		example: 'john.smith@example.com',
+		description: 'Agent preferred/display name',
+		example: 'Johnny',
+		minLength: 2,
+		maxLength: 50,
 	})
-	email?: string;
+	preferredName?: string;
 
 	@ApiPropertyOptional({
-		description: 'Agent birth date (YYYY-MM-DD)',
+		description: 'Agent birth date',
 		example: '1985-06-15',
 	})
-	birthDate?: string;
+	birthDate?: Date;
+
+	@ApiPropertyOptional({
+		description: 'Agent lifecycle status',
+		example: 'Active',
+		enum: ['Joining', 'Active', 'InActive', 'Vested', 'VestedRetired', 'LeadOnly'],
+	})
+	lifecycleStatus?: string;
+
+	@ApiPropertyOptional({
+		description: 'System ID reference',
+		example: 12345,
+	})
+	systemId?: number;
+
+	@ApiPropertyOptional({
+		description: 'Agent company ID (UUID)',
+		example: '550e8400-e29b-41d4-a716-446655440000',
+		nullable: true,
+	})
+	agentCompanyId?: string | null;
+
+	@ApiPropertyOptional({
+		description: 'Whether agent is a seed agent',
+		example: false,
+	})
+	seedAgent?: boolean;
+
+	@ApiPropertyOptional({
+		description: 'Date when agent joined',
+		example: '2020-01-15T00:00:00.000Z',
+	})
+	joinDate?: Date;
+
+	@ApiPropertyOptional({
+		description: 'Agent anniversary date',
+		example: '2021-01-15T00:00:00.000Z',
+	})
+	anniversaryDate?: Date;
+
+	@ApiPropertyOptional({
+		description: 'Date when agent was terminated',
+		example: null,
+	})
+	terminationDate?: Date;
+
+	@ApiPropertyOptional({
+		description: 'Whether agent is staff',
+		example: false,
+	})
+	isStaff?: boolean;
 }

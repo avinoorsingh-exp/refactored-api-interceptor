@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "agents-api-query-tests",
+    "_postman_id": "agents-api-query-tests-v2",
     "name": "Agents API - Query/Filter/Sort/Search Tests",
     "description": "Comprehensive Postman collection for Agents API testing CRUD, search, filter, and sort capabilities using the JSON query syntax. Tests include bigint/UUID field handling and type-aware text search.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
@@ -18,6 +18,11 @@
     },
     {
       "key": "agentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "agentIdBigint",
       "value": "",
       "type": "string"
     },
@@ -180,10 +185,10 @@
       ]
     },
     {
-      "name": "1. Pagination Tests",
+      "name": "1. Pagination Tests (AC-1)",
       "item": [
         {
-          "name": "Default Pagination",
+          "name": "AC1.1 - Default Pagination",
           "event": [
             {
               "listen": "test",
@@ -214,7 +219,7 @@
           }
         },
         {
-          "name": "Custom Offset and Limit",
+          "name": "AC1.2 - Custom Offset and Limit",
           "event": [
             {
               "listen": "test",
@@ -247,7 +252,7 @@
           }
         },
         {
-          "name": "Page 2",
+          "name": "AC1.3 - Page 2",
           "event": [
             {
               "listen": "test",
@@ -280,10 +285,10 @@
       ]
     },
     {
-      "name": "2. Sorting Tests",
+      "name": "2. Sorting Tests (AC-2)",
       "item": [
         {
-          "name": "Sort by lastName ASC",
+          "name": "AC2.1 - Sort by lastName ASC",
           "event": [
             {
               "listen": "test",
@@ -317,7 +322,7 @@
           }
         },
         {
-          "name": "Sort by lastName DESC",
+          "name": "AC2.2 - Sort by lastName DESC",
           "event": [
             {
               "listen": "test",
@@ -351,7 +356,33 @@
           }
         },
         {
-          "name": "Sort by agentId (bigint) DESC",
+          "name": "AC2.3 - Sort by firstName ASC",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents?sort={\"conditions\":[{\"field\":\"firstName\",\"direction\":\"ASC\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents"],
+              "query": [
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"firstName\",\"direction\":\"ASC\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC2.4 - Sort by agentId (bigint) DESC",
           "event": [
             {
               "listen": "test",
@@ -386,7 +417,7 @@
           }
         },
         {
-          "name": "Sort by joinDate DESC",
+          "name": "AC2.5 - Sort by joinDate DESC",
           "event": [
             {
               "listen": "test",
@@ -412,7 +443,7 @@
           }
         },
         {
-          "name": "Multi-field Sort (lifecycleStatus DESC, lastName ASC)",
+          "name": "AC2.6 - Multi-field Sort (lifecycleStatus DESC, lastName ASC)",
           "event": [
             {
               "listen": "test",
@@ -438,7 +469,7 @@
           }
         },
         {
-          "name": "Invalid Sort Field (should fail 400)",
+          "name": "AC2.7 - Invalid Sort Field (should fail)",
           "event": [
             {
               "listen": "test",
@@ -472,10 +503,10 @@
       ]
     },
     {
-      "name": "3. Filter Tests - Basic Operators",
+      "name": "3. Filter Tests - Basic Operators (AC-3)",
       "item": [
         {
-          "name": "Filter by lifecycleStatus EQ active",
+          "name": "AC3.1 - Filter by lifecycleStatus EQ active",
           "event": [
             {
               "listen": "test",
@@ -505,7 +536,7 @@
           }
         },
         {
-          "name": "Filter by lifecycleStatus NE active",
+          "name": "AC3.2 - Filter by lifecycleStatus NE active",
           "event": [
             {
               "listen": "test",
@@ -535,7 +566,7 @@
           }
         },
         {
-          "name": "Filter by firstName LIKE",
+          "name": "AC3.3 - Filter by firstName ILIKE",
           "event": [
             {
               "listen": "test",
@@ -565,7 +596,7 @@
           }
         },
         {
-          "name": "Filter by seedAgent EQ true (boolean)",
+          "name": "AC3.4 - Filter by seedAgent EQ true (boolean)",
           "event": [
             {
               "listen": "test",
@@ -595,7 +626,7 @@
           }
         },
         {
-          "name": "Filter by isStaff EQ false (boolean)",
+          "name": "AC3.5 - Filter by isStaff EQ false (boolean)",
           "event": [
             {
               "listen": "test",
@@ -625,7 +656,37 @@
           }
         },
         {
-          "name": "Invalid Filter Field (should fail 400)",
+          "name": "AC3.6 - Filter by firstName startsWith",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('All results start with T', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    jsonData.data.forEach(a => pm.expect(a.firstName.toLowerCase()).to.match(/^t/));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents?filter={\"conditions\":[{\"field\":\"firstName\",\"operator\":\"startsWith\",\"value\":\"T\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents"],
+              "query": [
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"firstName\",\"operator\":\"startsWith\",\"value\":\"T\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC3.7 - Invalid Filter Field (should fail 400)",
           "event": [
             {
               "listen": "test",
@@ -660,11 +721,11 @@
       ]
     },
     {
-      "name": "4. Filter Tests - Bigint/UUID Columns",
+      "name": "4. Filter Tests - Bigint/UUID Columns (AC-4)",
       "description": "Tests for filtering on bigint and UUID columns with type-aware casting",
       "item": [
         {
-          "name": "Filter agentId (bigint) EQ - no cast needed",
+          "name": "AC4.1 - Filter agentId (bigint) EQ",
           "event": [
             {
               "listen": "test",
@@ -690,7 +751,7 @@
           }
         },
         {
-          "name": "Filter agentId (bigint) LIKE - needs cast to text",
+          "name": "AC4.2 - Filter agentId (bigint) LIKE - needs cast",
           "event": [
             {
               "listen": "test",
@@ -720,7 +781,7 @@
           }
         },
         {
-          "name": "Filter agentId (bigint) ILIKE - needs cast to text",
+          "name": "AC4.3 - Filter agentId (bigint) ILIKE - needs cast",
           "event": [
             {
               "listen": "test",
@@ -750,7 +811,7 @@
           }
         },
         {
-          "name": "Filter agentId (bigint) contains - needs cast to text",
+          "name": "AC4.4 - Filter agentId (bigint) contains - needs cast",
           "event": [
             {
               "listen": "test",
@@ -780,7 +841,7 @@
           }
         },
         {
-          "name": "Filter id (UUID) LIKE - needs cast to text",
+          "name": "AC4.5 - Filter id (UUID) LIKE - needs cast",
           "event": [
             {
               "listen": "test",
@@ -810,16 +871,18 @@
           }
         },
         {
-          "name": "Filter firstName (text) startsWith - no cast needed",
+          "name": "AC4.6 - Filter id (UUID) EQ",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
                   "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
-                  "pm.test('All results start with T', function () {",
+                  "pm.test('Result has correct id', function () {",
                   "    const jsonData = pm.response.json();",
-                  "    jsonData.data.forEach(a => pm.expect(a.firstName.toLowerCase()).to.match(/^t/));",
+                  "    if (jsonData.data.length > 0) {",
+                  "        pm.expect(jsonData.data[0].id).to.equal(pm.collectionVariables.get('agentId'));",
+                  "    }",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -830,11 +893,11 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{baseUrl}}/{{apiVersion}}/agents?filter={\"conditions\":[{\"field\":\"firstName\",\"operator\":\"startsWith\",\"value\":\"T\"}]}",
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents?filter={\"conditions\":[{\"field\":\"id\",\"operator\":\"eq\",\"value\":\"{{agentId}}\"}]}",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "agents"],
               "query": [
-                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"firstName\",\"operator\":\"startsWith\",\"value\":\"T\"}]}"}
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"id\",\"operator\":\"eq\",\"value\":\"{{agentId}}\"}]}"}
               ]
             }
           }
@@ -842,10 +905,10 @@
       ]
     },
     {
-      "name": "5. Search Tests",
+      "name": "5. Search Tests (AC-5)",
       "item": [
         {
-          "name": "Search by firstName",
+          "name": "AC5.1 - Search by firstName",
           "event": [
             {
               "listen": "test",
@@ -872,7 +935,7 @@
           }
         },
         {
-          "name": "Search by lastName",
+          "name": "AC5.2 - Search by lastName",
           "event": [
             {
               "listen": "test",
@@ -899,7 +962,7 @@
           }
         },
         {
-          "name": "Search across multiple fields",
+          "name": "AC5.3 - Search across multiple fields",
           "event": [
             {
               "listen": "test",
@@ -926,7 +989,7 @@
           }
         },
         {
-          "name": "Search by agentId (bigint)",
+          "name": "AC5.4 - Search by agentId (bigint)",
           "event": [
             {
               "listen": "test",
@@ -957,7 +1020,7 @@
           }
         },
         {
-          "name": "Search default (all searchable fields)",
+          "name": "AC5.5 - Search default (all searchable fields)",
           "event": [
             {
               "listen": "test",
@@ -985,10 +1048,10 @@
       ]
     },
     {
-      "name": "6. Combined Query Tests",
+      "name": "6. Combined Query Tests (AC-6)",
       "item": [
         {
-          "name": "Filter + Sort + Pagination",
+          "name": "AC6.1 - Filter + Sort + Pagination",
           "event": [
             {
               "listen": "test",
@@ -1026,7 +1089,7 @@
           }
         },
         {
-          "name": "Search + Filter + Sort",
+          "name": "AC6.2 - Search + Filter + Sort",
           "event": [
             {
               "listen": "test",
@@ -1055,7 +1118,7 @@
           }
         },
         {
-          "name": "Multiple Filters with AND",
+          "name": "AC6.3 - Multiple Filters with AND",
           "event": [
             {
               "listen": "test",
@@ -1088,7 +1151,7 @@
           }
         },
         {
-          "name": "Multiple Filters with OR",
+          "name": "AC6.4 - Multiple Filters with OR",
           "event": [
             {
               "listen": "test",
@@ -1158,6 +1221,314 @@
               "raw": "{{baseUrl}}/{{apiVersion}}/agents/metadata",
               "host": ["{{baseUrl}}"],
               "path": ["{{apiVersion}}", "agents", "metadata"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Edge Cases",
+      "item": [
+        {
+          "name": "EC1 - Empty search term (returns all)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Returns all results', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents?search=",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents"],
+              "query": [
+                {"key": "search", "value": ""}
+              ]
+            }
+          }
+        },
+        {
+          "name": "EC2 - Negative offset (should fail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents?offset=-1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents"],
+              "query": [
+                {"key": "offset", "value": "-1"},
+                {"key": "limit", "value": "10"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "EC3 - Zero limit (should fail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents?offset=0&limit=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents"],
+              "query": [
+                {"key": "offset", "value": "0"},
+                {"key": "limit", "value": "0"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "EC4 - Invalid ID format (non-UUID)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 or 404', function () {",
+                  "    pm.expect([400, 404]).to.include(pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents/invalid-id",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents", "invalid-id"]
+            }
+          }
+        },
+        {
+          "name": "EC5 - Invalid filter operator",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents?filter={\"conditions\":[{\"field\":\"firstName\",\"operator\":\"invalidOp\",\"value\":\"test\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents"],
+              "query": [
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"firstName\",\"operator\":\"invalidOp\",\"value\":\"test\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "EC6 - Malformed JSON in filter",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents?filter={invalid-json}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents"],
+              "query": [
+                {"key": "filter", "value": "{invalid-json}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "EC7 - Malformed JSON in sort",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents?sort={not-valid-json}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents"],
+              "query": [
+                {"key": "sort", "value": "{not-valid-json}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "EC8 - Invalid sort direction",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents?sort={\"conditions\":[{\"field\":\"lastName\",\"direction\":\"INVALID\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents"],
+              "query": [
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"lastName\",\"direction\":\"INVALID\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "EC9 - Very large offset",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Returns empty array', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.length).to.equal(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents?offset=999999&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents"],
+              "query": [
+                {"key": "offset", "value": "999999"},
+                {"key": "limit", "value": "10"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "EC10 - Create Agent without required fields",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents"]
+            }
+          }
+        },
+        {
+          "name": "EC11 - Bigint overflow protection (agentId search)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 (validation error, not 500)', function () {",
+                  "    pm.expect(pm.response.code).to.not.equal(500);",
+                  "    pm.expect([200, 400]).to.include(pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents?search=99999999999999999999999999999&searchFields=agentId",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents"],
+              "query": [
+                {"key": "search", "value": "99999999999999999999999999999"},
+                {"key": "searchFields", "value": "agentId"}
+              ]
             }
           }
         }

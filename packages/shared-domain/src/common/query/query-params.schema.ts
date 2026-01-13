@@ -52,12 +52,12 @@ export const QueryParamsSchema = PaginationQuerySchema.extend({
         } catch (e) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: 'Invalid filter JSON format',
+            message: 'Invalid filter format. Expected JSON array: [{"field":"fieldName","operator":"eq|ne|gt|gte|lt|lte|like|in","value":"..."}]',
           });
           return z.NEVER;
         }
       }
-      
+
       return undefined;
     })
     .optional(),
@@ -106,7 +106,7 @@ export const QueryParamsSchema = PaginationQuerySchema.extend({
         } catch (e) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: 'Invalid sort JSON format',
+            message: 'Invalid sort format. Expected JSON array: [{"field":"fieldName","direction":"ASC|DESC"}]',
           });
           return z.NEVER;
         }
