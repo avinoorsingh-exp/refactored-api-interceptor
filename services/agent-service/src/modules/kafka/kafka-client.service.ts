@@ -23,34 +23,37 @@ export class KafkaClientService implements OnModuleDestroy {
 
 		const config = configService.getAll();
 		
-		// Diagnostic: Log the actual KAFKA_SSL value being used
-		console.log('[KafkaClientService] KAFKA_SSL value:', config.KAFKA_SSL, 'type:', typeof config.KAFKA_SSL, 'raw env:', process.env.KAFKA_SSL);
-		
-		// Build SASL configuration - only include when SSL is enabled
-		// Plaintext connections (port 9092) don't support SASL authentication
-		// SASL is only used with SSL/TLS connections
-		const sasl: SASLOptions | undefined = config.KAFKA_SSL === true && config.KAFKA_SASL_MECHANISM && config.KAFKA_SASL_USERNAME && config.KAFKA_SASL_PASSWORD
-			? {
-					mechanism: config.KAFKA_SASL_MECHANISM,
-					username: config.KAFKA_SASL_USERNAME,
-					password: config.KAFKA_SASL_PASSWORD,
-				}
-			: undefined;
-
-		// Build Kafka config
-		// Explicitly set ssl: false when KAFKA_SSL is false to prevent KafkaJS from defaulting to SSL
+		// Build Kafka config - match transaction-service approach
+		// For plaintext connections, only set clientId and brokers
+		// Only add ssl/sasl if explicitly enabled
 		const kafkaConfig: KafkaConfig = {
 			clientId: config.KAFKA_CLIENT_ID,
 			brokers: config.KAFKA_BROKERS.split(',').map(b => b.trim()),
-			ssl: config.KAFKA_SSL === true,
-			...(sasl && { sasl }),
 		};
+		
+		// Only add SSL/SASL if KAFKA_SSL is explicitly true
+		// For plaintext connections (port 9092), omit ssl and sasl entirely
+		const kafkaSslEnabled = config.KAFKA_SSL === true || String(config.KAFKA_SSL).toLowerCase() === 'true';
+		
+		if (kafkaSslEnabled) {
+			kafkaConfig.ssl = true;
+			
+			// SASL is only used with SSL/TLS connections
+			if (config.KAFKA_SASL_MECHANISM && config.KAFKA_SASL_USERNAME && config.KAFKA_SASL_PASSWORD) {
+				const sasl: SASLOptions = {
+					mechanism: config.KAFKA_SASL_MECHANISM,
+					username: config.KAFKA_SASL_USERNAME,
+					password: config.KAFKA_SASL_PASSWORD,
+				};
+				kafkaConfig.sasl = sasl;
+			}
+		}
 
 		this.logger.info('Creating Kafka client', {
 			clientId: kafkaConfig.clientId,
 			brokers: kafkaConfig.brokers,
-			ssl: kafkaConfig.ssl,
-			saslEnabled: !!sasl,
+			ssl: kafkaConfig.ssl ?? false,
+			saslEnabled: !!kafkaConfig.sasl,
 		});
 
 		this.kafka = new Kafka(kafkaConfig);
