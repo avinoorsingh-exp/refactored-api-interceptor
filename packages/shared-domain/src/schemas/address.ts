@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { InstantUTC, ADDRESS } from '../value-objects/index.js'
-import { trimmedStringMinMax, trimmedStringMax } from './base-schemas.js'
+import { trimmedStringMinMax, trimmedStringMax, bigIntString } from './base-schemas.js'
 
 /**
  * Address type enum (personal, company).
@@ -65,7 +65,7 @@ const Label = trimmedStringMax(ADDRESS.line.max, 'errors.address.label.invalid')
  */
 export const AddressBaseSchema = z
 	.object({
-		id: z.string({ message: 'errors.address.id.invalid' }),
+		id: bigIntString('errors.address.id.invalid'),
 		type: AddressType.nullable().optional(),
 		role: AddressRoleType.nullable().optional(),
 		line1: Line,
@@ -75,7 +75,7 @@ export const AddressBaseSchema = z
 		postalCode: PostalCode,
 		county: County.nullable().optional(),
 		label: Label.nullable().optional(),
-		stateId: z.string().uuid({ message: 'errors.address.stateId.invalid' }),
+		stateId: z.string().uuid({ message: 'errors.address.stateId.invalid' }).nullable().optional(),
 		created: InstantUTC,
 		lastModified: InstantUTC,
 		modifiedBy: z.string().optional(),
@@ -139,7 +139,7 @@ export const CreateAddressInput = z.object({
 	postalCode: PostalCode,
 	county: County.optional().nullable(),
 	label: Label.optional().nullable(),
-	stateId: z.string().uuid(),
+	stateId: z.string().uuid().nullable().optional(),
 })
 
 /**
@@ -160,3 +160,20 @@ export const UpdateAddressInput = CreateAddressInput.partial()
  * @public
  */
 export type UpdateAddressInput = z.infer<typeof UpdateAddressInput>
+
+// ---------------------------------------------------------------------------
+// ID PARAM SCHEMAS (for route validation)
+// ---------------------------------------------------------------------------
+
+/**
+ * Address ID parameter schema for route validation.
+ * Validates that address ID is a valid bigint string (digits only).
+ * @public
+ */
+export const AddressIdSchema = bigIntString('errors.address.id.invalid')
+
+/**
+ * Address ID parameter type.
+ * @public
+ */
+export type AddressId = z.infer<typeof AddressIdSchema>
