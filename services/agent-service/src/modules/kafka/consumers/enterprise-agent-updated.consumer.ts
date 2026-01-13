@@ -148,11 +148,21 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 			let parsedMessage: unknown;
 			try {
 				parsedMessage = JSON.parse(messageValue);
+				
+				// Log raw and parsed message for debugging
+				this.logger.info('Kafka message parsed successfully', {
+					topic,
+					partition,
+					offset: message.offset,
+					rawMessage: messageValue,
+					parsedMessage: JSON.stringify(parsedMessage, null, 2),
+				});
 			} catch (parseError) {
 				this.logger.warn('Failed to parse message as JSON - skipping retry', {
 					topic,
 					partition,
 					offset: message.offset,
+					rawMessage: messageValue,
 					error: parseError instanceof Error ? parseError.message : 'Unknown error',
 				});
 				return;
