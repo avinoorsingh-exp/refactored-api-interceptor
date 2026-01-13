@@ -180,5 +180,38 @@ async function bootstrap() {
 		})
 		// Don't exit immediately - let NestJS handle graceful shutdown
 	})
+
+	// Handle SIGTERM (ECS sends this when stopping tasks)
+	process.on('SIGTERM', () => {
+		logger.info('SIGTERM received, initiating graceful shutdown...')
+		app.close().then(() => {
+			logger.info('Application closed gracefully')
+			process.exit(0)
+		}).catch((error) => {
+			logger.error('Error during graceful shutdown', {
+				error: error instanceof Error ? error.message : String(error),
+			})
+			process.exit(1)
+		})
+	})
+
+	// Handle SIGINT (Ctrl+C)
+	process.on('SIGINT', () => {
+		logger.info('SIGINT received, initiating graceful shutdown...')
+		app.close().then(() => {
+			logger.info('Application closed gracefully')
+			process.exit(0)
+		}).catch((error) => {
+			logger.error('Error during graceful shutdown', {
+				error: error instanceof Error ? error.message : String(error),
+			})
+			process.exit(1)
+		})
+	})
 }
-void bootstrap()
+
+// Ensure bootstrap runs and doesn't exit
+bootstrap().catch((error) => {
+	console.error('Failed to start application:', error)
+	process.exit(1)
+})
