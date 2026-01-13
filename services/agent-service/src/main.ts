@@ -183,11 +183,14 @@ async function bootstrap() {
 
 	// Handle SIGTERM (ECS sends this when stopping tasks)
 	process.on('SIGTERM', () => {
+		console.log('[SIGTERM] Signal received, initiating graceful shutdown...')
 		logger.info('SIGTERM received, initiating graceful shutdown...')
 		app.close().then(() => {
+			console.log('[SIGTERM] Application closed gracefully')
 			logger.info('Application closed gracefully')
 			process.exit(0)
 		}).catch((error) => {
+			console.error('[SIGTERM] Error during graceful shutdown:', error)
 			logger.error('Error during graceful shutdown', {
 				error: error instanceof Error ? error.message : String(error),
 			})
@@ -197,11 +200,14 @@ async function bootstrap() {
 
 	// Handle SIGINT (Ctrl+C)
 	process.on('SIGINT', () => {
+		console.log('[SIGINT] Signal received, initiating graceful shutdown...')
 		logger.info('SIGINT received, initiating graceful shutdown...')
 		app.close().then(() => {
+			console.log('[SIGINT] Application closed gracefully')
 			logger.info('Application closed gracefully')
 			process.exit(0)
 		}).catch((error) => {
+			console.error('[SIGINT] Error during graceful shutdown:', error)
 			logger.error('Error during graceful shutdown', {
 				error: error instanceof Error ? error.message : String(error),
 			})
