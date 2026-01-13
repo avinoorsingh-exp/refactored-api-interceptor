@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { InstantUTC, ADDRESS } from '../value-objects/index.js'
-import { trimmedStringMinMax, trimmedStringMax } from './base-schemas.js'
+import { trimmedStringMinMax, trimmedStringMax, bigIntString } from './base-schemas.js'
 
 /**
  * Address type enum (personal, company).
@@ -65,7 +65,7 @@ const Label = trimmedStringMax(ADDRESS.line.max, 'errors.address.label.invalid')
  */
 export const AddressBaseSchema = z
 	.object({
-		id: z.string({ message: 'errors.address.id.invalid' }),
+		id: bigIntString('errors.address.id.invalid'),
 		type: AddressType.nullable().optional(),
 		role: AddressRoleType.nullable().optional(),
 		line1: Line,
