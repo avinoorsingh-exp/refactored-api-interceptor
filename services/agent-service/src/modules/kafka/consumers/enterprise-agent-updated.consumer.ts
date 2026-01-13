@@ -36,6 +36,16 @@ export class EnterpriseAgentUpdatedConsumer implements OnModuleInit, OnModuleDes
 	}
 
 	async onModuleDestroy() {
+		// Log diagnostic information to understand why this is being called
+		this.logger.warn('onModuleDestroy called on EnterpriseAgentUpdatedConsumer', {
+			stack: new Error().stack,
+			timestamp: new Date().toISOString(),
+		});
+		console.error('[DIAGNOSTIC] EnterpriseAgentUpdatedConsumer.onModuleDestroy() called', {
+			stack: new Error().stack,
+			timestamp: new Date().toISOString(),
+		});
+
 		const nodeEnv = this.configService.get('NODE_ENV');
 		
 		// Skip Kafka consumer shutdown in local environment

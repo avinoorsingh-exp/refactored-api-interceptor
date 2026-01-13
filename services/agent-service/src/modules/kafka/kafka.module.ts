@@ -58,6 +58,16 @@ export class KafkaModule implements OnModuleInit, OnModuleDestroy {
 	}
 
 	async onModuleDestroy() {
+		// Log diagnostic information to understand why this is being called
+		this.logger.warn('onModuleDestroy called on KafkaModule', {
+			stack: new Error().stack,
+			timestamp: new Date().toISOString(),
+		});
+		console.error('[DIAGNOSTIC] KafkaModule.onModuleDestroy() called', {
+			stack: new Error().stack,
+			timestamp: new Date().toISOString(),
+		});
+
 		const nodeEnv = this.configService.get('NODE_ENV');
 		
 		// Skip Kafka shutdown in local environment
