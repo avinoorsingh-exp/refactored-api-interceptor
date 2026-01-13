@@ -8,3 +8,15 @@ export class AgentController {
 		return { status: 'ok', service: 'agent-service', timestamp: new Date().toISOString() }
 	}
 }
+
+/**
+ * Root-level health check endpoint for ECS health checks
+ * ECS may check /health instead of /v1/agent/health
+ */
+@Controller()
+export class RootHealthController {
+	@Get('/health')
+	health() {
+		return { status: 'ok', service: 'agent-service', timestamp: new Date().toISOString() }
+	}
+}

@@ -157,7 +157,28 @@ async function bootstrap() {
 
 	// Start server
 	await app.listen(config.PORT)
+	logger.info(`Agent service listening on port ${config.PORT}`, {
+		port: config.PORT,
+		environment: config.NODE_ENV,
+	})
 
 	app.enableShutdownHooks()
+
+	// Handle unhandled promise rejections
+	process.on('unhandledRejection', (reason: unknown, promise: Promise<unknown>) => {
+		logger.error('Unhandled Promise Rejection', {
+			reason: reason instanceof Error ? reason.message : String(reason),
+			stack: reason instanceof Error ? reason.stack : undefined,
+		})
+	})
+
+	// Handle uncaught exceptions
+	process.on('uncaughtException', (error: Error) => {
+		logger.error('Uncaught Exception', {
+			error: error.message,
+			stack: error.stack,
+		})
+		// Don't exit immediately - let NestJS handle graceful shutdown
+	})
 }
 void bootstrap()
