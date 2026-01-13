@@ -26,8 +26,10 @@ export class KafkaClientService implements OnModuleDestroy {
 		// Diagnostic: Log the actual KAFKA_SSL value being used
 		console.log('[KafkaClientService] KAFKA_SSL value:', config.KAFKA_SSL, 'type:', typeof config.KAFKA_SSL, 'raw env:', process.env.KAFKA_SSL);
 		
-		// Build SASL configuration if credentials are provided
-		const sasl: SASLOptions | undefined = config.KAFKA_SASL_MECHANISM && config.KAFKA_SASL_USERNAME && config.KAFKA_SASL_PASSWORD
+		// Build SASL configuration - only include when SSL is enabled
+		// Plaintext connections (port 9092) don't support SASL authentication
+		// SASL is only used with SSL/TLS connections
+		const sasl: SASLOptions | undefined = config.KAFKA_SSL === true && config.KAFKA_SASL_MECHANISM && config.KAFKA_SASL_USERNAME && config.KAFKA_SASL_PASSWORD
 			? {
 					mechanism: config.KAFKA_SASL_MECHANISM,
 					username: config.KAFKA_SASL_USERNAME,
@@ -35,20 +37,19 @@ export class KafkaClientService implements OnModuleDestroy {
 				}
 			: undefined;
 
-		// Build Kafka config - only include ssl property if explicitly true
-		// This matches transaction-service approach: omit ssl for plaintext connections
+		// Build Kafka config
+		// Explicitly set ssl: false when KAFKA_SSL is false to prevent KafkaJS from defaulting to SSL
 		const kafkaConfig: KafkaConfig = {
 			clientId: config.KAFKA_CLIENT_ID,
 			brokers: config.KAFKA_BROKERS.split(',').map(b => b.trim()),
-			...(config.KAFKA_SSL === true && { ssl: true }),
-			sasl,
+			ssl: config.KAFKA_SSL === true,
+			...(sasl && { sasl }),
 		};
 
 		this.logger.info('Creating Kafka client', {
 			clientId: kafkaConfig.clientId,
 			brokers: kafkaConfig.brokers,
-			ssl: config.KAFKA_SSL,
-			sslInConfig: 'ssl' in kafkaConfig,
+			ssl: kafkaConfig.ssl,
 			saslEnabled: !!sasl,
 		});
 
