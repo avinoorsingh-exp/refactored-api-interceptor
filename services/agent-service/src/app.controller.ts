@@ -1,6 +1,6 @@
 // services/address-provider/src/controllers/address.controller.ts
 import { Controller, Get } from '@nestjs/common'
-import { LoggerService } from '../core/logger.service.js'
+import { LoggerService } from './core/logger.service.js'
 
 @Controller('/v1/agent')
 export class AgentController {
