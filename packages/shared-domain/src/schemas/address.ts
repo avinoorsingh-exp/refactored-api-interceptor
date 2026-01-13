@@ -160,3 +160,20 @@ export const UpdateAddressInput = CreateAddressInput.partial()
  * @public
  */
 export type UpdateAddressInput = z.infer<typeof UpdateAddressInput>
+
+// ---------------------------------------------------------------------------
+// ID PARAM SCHEMAS (for route validation)
+// ---------------------------------------------------------------------------
+
+/**
+ * Address ID parameter schema for route validation.
+ * Validates that address ID is a valid bigint string (digits only).
+ * @public
+ */
+export const AddressIdSchema = bigIntString('errors.address.id.invalid')
+
+/**
+ * Address ID parameter type.
+ * @public
+ */
+export type AddressId = z.infer<typeof AddressIdSchema>
