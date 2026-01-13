@@ -39,8 +39,21 @@ import type { Agent as AgentType } from '@exprealty/shared-domain';
 
 /**
  * Address ID validation schema (BigInt as string).
+ * Validates that the string represents a valid numeric BigInt.
  */
-const AddressIdSchema = z.string({ message: 'errors.address.id.invalid' });
+const AddressIdSchema = z
+  .string({ message: 'errors.address.id.invalid' })
+  .refine(
+    (value) => {
+      try {
+        BigInt(value);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: 'errors.address.id.invalid' }
+  );
 
 /**
  * Zod schema for creating an agent address with inline address creation.
@@ -150,6 +163,10 @@ export class AgentAddressController {
 		status: 200,
 		description: 'Address found',
 		type: AgentAddressResponseDto,
+	})
+	@ApiResponse({
+		status: 400,
+		description: 'Invalid address ID format',
 	})
 	@ApiResponse({
 		status: 404,
