@@ -147,6 +147,17 @@ export const numericString = (message?: string) =>
     );
 
 /**
+ * BigInt string validator.
+ * Validates that the string contains only digits (PostgreSQL bigint as string).
+ * Use for primary keys and foreign keys that are bigint in the database.
+ * 
+ * @example
+ * id: bigIntString('errors.address.id.invalid')
+ */
+export const bigIntString = (message?: string) =>
+  z.string().regex(/^\d+$/, { message: message || 'Must be a valid numeric ID' });
+
+/**
  * ZIP code (US 5-digit, trimmed)
  */
 export const zipCodeString = (message?: string) =>

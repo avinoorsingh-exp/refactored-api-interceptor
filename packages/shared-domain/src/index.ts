@@ -143,6 +143,8 @@ export {
 	type CreateAddressInput as CreateAddressInputType,
 	UpdateAddressInput,
 	type UpdateAddressInput as UpdateAddressInputType,
+	AddressIdSchema,
+	type AddressId,
 } from './schemas/address.js'
 
 // ============================================================================
