@@ -100,8 +100,9 @@ export class AgentAddressTypeOrmRepository implements IAgentAddressRepository {
 	}
 
 	async findByCompositeKey(agentId: string, addressId: string): Promise<AgentAddressWithAddress | null> {
+		const addressIdNum = BigInt(addressId);
 		const entity = await this.agentAddressRepo.findOne({
-			where: { agentId, addressId },
+			where: { agentId, addressId : addressIdNum.toString() },
 			relations: ['address'],
 		});
 		return entity ? this.mapToDomain(entity) : null;

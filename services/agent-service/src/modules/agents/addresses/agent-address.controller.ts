@@ -23,7 +23,7 @@ import {
 	ApiQuery,
 } from '@nestjs/swagger';
 import { z } from 'zod';
-import { CreateAgentAddressInput, UpdateAgentAddressInput, CreateAddressInput } from '@exprealty/shared-domain';
+import { CreateAgentAddressInput, UpdateAgentAddressInput, CreateAddressInput, AddressIdSchema } from '@exprealty/shared-domain';
 import { ZodValidationPipe } from '../../../common/zod-validation.pipe.js';
 import { AgentAddressService } from './agent-address.service.js';
 import {
@@ -37,10 +37,11 @@ import { AgentExistsGuard } from '../../../common/guards/agent-exists.guard.js';
 import { Agent } from '../../../common/decorators/agent.decorator.js';
 import type { Agent as AgentType } from '@exprealty/shared-domain';
 
+
 /**
  * Address ID validation schema (BigInt as string).
+ * Validates that the string represents a valid numeric BigInt.
  */
-const AddressIdSchema = z.string({ message: 'errors.address.id.invalid' });
 
 /**
  * Zod schema for creating an agent address with inline address creation.
@@ -150,6 +151,10 @@ export class AgentAddressController {
 		status: 200,
 		description: 'Address found',
 		type: AgentAddressResponseDto,
+	})
+	@ApiResponse({
+		status: 400,
+		description: 'Invalid address ID format',
 	})
 	@ApiResponse({
 		status: 404,
