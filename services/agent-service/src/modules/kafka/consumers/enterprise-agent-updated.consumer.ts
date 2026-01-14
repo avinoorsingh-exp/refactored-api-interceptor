@@ -301,7 +301,6 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 		agent: {
 			id?: string;
 			agentId?: string;
-			systemId?: number;
 			firstName: string;
 			middleName?: string;
 			lastName: string;
@@ -359,8 +358,7 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 		// Translate agent core fields
 		const agent = {
 			id: payload.uuid || undefined,
-			agentId: payload.systemkey?.toString() || undefined,
-			systemId: payload.source_system_member_key || undefined,
+			agentId: payload.source_system_member_key?.toString() || undefined,
 			firstName: payload.member_first_name || '',
 			middleName: payload.member_middle_name || undefined,
 			lastName: payload.member_last_name || '',

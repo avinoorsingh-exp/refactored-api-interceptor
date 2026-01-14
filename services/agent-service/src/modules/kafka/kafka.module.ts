@@ -2,6 +2,9 @@ import { Module } from '@nestjs/common';
 import { KafkaClientService } from './kafka-client.service.js';
 import { KafkaProducerService } from './kafka-producer.service.js';
 import { EnterpriseAgentUpdatedConsumer } from './consumers/enterprise-agent-updated.consumer.js';
+import { SponsorChangedService } from './sponsor-changed.service.js';
+import { SponsorChangedController } from './sponsor-changed.controller.js';
+import { AgentModule } from '../agents/agent.module.js';
 
 /**
  * Kafka Module
@@ -17,10 +20,17 @@ import { EnterpriseAgentUpdatedConsumer } from './consumers/enterprise-agent-upd
  * connection attempts in local development environments.
  */
 @Module({
+	imports: [
+		AgentModule, // Required for IAgentRepository
+	],
 	providers: [
 		KafkaClientService,
 		KafkaProducerService,
 		EnterpriseAgentUpdatedConsumer,
+		SponsorChangedService,
+	],
+	controllers: [
+		SponsorChangedController,
 	],
 	exports: [
 		KafkaClientService,

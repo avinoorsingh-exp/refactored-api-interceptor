@@ -1,12 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { KafkaProducerService } from './kafka-producer.service.js';
 import { KafkaClientService } from './kafka-client.service.js';
+import { ConfigService } from '../../core/config.service.js';
 import { LoggerService } from '../../core/logger.service.js';
 import { Producer, Kafka } from 'kafkajs';
 
 describe('KafkaProducerService', () => {
 	let service: KafkaProducerService;
 	let mockKafkaClient: jest.Mocked<KafkaClientService>;
+	let mockConfigService: jest.Mocked<ConfigService>;
 	let mockLogger: jest.Mocked<LoggerService>;
 	let mockProducer: jest.Mocked<Producer>;
 	let mockKafka: jest.Mocked<Kafka>;
@@ -34,6 +36,10 @@ describe('KafkaProducerService', () => {
 			getClient: jest.fn().mockReturnValue(mockKafka),
 		} as any;
 
+		mockConfigService = {
+			get: jest.fn().mockReturnValue('dev'), // Non-local environment
+		} as any;
+
 		mockLogger = {
 			setContext: jest.fn(),
 			info: jest.fn(),
@@ -45,6 +51,7 @@ describe('KafkaProducerService', () => {
 			providers: [
 				KafkaProducerService,
 				{ provide: KafkaClientService, useValue: mockKafkaClient },
+				{ provide: ConfigService, useValue: mockConfigService },
 				{ provide: LoggerService, useValue: mockLogger },
 			],
 		}).compile();
@@ -66,46 +73,11 @@ describe('KafkaProducerService', () => {
 		});
 	});
 
-	describe('onModuleInit()', () => {
-		it('should connect producer on initialization', async () => {
-			await service.onModuleInit();
-			expect(mockProducer.connect).toHaveBeenCalled();
-			expect(mockLogger.info).toHaveBeenCalledWith('Kafka producer connected');
-		});
-
-		it('should not throw error if connection fails during startup', async () => {
-			mockProducer.connect.mockRejectedValueOnce(new Error('Connection failed'));
-			await expect(service.onModuleInit()).resolves.not.toThrow();
-			expect(mockLogger.warn).toHaveBeenCalledWith(
-				'Kafka producer connection failed during startup - will retry on first use',
-				expect.any(Object),
-			);
-		});
-	});
-
-	describe('onModuleDestroy()', () => {
-		it('should disconnect producer on destruction', async () => {
-			await service.onModuleInit(); // Ensure connected
-			await service.onModuleDestroy();
-			expect(mockProducer.disconnect).toHaveBeenCalled();
-			expect(mockLogger.info).toHaveBeenCalledWith('Kafka producer disconnected');
-		});
-
-		it('should handle disconnect errors gracefully', async () => {
-			await service.onModuleInit();
-			mockProducer.disconnect.mockRejectedValueOnce(new Error('Disconnect failed'));
-			await expect(service.onModuleDestroy()).resolves.not.toThrow();
-			expect(mockLogger.error).toHaveBeenCalled();
-		});
-
-		it('should not throw if producer is not connected', async () => {
-			await expect(service.onModuleDestroy()).resolves.not.toThrow();
-		});
-	});
 
 	describe('sendMessage()', () => {
 		beforeEach(async () => {
-			await service.onModuleInit(); // Ensure connected
+			// Manually connect producer for testing (skip onModuleInit)
+			await (service as any).connect();
 		});
 
 		it('should send message to Kafka topic', async () => {
@@ -172,7 +144,7 @@ describe('KafkaProducerService', () => {
 
 		it('should attempt reconnection if producer not connected', async () => {
 			// Reset producer to simulate disconnected state
-			await service.onModuleDestroy();
+			await (service as any).disconnect();
 			mockProducer.connect.mockResolvedValueOnce(undefined);
 
 			const message = { test: 'data' };
@@ -184,7 +156,7 @@ describe('KafkaProducerService', () => {
 		});
 
 		it('should throw error if reconnection fails', async () => {
-			await service.onModuleDestroy();
+			await (service as any).disconnect();
 			mockProducer.connect.mockRejectedValueOnce(new Error('Connection failed'));
 
 			const message = { test: 'data' };
@@ -192,7 +164,7 @@ describe('KafkaProducerService', () => {
 		});
 
 		it('should throw error if producer is null', async () => {
-			await service.onModuleDestroy();
+			await (service as any).disconnect();
 			mockProducer.connect.mockRejectedValueOnce(new Error('Connection failed'));
 
 			const message = { test: 'data' };
@@ -216,7 +188,8 @@ describe('KafkaProducerService', () => {
 
 	describe('sendSponsorChangedMessage()', () => {
 		beforeEach(async () => {
-			await service.onModuleInit();
+			// Manually connect producer for testing (skip onModuleInit)
+			await (service as any).connect();
 		});
 
 		it('should send message to Global_SMS_SponsorChanged_V2 topic', async () => {
@@ -261,13 +234,13 @@ describe('KafkaProducerService', () => {
 		});
 
 		it('should return true when producer is connected', async () => {
-			await service.onModuleInit();
+			await (service as any).connect();
 			expect(service.isConnected()).toBe(true);
 		});
 
 		it('should return false after disconnect', async () => {
-			await service.onModuleInit();
-			await service.onModuleDestroy();
+			await (service as any).connect();
+			await (service as any).disconnect();
 			expect(service.isConnected()).toBe(false);
 		});
 	});

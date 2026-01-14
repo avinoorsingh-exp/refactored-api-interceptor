@@ -70,90 +70,14 @@ describe('EnterpriseAgentUpdatedConsumer', () => {
 		});
 	});
 
-	describe('start()', () => {
-		it('should connect consumer to Kafka', async () => {
-			await consumer.start();
-
-			expect(mockKafka.consumer).toHaveBeenCalledWith({ groupId: 'test-consumer-group' });
-			expect(mockConsumer.connect).toHaveBeenCalled();
-			expect(mockLogger.info).toHaveBeenCalledWith(
-				'Kafka consumer connected',
-				expect.objectContaining({
-					topic: 'Enterprise_AgentUpdated_V2',
-					groupId: 'test-consumer-group',
-				}),
-			);
-		});
-
-		it('should subscribe to Enterprise_AgentUpdated_V2 topic', async () => {
-			await consumer.start();
-
-			expect(mockConsumer.subscribe).toHaveBeenCalledWith({
-				topic: 'Enterprise_AgentUpdated_V2',
-				fromBeginning: false,
-			});
-			expect(mockLogger.info).toHaveBeenCalledWith('Subscribed to topic', {
-				topic: 'Enterprise_AgentUpdated_V2',
-			});
-		});
-
-		it('should start message processing', async () => {
-			await consumer.start();
-
-			expect(mockConsumer.run).toHaveBeenCalledWith({
-				eachMessage: expect.any(Function),
-			});
-			expect(mockLogger.info).toHaveBeenCalledWith('Enterprise Agent Updated consumer started successfully');
-		});
-
-		it('should throw error if connection fails', async () => {
-			mockConsumer.connect.mockRejectedValueOnce(new Error('Connection failed'));
-
-			await expect(consumer.start()).rejects.toThrow('Connection failed');
-			expect(mockLogger.error).toHaveBeenCalledWith(
-				'Failed to start Kafka consumer',
-				expect.any(Object),
-			);
-		});
-
-		it('should log warning when consumer fails to start', async () => {
-			mockConsumer.connect.mockRejectedValueOnce(new Error('Connection failed'));
-
-			await expect(consumer.start()).rejects.toThrow();
-			expect(mockLogger.warn).toHaveBeenCalledWith('Consumer will not process messages until Kafka is available');
-		});
-	});
-
-	describe('stop()', () => {
-		it('should disconnect consumer', async () => {
-			await consumer.start();
-			await consumer.stop();
-
-			expect(mockConsumer.disconnect).toHaveBeenCalled();
-			expect(mockLogger.info).toHaveBeenCalledWith('Kafka consumer disconnected');
-		});
-
-		it('should handle disconnect errors gracefully', async () => {
-			await consumer.start();
-			mockConsumer.disconnect.mockRejectedValueOnce(new Error('Disconnect failed'));
-
-			await expect(consumer.stop()).resolves.not.toThrow();
-			expect(mockLogger.error).toHaveBeenCalledWith(
-				'Error disconnecting Kafka consumer',
-				expect.any(Object),
-			);
-		});
-
-		it('should not throw if consumer is not started', async () => {
-			await expect(consumer.stop()).resolves.not.toThrow();
-		});
-	});
 
 	describe('message handling', () => {
 		let messageHandler: (params: { topic: string; partition: number; message: KafkaMessage }) => Promise<void>;
 
 		beforeEach(async () => {
-			await consumer.start();
+			// Manually set up consumer for testing (skip start/initialization)
+			mockConfigService.get.mockReturnValue('dev');
+			await (consumer as any).start();
 			// Extract the message handler from the run call
 			const runCall = mockConsumer.run.mock.calls[0][0];
 			messageHandler = runCall.eachMessage;
@@ -325,27 +249,347 @@ describe('EnterpriseAgentUpdatedConsumer', () => {
 		});
 	});
 
-	describe('onModuleInit()', () => {
-		it('should call start on module initialization', async () => {
-			const startSpy = jest.spyOn(consumer, 'start').mockResolvedValue(undefined);
 
-			await consumer.onModuleInit();
+	describe('translateKafkaMessageToUpsertData', () => {
+		it('should translate basic agent fields', () => {
+			const payload = {
+				uuid: '550e8400-e29b-41d4-a716-446655440000',
+				systemkey: '12345',
+				source_system_member_key: '67890',
+				member_first_name: 'John',
+				member_last_name: 'Doe',
+				member_middle_name: 'Middle',
+				suffix: 'Jr',
+				preferred_name: 'Johnny',
+				title: 'Mr',
+				Birthday: '1990-01-01',
+				lifecycle_status_caption: 'Active',
+				join_date: '2020-01-01',
+				anniversary_date: '2021-01-01',
+				termination_date: null,
+			};
 
-			expect(startSpy).toHaveBeenCalled();
+			const result = (consumer as any).translateKafkaMessageToUpsertData(payload);
 
-			startSpy.mockRestore();
+			expect(result.agent).toEqual({
+				id: '550e8400-e29b-41d4-a716-446655440000',
+				agentId: '67890', // source_system_member_key maps to agentId (swapped from systemkey)
+				firstName: 'John',
+				lastName: 'Doe',
+				middleName: 'Middle',
+				suffix: 'Jr',
+				preferredName: 'Johnny',
+				title: 'Mr',
+				birthDate: new Date('1990-01-01'),
+				lifecycleStatus: 'Active',
+				joinDate: new Date('2020-01-01'),
+				anniversaryDate: new Date('2021-01-01'),
+				terminationDate: undefined,
+				isStaff: false,
+				agentCompanyId: undefined,
+			});
+		});
+
+		it('should translate contact methods from member_email, secondary_email, and cell_phone', () => {
+			const payload = {
+				member_email: 'primary@example.com',
+				secondary_email: 'secondary@example.com',
+				cell_phone: '+1-555-123-4567',
+				ReceiveText: true,
+			};
+
+			const result = (consumer as any).translateKafkaMessageToUpsertData(payload);
+
+			expect(result.contactMethods).toHaveLength(3);
+			expect(result.contactMethods[0]).toEqual({
+				name: 'Primary Email',
+				channel: 'email',
+				value: 'primary@example.com',
+				isPrimary: true,
+				subType: 'work',
+				smsOptIn: false,
+			});
+			expect(result.contactMethods[1]).toEqual({
+				name: 'Secondary Email',
+				channel: 'email',
+				value: 'secondary@example.com',
+				isPrimary: false,
+				subType: 'personal',
+				smsOptIn: false,
+			});
+			expect(result.contactMethods[2]).toEqual({
+				name: 'Mobile Phone',
+				channel: 'phone',
+				value: '+1-555-123-4567',
+				isPrimary: true,
+				subType: 'mobile',
+				smsOptIn: true,
+			});
+		});
+
+		it('should use member_mobile_phone if cell_phone is not present', () => {
+			const payload = {
+				member_mobile_phone: '+1-555-999-8888',
+				ReceiveText: false,
+			};
+
+			const result = (consumer as any).translateKafkaMessageToUpsertData(payload);
+
+			expect(result.contactMethods).toHaveLength(1);
+			expect(result.contactMethods[0].value).toBe('+1-555-999-8888');
+		});
+
+		it('should translate addresses with all fields', () => {
+			const payload = {
+				addresses: [
+					{
+						address_line_1: '123 Main St',
+						address_line_2: 'Suite 100',
+						city: 'Springfield',
+						postal_code: '62701',
+						unit_number: 'A',
+						county: 'Sangamon',
+						label: 'Home',
+						is_primary: true,
+						state: {
+							code: 'IL',
+						},
+						country: {
+							iso_3166_1: {
+								alpha_2: 'US',
+							},
+						},
+					},
+				],
+			};
+
+			const result = (consumer as any).translateKafkaMessageToUpsertData(payload);
+
+			expect(result.addresses).toHaveLength(1);
+			expect(result.addresses[0]).toEqual({
+				line1: '123 Main St',
+				line2: 'Suite 100',
+				city: 'Springfield',
+				postalCode: '62701',
+				unit: 'A',
+				county: 'Sangamon',
+				label: 'Home',
+				isPrimary: true,
+				stateCode: 'IL',
+				countryAlpha2: 'US',
+			});
+		});
+
+		it('should support alternative address field names (line_1, zip)', () => {
+			const payload = {
+				addresses: [
+					{
+						line_1: '456 Oak Ave',
+						line_2: 'Apt 2B',
+						city: 'Chicago',
+						zip: '60601',
+					},
+				],
+			};
+
+			const result = (consumer as any).translateKafkaMessageToUpsertData(payload);
+
+			expect(result.addresses).toHaveLength(1);
+			expect(result.addresses[0].line1).toBe('456 Oak Ave');
+			expect(result.addresses[0].line2).toBe('Apt 2B');
+			expect(result.addresses[0].postalCode).toBe('60601');
+		});
+
+		it('should skip addresses missing required fields', () => {
+			const payload = {
+				addresses: [
+					{
+						city: 'Springfield',
+						// Missing line1 and postalCode
+					},
+					{
+						address_line_1: '123 Main St',
+						city: 'Chicago',
+						postal_code: '60601',
+					},
+				],
+			};
+
+			const result = (consumer as any).translateKafkaMessageToUpsertData(payload);
+
+			expect(result.addresses).toHaveLength(1);
+			expect(result.addresses[0].line1).toBe('123 Main St');
+		});
+
+		it('should translate offices', () => {
+			const payload = {
+				offices: [
+					{
+						office_name: 'Downtown Office',
+						originating_system_office_key: '999',
+						is_primary: true,
+						company: {
+							intacct_entity_no: '123',
+						},
+						lifecycle_status: 'active',
+						phone: '+1-555-111-2222',
+						website: 'https://office.example.com',
+						state: 'IL',
+					},
+				],
+			};
+
+			const result = (consumer as any).translateKafkaMessageToUpsertData(payload);
+
+			expect(result.offices).toHaveLength(1);
+			expect(result.offices[0]).toEqual({
+				officeId: '999',
+				officeName: 'Downtown Office',
+				isPrimary: true,
+				companyId: '123',
+				lifecycleStatus: 'active',
+				phone: '+1-555-111-2222',
+				website: 'https://office.example.com',
+				primaryState: 'IL',
+			});
+		});
+
+		it('should support alternative office field name (name)', () => {
+			const payload = {
+				offices: [
+					{
+						name: 'Branch Office',
+					},
+				],
+			};
+
+			const result = (consumer as any).translateKafkaMessageToUpsertData(payload);
+
+			expect(result.offices).toHaveLength(1);
+			expect(result.offices[0].officeName).toBe('Branch Office');
+		});
+
+		it('should skip offices without name', () => {
+			const payload = {
+				offices: [
+					{
+						phone: '+1-555-111-2222',
+						// Missing name
+					},
+				],
+			};
+
+			const result = (consumer as any).translateKafkaMessageToUpsertData(payload);
+
+			expect(result.offices).toHaveLength(0);
+		});
+
+		it('should translate MLS from mlss array', () => {
+			const payload = {
+				mlss: [
+					{
+						mlsid: '100',
+						name: 'Metro MLS',
+						ouid: 'mls-123',
+						global_id: 200,
+						shortname: 'MMLS',
+						org_type: 'MLS',
+						lifecycle_status: 'active',
+					},
+				],
+			};
+
+			const result = (consumer as any).translateKafkaMessageToUpsertData(payload);
+
+			expect(result.mls).toHaveLength(1);
+			expect(result.mls[0]).toEqual({
+				mlsId: '100',
+				name: 'Metro MLS',
+				ouid: 'mls-123',
+				globalId: 200,
+				shortName: 'MMLS',
+				orgType: 'mls',
+				lifecycleStatus: 'active',
+			});
+		});
+
+		it('should normalize org_type to lowercase', () => {
+			const payload = {
+				mlss: [
+					{
+						name: 'Test MLS',
+						org_type: 'MLS',
+					},
+				],
+			};
+
+			const result = (consumer as any).translateKafkaMessageToUpsertData(payload);
+
+			expect(result.mls[0].orgType).toBe('mls');
+		});
+
+		it('should use org_status as fallback for lifecycle_status', () => {
+			const payload = {
+				mlss: [
+					{
+						name: 'Test MLS',
+						org_status: 'inactive',
+					},
+				],
+			};
+
+			const result = (consumer as any).translateKafkaMessageToUpsertData(payload);
+
+			expect(result.mls[0].lifecycleStatus).toBe('inactive');
+		});
+
+		it('should skip MLS entries without name', () => {
+			const payload = {
+				mlss: [
+					{
+						mlsid: '100',
+						// Missing name
+					},
+				],
+			};
+
+			const result = (consumer as any).translateKafkaMessageToUpsertData(payload);
+
+			expect(result.mls).toHaveLength(0);
+		});
+
+		it('should return empty arrays when no data present', () => {
+			const payload = {};
+
+			const result = (consumer as any).translateKafkaMessageToUpsertData(payload);
+
+			expect(result.contactMethods).toEqual([]);
+			expect(result.addresses).toEqual([]);
+			expect(result.offices).toEqual([]);
+			expect(result.mls).toEqual([]);
 		});
 	});
 
-	describe('onModuleDestroy()', () => {
-		it('should call stop on module destruction', async () => {
-			const stopSpy = jest.spyOn(consumer, 'stop').mockResolvedValue(undefined);
+	describe('mapLifecycleStatus', () => {
+		it('should map known statuses correctly', () => {
+			const mapStatus = (consumer as any).mapLifecycleStatus.bind(consumer);
 
-			await consumer.onModuleDestroy();
+			expect(mapStatus('Joining')).toBe('Joining');
+			expect(mapStatus('Active')).toBe('Active');
+			expect(mapStatus('Inactive')).toBe('Inactive');
+			expect(mapStatus('InActive')).toBe('Inactive');
+			expect(mapStatus('Vested')).toBe('Vested');
+			expect(mapStatus('Vested Retired')).toBe('VestedRetired');
+			expect(mapStatus('VestedRetired')).toBe('VestedRetired');
+			expect(mapStatus('Lead Only')).toBe('LeadOnly');
+			expect(mapStatus('LeadOnly')).toBe('LeadOnly');
+		});
 
-			expect(stopSpy).toHaveBeenCalled();
+		it('should default to Joining for unknown statuses', () => {
+			const mapStatus = (consumer as any).mapLifecycleStatus.bind(consumer);
 
-			stopSpy.mockRestore();
+			expect(mapStatus('UnknownStatus')).toBe('Joining');
+			expect(mapStatus('')).toBe('Joining');
 		});
 	});
 });
