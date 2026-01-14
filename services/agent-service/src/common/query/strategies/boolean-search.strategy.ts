@@ -13,8 +13,8 @@ import { ISearchStrategy, SearchableFieldConfig } from '@exprealty/database';
  */
 @Injectable()
 export class BooleanSearchStrategy implements ISearchStrategy {
-  private readonly TRUE_VALUES = new Set(['true', 'yes', '1', 'y', 't']);
-  private readonly FALSE_VALUES = new Set(['false', 'no', '0', 'n', 'f']);
+  private readonly TRUE_VALUES = new Set(['true', 'yes', '1', 'y', 't','active']);
+  private readonly FALSE_VALUES = new Set(['false', 'no', '0', 'n', 'f','inactive']);
 
   applySearch<T>(
     qb: SelectQueryBuilder<T>,

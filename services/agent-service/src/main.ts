@@ -157,7 +157,67 @@ async function bootstrap() {
 
 	// Start server
 	await app.listen(config.PORT)
+	logger.info(`Agent service listening on port ${config.PORT}`, {
+		port: config.PORT,
+		environment: config.NODE_ENV,
+	})
 
 	app.enableShutdownHooks()
+
+	// Handle unhandled promise rejections
+	process.on('unhandledRejection', (reason: unknown, promise: Promise<unknown>) => {
+		logger.error('Unhandled Promise Rejection', {
+			reason: reason instanceof Error ? reason.message : String(reason),
+			stack: reason instanceof Error ? reason.stack : undefined,
+		})
+	})
+
+	// Handle uncaught exceptions
+	process.on('uncaughtException', (error: Error) => {
+		logger.error('Uncaught Exception', {
+			error: error.message,
+			stack: error.stack,
+		})
+		// Don't exit immediately - let NestJS handle graceful shutdown
+	})
+
+	// Handle SIGTERM (ECS sends this when stopping tasks)
+	process.on('SIGTERM', () => {
+		console.log('[SIGTERM] Signal received, initiating graceful shutdown...')
+		logger.info('SIGTERM received, initiating graceful shutdown...')
+		app.close().then(() => {
+			console.log('[SIGTERM] Application closed gracefully')
+			logger.info('Application closed gracefully')
+			process.exit(0)
+		}).catch((error) => {
+			console.error('[SIGTERM] Error during graceful shutdown:', error)
+			logger.error('Error during graceful shutdown', {
+				error: error instanceof Error ? error.message : String(error),
+			})
+			process.exit(1)
+		})
+	})
+
+	// Handle SIGINT (Ctrl+C)
+	process.on('SIGINT', () => {
+		console.log('[SIGINT] Signal received, initiating graceful shutdown...')
+		logger.info('SIGINT received, initiating graceful shutdown...')
+		app.close().then(() => {
+			console.log('[SIGINT] Application closed gracefully')
+			logger.info('Application closed gracefully')
+			process.exit(0)
+		}).catch((error) => {
+			console.error('[SIGINT] Error during graceful shutdown:', error)
+			logger.error('Error during graceful shutdown', {
+				error: error instanceof Error ? error.message : String(error),
+			})
+			process.exit(1)
+		})
+	})
 }
-void bootstrap()
+
+// Ensure bootstrap runs and doesn't exit
+bootstrap().catch((error) => {
+	console.error('Failed to start application:', error)
+	process.exit(1)
+})
