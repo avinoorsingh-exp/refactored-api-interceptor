@@ -155,7 +155,7 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 					partition,
 					offset: message.offset,
 					rawMessage: messageValue,
-					parsedMessage: JSON.stringify(parsedMessage, null, 2),
+					parsedMessage: parsedMessage,
 				});
 			} catch (parseError) {
 				this.logger.warn('Failed to parse message as JSON - skipping retry', {
@@ -275,9 +275,16 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 			const translated = this.translateKafkaMessageToUpsertData(message as any);
 			
 			// Log the translated result for verification
+			// Pass the object directly - logger will handle JSON serialization properly
+			// This avoids double-stringification and escape characters
 			this.logger.info('Translated Kafka message to upsert format', {
-				translated: JSON.stringify(translated, null, 2),
+				translated: translated,
 			});
+			
+			// Also log as pretty-printed JSON string for easier reading in logs
+			// This is logged as a separate message to avoid escape character issues
+			const prettyJson = JSON.stringify(translated, null, 2);
+			this.logger.info(`Translated message (pretty JSON):\n${prettyJson}`);
 		} catch (error) {
 			this.logger.error('Error translating Kafka message', {
 				error: error instanceof Error ? error.message : 'Unknown error',
