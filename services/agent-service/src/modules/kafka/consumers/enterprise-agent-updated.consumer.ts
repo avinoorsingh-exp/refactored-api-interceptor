@@ -271,20 +271,14 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 	 */
 	private async processAgentUpdate(message: unknown): Promise<void> {
 		try {
-			// Translate Kafka message to database format
-			const translated = this.translateKafkaMessageToUpsertData(message as any);
-			
-			// Log the translated result for verification
-			// Pass the object directly - logger will handle JSON serialization properly
-			// This avoids double-stringification and escape characters
-			this.logger.info('Translated Kafka message to upsert format', {
-				translated: translated,
-			});
-			
-			// Also log as pretty-printed JSON string for easier reading in logs
-			// This is logged as a separate message to avoid escape character issues
-			const prettyJson = JSON.stringify(translated, null, 2);
-			this.logger.info(`Translated message (pretty JSON):\n${prettyJson}`);
+		// Translate Kafka message to database format
+		const translated = this.translateKafkaMessageToUpsertData(message as any);
+		
+		// Log the translated result for verification
+		// Pass the object directly - logger will handle JSON serialization properly
+		this.logger.info('Translated Kafka message to upsert format', {
+			translated: translated,
+		});
 		} catch (error) {
 			this.logger.error('Error translating Kafka message', {
 				error: error instanceof Error ? error.message : 'Unknown error',
@@ -497,21 +491,6 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 			orgType: string;
 			lifecycleStatus: string;
 		}> = [];
-
-		// From AgentMLSID array
-		if (Array.isArray(payload.AgentMLSID)) {
-			for (const agentMls of payload.AgentMLSID) {
-				if (agentMls.AgentMLSIDKey) {
-					// This is a reference to existing MLS - we'll need to look it up
-					mls.push({
-						mlsId: agentMls.AgentMLSIDKey.toString(),
-						name: '', // Will be looked up
-						orgType: 'mls',
-						lifecycleStatus: agentMls.MemberStatus || 'active',
-					});
-				}
-			}
-		}
 
 		// From mlss array (full MLS objects)
 		if (Array.isArray(payload.mlss)) {
