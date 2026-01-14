@@ -271,20 +271,14 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 	 */
 	private async processAgentUpdate(message: unknown): Promise<void> {
 		try {
-			// Translate Kafka message to database format
-			const translated = this.translateKafkaMessageToUpsertData(message as any);
-			
-			// Log the translated result for verification
-			// Pass the object directly - logger will handle JSON serialization properly
-			// This avoids double-stringification and escape characters
-			this.logger.info('Translated Kafka message to upsert format', {
-				translated: translated,
-			});
-			
-			// Also log as pretty-printed JSON string for easier reading in logs
-			// This is logged as a separate message to avoid escape character issues
-			const prettyJson = JSON.stringify(translated, null, 2);
-			this.logger.info(`Translated message (pretty JSON):\n${prettyJson}`);
+		// Translate Kafka message to database format
+		const translated = this.translateKafkaMessageToUpsertData(message as any);
+		
+		// Log the translated result for verification
+		// Pass the object directly - logger will handle JSON serialization properly
+		this.logger.info('Translated Kafka message to upsert format', {
+			translated: translated,
+		});
 		} catch (error) {
 			this.logger.error('Error translating Kafka message', {
 				error: error instanceof Error ? error.message : 'Unknown error',
@@ -301,7 +295,6 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 		agent: {
 			id?: string;
 			agentId?: string;
-			systemId?: number;
 			firstName: string;
 			middleName?: string;
 			lastName: string;
@@ -359,8 +352,7 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 		// Translate agent core fields
 		const agent = {
 			id: payload.uuid || undefined,
-			agentId: payload.systemkey?.toString() || undefined,
-			systemId: payload.source_system_member_key || undefined,
+			agentId: payload.source_system_member_key?.toString() || undefined,
 			firstName: payload.member_first_name || '',
 			middleName: payload.member_middle_name || undefined,
 			lastName: payload.member_last_name || '',
@@ -499,21 +491,6 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 			orgType: string;
 			lifecycleStatus: string;
 		}> = [];
-
-		// From AgentMLSID array
-		if (Array.isArray(payload.AgentMLSID)) {
-			for (const agentMls of payload.AgentMLSID) {
-				if (agentMls.AgentMLSIDKey) {
-					// This is a reference to existing MLS - we'll need to look it up
-					mls.push({
-						mlsId: agentMls.AgentMLSIDKey.toString(),
-						name: '', // Will be looked up
-						orgType: 'mls',
-						lifecycleStatus: agentMls.MemberStatus || 'active',
-					});
-				}
-			}
-		}
 
 		// From mlss array (full MLS objects)
 		if (Array.isArray(payload.mlss)) {
