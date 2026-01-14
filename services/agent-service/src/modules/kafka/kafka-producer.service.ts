@@ -124,6 +124,20 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
 		key?: string,
 		headers?: Record<string, string>,
 	): Promise<void> {
+		const nodeEnv = this.configService.get('NODE_ENV');
+		const messageValue = typeof message === 'string' ? message : JSON.stringify(message);
+
+		// Skip sending in local environment, but log the message
+		if (nodeEnv === 'local') {
+			this.logger.info('Kafka message skipped (local environment) - message would be sent to topic', {
+				topic,
+				key,
+				message: messageValue,
+				headers,
+			});
+			return;
+		}
+
 		// Try to connect if not already connected
 		if (!this.producer) {
 			this.logger.warn('Kafka producer not connected, attempting to connect...');
@@ -141,8 +155,6 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
 		}
 
 		try {
-			const messageValue = typeof message === 'string' ? message : JSON.stringify(message);
-
 			await this.producer.send({
 				topic,
 				messages: [

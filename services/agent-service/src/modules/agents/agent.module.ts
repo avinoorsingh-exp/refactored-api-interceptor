@@ -118,6 +118,16 @@ import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 			useExisting: AgentService,
 		},
 	],
-	exports: [AgentService, ContactMethodService, AgentAddressService, AgentExistsGuard],
+	exports: [
+		AgentService,
+		ContactMethodService,
+		AgentAddressService,
+		AgentExistsGuard,
+		// Export IAgentRepository token for use in other modules
+		{
+			provide: 'IAgentRepository',
+			useClass: AgentTypeOrmRepository,
+		},
+	],
 })
 export class AgentModule {}
