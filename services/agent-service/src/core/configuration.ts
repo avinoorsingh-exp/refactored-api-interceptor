@@ -24,6 +24,15 @@ export const ConfigSchema = BaseConfig.extend({
 	// ===== Internal Service-to-Service Auth =====
 	S2S_INTERNAL_KEY: z.string().optional(),
 
+	// ===== Kafka Configuration =====
+	KAFKA_BROKERS: z.string().default('localhost:9092'),
+	KAFKA_CLIENT_ID: z.string().default('agent-service'),
+	KAFKA_CONSUMER_GROUP_ID: z.string().default('agent-service-group'),
+	KAFKA_SASL_MECHANISM: z.enum(['plain', 'scram-sha-256', 'scram-sha-512']).optional(),
+	KAFKA_SASL_USERNAME: z.string().optional(),
+	KAFKA_SASL_PASSWORD: z.string().optional(),
+	KAFKA_SSL: z.coerce.boolean().default(false),
+
 	// ==================== Metrics Config ====================
 	METRICS_EXPORTER_ENDPOINT: z.string().optional(),
 	METRICS_EXPORTER_PROTOCOL: z.enum(['http', 'grpc']).default('http'),

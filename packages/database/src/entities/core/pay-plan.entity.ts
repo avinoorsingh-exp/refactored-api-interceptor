@@ -21,16 +21,19 @@ export class PayPlanEntity extends AuditableEntity {
 	name!: string
 
 	@Column({ type: 'boolean' })
+	@Searchable({ weight: 3, behavior: 'exact', description: 'Pay plan display status' })
 	@Filterable()
 	@Sortable()
 	active!: boolean
 
 	@Column({ name: 'agent_percentage', type: 'decimal', precision: 28, scale: 8 })
+	@Searchable({ weight: 5, behavior: 'partial', description: 'Pay plan display agent percentage' })
 	@Filterable()
 	@Sortable()
 	agentPercentage!: number
 
 	@Column({ type: 'decimal', precision: 28, scale: 8 })
+	@Searchable({ weight: 5, behavior: 'partial', description: 'Pay plan display cap amount' })
 	@Filterable()
 	@Sortable()
 	cap!: number
