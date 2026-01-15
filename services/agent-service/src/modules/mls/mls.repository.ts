@@ -20,7 +20,7 @@ const MLS_QUERY_CONFIG: BaseQueryConfig = {
 	allowedFilterFields: ['id', 'ouid', 'globalId', 'lifecycleStatus', 'name', 'shortName', 'website', 'orgType', 'kunversionUrl', 'addressId'],
 	allowedSortFields: ['id', 'ouid', 'globalId', 'lifecycleStatus', 'name', 'shortName', 'website', 'orgType', 'kunversionUrl', 'addressId', 'created', 'lastModified'],
 	allowedSearchFields: ['id', 'ouid', 'globalId', 'lifecycleStatus', 'name', 'shortName', 'website', 'orgType', 'kunversionUrl', 'addressId'],
-	defaultSort: { field: 'name', direction: 'ASC' },
+	defaultSort: { field: 'id', direction: 'ASC' },
 	projectionConfig: MLS_PROJECTION_CONFIG,
 	useStrategySearch: true, // Enable type-aware search for numeric fields
 };
