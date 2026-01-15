@@ -103,8 +103,10 @@ export class SponsorChangedService {
 			// Build Kafka payload
 			const message = this.buildSponsorChangedMessage(applicantUuid, agent);
 
-			// Log the message payload before sending
-			this.logger.info('Sponsor changed message payload', {
+			// Log the message payload before sending (for CloudWatch visibility)
+			this.logger.info('Sponsor changed message payload - ready to send', {
+				applicantUuid,
+				sponsorUuid,
 				message: message,
 			});
 

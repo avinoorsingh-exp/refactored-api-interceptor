@@ -166,10 +166,25 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
 				],
 			});
 
-			this.logger.info('Message sent to Kafka topic', {
+			// Log the full message payload for CloudWatch visibility
+			// Parse message for better readability in logs (if it's a string, try to parse it)
+			// Format matches consumer logging style - pass object directly for proper JSON serialization
+			let logMessage: unknown = message;
+			if (typeof message === 'string') {
+				try {
+					logMessage = JSON.parse(messageValue);
+				} catch {
+					// If parsing fails, use the string as-is
+					logMessage = messageValue;
+				}
+			}
+
+			// Log in same format as consumer: structured object with message payload
+			this.logger.info('Kafka message sent to topic', {
 				topic,
 				key,
-				hasHeaders: !!headers,
+				message: logMessage, // Pass object directly - logger will handle JSON serialization properly
+				headers,
 			});
 		} catch (error) {
 			this.logger.error('Failed to send message to Kafka', {
