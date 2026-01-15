@@ -53,7 +53,7 @@ export class RegionsTypeOrmRepository implements IRegionsRepository {
 
     // Default sort by name ASC if no sort specified (AC-2)
     if (!normalized.sort || normalized.sort.conditions.length === 0) {
-      qb.orderBy('region.name', 'ASC');
+      qb.orderBy('region.id', 'ASC');
     }
 
     // Apply pagination
