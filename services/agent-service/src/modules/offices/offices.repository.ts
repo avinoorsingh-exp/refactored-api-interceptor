@@ -19,7 +19,7 @@ const OFFICES_QUERY_CONFIG: BaseQueryConfig = {
 	allowedFilterFields: ['id', 'name', 'phone', 'lifecycleStatus', 'primaryState', 'companyId', 'website'],
 	allowedSortFields: ['id', 'name', 'phone', 'lifecycleStatus', 'primaryState', 'companyId', 'created', 'lastModified'],
 	allowedSearchFields: ['id', 'name', 'phone', 'primaryState', 'website', 'companyId'],
-	defaultSort: { field: 'name', direction: 'ASC' },
+	defaultSort: { field: 'id', direction: 'ASC' },
 	projectionConfig: OFFICES_PROJECTION_CONFIG,
 	useStrategySearch: true, // Enable type-aware search for numeric fields
 };

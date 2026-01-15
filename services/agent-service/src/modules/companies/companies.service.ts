@@ -106,7 +106,7 @@ export class CompaniesService {
 
 		// Default sort by name ASC if no sort specified (AC-2)
 		if (!normalized.sort || normalized.sort.conditions.length === 0) {
-			qb.orderBy('company.name', 'ASC')
+			qb.orderBy('company.id', 'ASC')
 		}
 
 		// Apply pagination
