@@ -54,14 +54,17 @@ pipeline
           
           try {
             echo "🔍 DEBUG: Calling centralized coverage job"
-            build job: 'Transaction Calculator/centralized-coverage/main',
+            build job: 'AgentService/agent-service-coverage/main',
               wait: false,
               propagate: false,
                   parameters: [
                       string(name: 'SERVICE_NAME', value: 'orchestrator'),
+                      string(name: 'PROJECT_KEY', value: env.COVERAGE_PROJECT_KEY),
+                      string(name: 'REPO_KEY', value: env.COVERAGE_REPO_KEY),
+                      string(name: 'DEFAULT_BRANCH', value: env.COVERAGE_DEFAULT_BRANCH),
                       string(name: 'BRANCH_NAME', value: env.BRANCH_NAME),
                       string(name: 'REPO_URL', value: env.GIT_URL),
-                      string(name: 'COVERAGE_DIR', value: 'coverage'),
+                      string(name: 'COVERAGE_DIR', value: 'services/orchestrator/coverage'),
                       booleanParam(name: 'RUN_E2E', value: true),
                       booleanParam(name: 'FAIL_ON_TEST_FAILURE', value: false),
                       string(name: 'MIN_COVERAGE_PERCENTAGE', value: '0'),
@@ -287,6 +290,12 @@ pipeline
     TF_VAR_app_image = '99'
     ECR = '204048894727.dkr.ecr.us-east-1.amazonaws.com/'
     TF_LOG = 'ERROR'
+
+    // Coverage dashboard grouping + centralized job params
+    COVERAGE_PROJECT_KEY = 'AgentService'
+    COVERAGE_REPO_KEY = 'agent-service-orchestrator'
+    COVERAGE_DEFAULT_BRANCH = 'main'
+
     // Job pass/fail email addresses
     RECIPIENT_LIST='''
     devops@exprealty.net,
