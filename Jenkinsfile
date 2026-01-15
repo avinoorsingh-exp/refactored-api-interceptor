@@ -52,56 +52,19 @@ pipeline
       }
       steps {
         script {
-          // Run local tests with coverage
+          // Trigger centralized coverage job asynchronously (do not delay build; do not fail build)
           try {
-            sh '''
-              cd services/agent-service
-              npm ci --legacy-peer-deps
-              npx jest --coverage --ci --reporters=default --reporters=jest-junit || true
-            '''
-            
-            // Archive coverage artifacts
-            archiveArtifacts artifacts: 'services/agent-service/coverage/**/*', allowEmptyArchive: true
-            
-            // Publish coverage report
-            publishHTML(target: [
-              allowMissing: true,
-              alwaysLinkToLastBuild: true,
-              keepAll: true,
-              reportDir: 'services/agent-service/coverage/lcov-report',
-              reportFiles: 'index.html',
-              reportName: 'Coverage Report'
-            ])
-            
-            // Parse and display coverage summary
-            def coverageSummary = readJSON file: 'services/agent-service/coverage/coverage-summary.json'
-            def total = coverageSummary.total
-            echo "=============================="
-            echo "CODE COVERAGE SUMMARY"
-            echo "=============================="
-            echo "Statements: ${total.statements.pct}% (${total.statements.covered}/${total.statements.total})"
-            echo "Branches:   ${total.branches.pct}% (${total.branches.covered}/${total.branches.total})"
-            echo "Functions:  ${total.functions.pct}% (${total.functions.covered}/${total.functions.total})"
-            echo "Lines:      ${total.lines.pct}% (${total.lines.covered}/${total.lines.total})"
-            echo "=============================="
-            
-            // Set build description with coverage
-            currentBuild.description = "Coverage: ${total.lines.pct}% lines, ${total.branches.pct}% branches"
-            
-          } catch (Exception e) {
-            echo "Coverage collection failed: ${e.message}"
-          }
-          
-          // Also trigger centralized coverage job
-          try {
-            build job: 'Transaction Calculator/centralized-coverage/main',
+            build job: 'AgentService/agent-service-coverage/main',
               wait: false,
               propagate: false,
                   parameters: [
                       string(name: 'SERVICE_NAME', value: 'agent-service'),
+                      string(name: 'PROJECT_KEY', value: env.COVERAGE_PROJECT_KEY),
+                      string(name: 'REPO_KEY', value: env.COVERAGE_REPO_KEY),
+                      string(name: 'DEFAULT_BRANCH', value: env.COVERAGE_DEFAULT_BRANCH),
                       string(name: 'BRANCH_NAME', value: env.BRANCH_NAME),
                       string(name: 'REPO_URL', value: env.GIT_URL),
-                      string(name: 'COVERAGE_DIR', value: 'coverage'),
+                      string(name: 'COVERAGE_DIR', value: 'services/agent-service/coverage'),
                       booleanParam(name: 'RUN_E2E', value: true),
                       booleanParam(name: 'FAIL_ON_TEST_FAILURE', value: false),
                       string(name: 'MIN_COVERAGE_PERCENTAGE', value: '0'),
@@ -731,6 +694,12 @@ pipeline
     TF_VAR_app_image = '99'
     ECR = '204048894727.dkr.ecr.us-east-1.amazonaws.com/'
     TF_LOG = 'ERROR'
+
+    // Coverage dashboard grouping + centralized job params
+    COVERAGE_PROJECT_KEY = 'AgentService'
+    COVERAGE_REPO_KEY = 'agent-service'
+    COVERAGE_DEFAULT_BRANCH = 'main'
+
     // Job pass/fail email addresses
     RECIPIENT_LIST='''
     devops@exprealty.net,
