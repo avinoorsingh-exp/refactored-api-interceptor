@@ -67,11 +67,15 @@ pipeline
                       string(name: 'COVERAGE_DIR', value: 'services/agent-service/coverage'),
                       booleanParam(name: 'RUN_E2E', value: true),
                       booleanParam(name: 'FAIL_ON_TEST_FAILURE', value: false),
-                      string(name: 'MIN_COVERAGE_PERCENTAGE', value: '0'),
-                      booleanParam(name: 'FAIL_ON_COVERAGE_THRESHOLD', value: false)
+                      // Per-metric thresholds (Jest/Istanbul totals)
+                      string(name: 'MIN_LINE_COVERAGE', value: env.COVERAGE_MIN_LINE_COVERAGE),
+                      string(name: 'MIN_BRANCH_COVERAGE', value: env.COVERAGE_MIN_BRANCH_COVERAGE),
+                      string(name: 'MIN_METHOD_COVERAGE', value: env.COVERAGE_MIN_METHOD_COVERAGE),
+                      string(name: 'MIN_STMT_COVERAGE', value: env.COVERAGE_MIN_STMT_COVERAGE),
+                      booleanParam(name: 'FAIL_ON_COVERAGE_THRESHOLD', value: (env.COVERAGE_FAIL_ON_THRESHOLD ?: 'true').toBoolean())
                   ]
           } catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException e) {
-            // FlowInterruptedException is expected when wait: false and downstream job returns UNSTABLE
+            // FlowInterruptedException is expected when wait: false and downstream job returns UNSTABLE/FAILURE
             // This is not a real error - the job was triggered successfully
           } catch (Exception e) {
             // Log error but don't fail the build
@@ -699,6 +703,17 @@ pipeline
     COVERAGE_PROJECT_KEY = 'AgentService'
     COVERAGE_REPO_KEY = 'agent-service'
     COVERAGE_DEFAULT_BRANCH = 'main'
+    
+    // Coverage gating (per-metric minimums). Jest/Istanbul mapping:
+    // - lines      -> total.lines.pct
+    // - branches   -> total.branches.pct
+    // - methods    -> total.functions.pct
+    // - statements -> total.statements.pct
+    COVERAGE_FAIL_ON_THRESHOLD = 'true'
+    COVERAGE_MIN_LINE_COVERAGE = '0'
+    COVERAGE_MIN_BRANCH_COVERAGE = '0'
+    COVERAGE_MIN_METHOD_COVERAGE = '0'
+    COVERAGE_MIN_STMT_COVERAGE = '0'
 
     // Job pass/fail email addresses
     RECIPIENT_LIST='''
