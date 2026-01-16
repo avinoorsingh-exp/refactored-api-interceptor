@@ -67,7 +67,10 @@ pipeline
                       string(name: 'COVERAGE_DIR', value: 'services/orchestrator/coverage'),
                       booleanParam(name: 'RUN_E2E', value: true),
                       booleanParam(name: 'FAIL_ON_TEST_FAILURE', value: false),
-                      string(name: 'MIN_COVERAGE_PERCENTAGE', value: '0'),
+                      string(name: 'MIN_LINE_COVERAGE', value: '0'),
+                      string(name: 'MIN_BRANCH_COVERAGE', value: '0'),
+                      string(name: 'MIN_METHOD_COVERAGE', value: '0'),
+                      string(name: 'MIN_STMT_COVERAGE', value: '0'),
                       booleanParam(name: 'FAIL_ON_COVERAGE_THRESHOLD', value: false)
                   ]
             echo "✅ DEBUG: Successfully called centralized coverage job"
