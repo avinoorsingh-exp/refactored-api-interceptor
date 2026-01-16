@@ -86,8 +86,18 @@ export class KafkaMessageProcessingService {
 		await queryRunner.startTransaction();
 
 		try {
+			// For producer records, if offset is '0' or missing, it means Kafka metadata wasn't extracted properly
+			// Use a timestamp-based numeric offset to ensure uniqueness
+			// This is a temporary offset that will be replaced when the consumer processes the message
+			// We use a very large number (timestamp in milliseconds) to avoid conflicts with real Kafka offsets
+			// The consumer will update this record with the actual Kafka offset when it processes the message
+			const uniqueOffset = data.offset === '0' || !data.offset 
+				? Date.now().toString() // Use current timestamp in milliseconds as a unique offset
+				: data.offset;
+
 			// Use raw SQL with ON CONFLICT to insert atomically
-			// If record already exists (shouldn't happen for producer), do nothing
+			// For producer records with offset 0, we use timestamp-based offsets to ensure uniqueness
+			// If a conflict occurs (shouldn't happen with timestamp offsets), update the existing record
 			const result = await queryRunner.query(
 				`
 				INSERT INTO core.kafka_message_processing (
@@ -98,13 +108,16 @@ export class KafkaMessageProcessingService {
 					created_at, updated_at
 				) VALUES ($1, $2, $3, $4, $5, $6, 1, NOW(), NULL, NULL, NULL, NULL, NULL, false, $7, $8, 'producer', $9, NOW(), NOW())
 				ON CONFLICT (topic, partition, "offset") 
-				DO NOTHING
+				DO UPDATE SET
+					updated_at = NOW(),
+					payload = EXCLUDED.payload,
+					headers = EXCLUDED.headers
 				RETURNING id, attempt_count, status
 				`,
 				[
 					data.topic,
 					data.partition,
-					data.offset,
+					uniqueOffset,
 					data.messageKey || null,
 					data.eventId || null,
 					KafkaMessageStatus.SENT,
@@ -119,27 +132,44 @@ export class KafkaMessageProcessingService {
 			const record = result?.[0];
 			if (record) {
 				// Structured log: Record created
+				const isTimestampOffset = data.offset === '0' || !data.offset;
 				this.logger.info('Kafka message SENT record created', {
 					event: 'kafka_message_sent_record_created',
 					topic: data.topic,
 					partition: data.partition,
-					offset: data.offset,
+					offset: uniqueOffset,
+					originalOffset: data.offset,
+					usingTimestampOffset: isTimestampOffset,
 					messageKey: data.messageKey,
 					eventId: data.eventId,
 					serviceName: data.serviceName,
 					attemptCount: 1,
 					status: KafkaMessageStatus.SENT,
 				});
+				return true;
+			} else {
+				// ON CONFLICT DO UPDATE was triggered - record was updated
+				this.logger.info('Kafka message SENT record updated (ON CONFLICT DO UPDATE)', {
+					topic: data.topic,
+					partition: data.partition,
+					offset: uniqueOffset,
+					messageKey: data.messageKey,
+					eventId: data.eventId,
+				});
+				return true; // Still return true since the record exists/updated
 			}
-
-			return true;
 		} catch (error) {
 			await queryRunner.rollbackTransaction();
 			// Log error but don't throw - this must not block the producer
-			this.logger.warn('Failed to create SENT Kafka message processing record (non-blocking)', {
+			// Use error level to make it more visible
+			this.logger.error('Failed to create SENT Kafka message processing record (non-blocking)', {
+				event: 'kafka_message_sent_record_failed',
 				topic: data.topic,
 				partition: data.partition,
 				offset: data.offset,
+				messageKey: data.messageKey,
+				eventId: data.eventId,
+				serviceName: data.serviceName,
 				error: error instanceof Error ? error.message : 'Unknown error',
 				stack: error instanceof Error ? error.stack : undefined,
 			});
