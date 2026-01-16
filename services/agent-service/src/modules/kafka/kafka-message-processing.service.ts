@@ -188,7 +188,7 @@ export class KafkaMessageProcessingService {
 
 			// Use raw SQL with ON CONFLICT to update atomically
 			// Record should already exist with SENT status from producer
-			// If record exists, increment attempt_count and update last_attempt_at
+			// If record exists, increment attempt_count, update last_attempt_at, and update payload with translated version
 			// If record doesn't exist (shouldn't happen), create it with SENT status
 			const result = await queryRunner.query(
 				`
@@ -204,6 +204,7 @@ export class KafkaMessageProcessingService {
 					attempt_count = core.kafka_message_processing.attempt_count + 1,
 					last_attempt_at = NOW(),
 					updated_at = NOW(),
+					payload = EXCLUDED.payload,
 					consumer_group = EXCLUDED.consumer_group
 				RETURNING id, attempt_count, status
 				`,

@@ -171,12 +171,12 @@ export class SponsorChangedService {
 			}>;
 		},
 	): SponsorChangedMessage {
-		// Extract email: first contact method where channel=email and isPrimary=true
+		// Extract primary email: first contact method where channel=email and isPrimary=true
 		const primaryEmail = agent.contactMethod?.find(
 			(cm) => cm.channel === 'email' && cm.isPrimary === true,
 		);
 
-		// Extract ExpEmail: first contact method where channel=email and isPrimary=false
+		// Extract secondary email: first contact method where channel=email and isPrimary=false
 		const secondaryEmail = agent.contactMethod?.find(
 			(cm) => cm.channel === 'email' && cm.isPrimary === false,
 		);
@@ -205,8 +205,8 @@ export class SponsorChangedService {
 				AgentID: agent.agentId || '',
 				FirstName: agent.firstName,
 				LastName: agent.lastName,
-				Email: primaryEmail?.value || '',
-				ExpEmail: secondaryEmail?.value || '',
+				Email: secondaryEmail?.value || '',
+				ExpEmail: primaryEmail?.value || '',
 				Description: '',
 				TypeOfActor: 'Agent',
 				PhoneList: phoneList,
