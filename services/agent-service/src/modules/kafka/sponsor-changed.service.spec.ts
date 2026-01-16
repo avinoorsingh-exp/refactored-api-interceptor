@@ -146,8 +146,8 @@ describe('SponsorChangedService', () => {
 						AgentID: '12345',
 						FirstName: 'John',
 						LastName: 'Doe',
-						Email: 'john.doe@example.com',
-						ExpEmail: 'john.doe.personal@example.com',
+						Email: 'john.doe.personal@example.com',
+						ExpEmail: 'john.doe@example.com',
 						TypeOfActor: 'Agent',
 					}),
 				}),
@@ -231,16 +231,16 @@ describe('SponsorChangedService', () => {
 			);
 		});
 
-		it('should use empty string for Email when no primary email found', async () => {
-			const agentWithoutPrimaryEmail = {
+		it('should use empty string for Email when no secondary email found', async () => {
+			const agentWithoutSecondaryEmail = {
 				...mockAgent,
 				contactMethod: mockAgent.contactMethod?.filter(
-					(cm) => !(cm.channel === 'email' && cm.isPrimary === true),
+					(cm) => !(cm.channel === 'email' && cm.isPrimary === false),
 				),
 			};
 
 			mockAgentRepository.findPage.mockResolvedValue({
-				items: [agentWithoutPrimaryEmail],
+				items: [agentWithoutSecondaryEmail],
 				total: 1,
 				limit: 1,
 				offset: 0,
@@ -259,16 +259,16 @@ describe('SponsorChangedService', () => {
 			);
 		});
 
-		it('should use empty string for ExpEmail when no secondary email found', async () => {
-			const agentWithoutSecondaryEmail = {
+		it('should use empty string for ExpEmail when no primary email found', async () => {
+			const agentWithoutPrimaryEmail = {
 				...mockAgent,
 				contactMethod: mockAgent.contactMethod?.filter(
-					(cm) => !(cm.channel === 'email' && cm.isPrimary === false),
+					(cm) => !(cm.channel === 'email' && cm.isPrimary === true),
 				),
 			};
 
 			mockAgentRepository.findPage.mockResolvedValue({
-				items: [agentWithoutSecondaryEmail],
+				items: [agentWithoutPrimaryEmail],
 				total: 1,
 				limit: 1,
 				offset: 0,

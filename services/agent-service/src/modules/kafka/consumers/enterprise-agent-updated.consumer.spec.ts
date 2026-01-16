@@ -3,6 +3,7 @@ import { EnterpriseAgentUpdatedConsumer } from './enterprise-agent-updated.consu
 import { KafkaClientService } from '../kafka-client.service.js';
 import { ConfigService } from '../../../core/config.service.js';
 import { LoggerService } from '../../../core/logger.service.js';
+import { KafkaMessageProcessingService } from '../kafka-message-processing.service.js';
 import { Consumer, Kafka, KafkaMessage } from 'kafkajs';
 
 describe('EnterpriseAgentUpdatedConsumer', () => {
@@ -10,6 +11,7 @@ describe('EnterpriseAgentUpdatedConsumer', () => {
 	let mockKafkaClient: jest.Mocked<KafkaClientService>;
 	let mockConfigService: jest.Mocked<ConfigService>;
 	let mockLogger: jest.Mocked<LoggerService>;
+	let mockKafkaMessageProcessingService: jest.Mocked<KafkaMessageProcessingService>;
 	let mockConsumer: jest.Mocked<Consumer>;
 	let mockKafka: jest.Mocked<Kafka>;
 
@@ -31,6 +33,7 @@ describe('EnterpriseAgentUpdatedConsumer', () => {
 
 		mockConfigService = {
 			get: jest.fn().mockReturnValue('test-consumer-group'),
+			getAll: jest.fn().mockReturnValue({ SERVICE_NAME: 'agent-service' }),
 		} as any;
 
 		mockLogger = {
@@ -40,12 +43,19 @@ describe('EnterpriseAgentUpdatedConsumer', () => {
 			error: jest.fn(),
 		} as any;
 
+		mockKafkaMessageProcessingService = {
+			lookupOrUpdateSentAndIncrementAttempt: jest.fn().mockResolvedValue(true),
+			markAsProcessed: jest.fn().mockResolvedValue(undefined),
+			markAsError: jest.fn().mockResolvedValue(undefined),
+		} as any;
+
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [
 				EnterpriseAgentUpdatedConsumer,
 				{ provide: KafkaClientService, useValue: mockKafkaClient },
 				{ provide: ConfigService, useValue: mockConfigService },
 				{ provide: LoggerService, useValue: mockLogger },
+				{ provide: KafkaMessageProcessingService, useValue: mockKafkaMessageProcessingService },
 			],
 		}).compile();
 

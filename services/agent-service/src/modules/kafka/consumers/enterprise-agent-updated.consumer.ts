@@ -170,6 +170,25 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 				return;
 			}
 
+			// Translate the message before storing it
+			// This ensures the database stores the translated format, not the raw message
+			let translatedPayload: Record<string, unknown>;
+			try {
+				const translated = this.translateKafkaMessageToUpsertData(parsedMessage as any);
+				// Convert the translated object to a plain object for JSON storage
+				translatedPayload = translated as unknown as Record<string, unknown>;
+			} catch (translationError) {
+				// If translation fails, log error but store raw message
+				// This allows tracking even if translation has issues
+				this.logger.warn('Failed to translate message before storing - storing raw message', {
+					topic,
+					partition,
+					offset: message.offset,
+					error: translationError instanceof Error ? translationError.message : 'Unknown error',
+				});
+				translatedPayload = parsedMessage as Record<string, unknown>;
+			}
+
 			// On message receive: Lookup SENT record and increment attempt_count
 			// Record should already exist from producer with SENT status
 			// This ensures we track every message attempt, even if processing fails
@@ -181,7 +200,7 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 				offset: message.offset,
 				messageKey: messageKey || undefined,
 				eventId: (parsedMessage as any)?.eventId || (parsedMessage as any)?.uuid || undefined,
-				payload: parsedMessage as Record<string, unknown>,
+				payload: translatedPayload,
 				headers: message.headers ? Object.fromEntries(
 					Object.entries(message.headers).map(([k, v]) => [k, v?.toString() || ''])
 				) : undefined,
