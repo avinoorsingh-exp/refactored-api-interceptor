@@ -318,6 +318,13 @@ export { FeesEntity } from './entities/core/fees.entity.js'
  */
 export { ApprovalEntity } from './entities/core/approval.entity.js'
 
+/**
+ * TypeORM entity for KafkaMessageProcessing table.
+ * Tracks Kafka message processing status, retries, errors, and idempotency.
+ * @public
+ */
+export { KafkaMessageProcessingEntity, KafkaMessageStatus } from './entities/core/kafka-message-processing.entity.js'
+
 // ============================================================================
 // Query Decorators
 // ============================================================================

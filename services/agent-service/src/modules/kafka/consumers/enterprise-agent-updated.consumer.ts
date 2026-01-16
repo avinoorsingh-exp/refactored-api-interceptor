@@ -1,6 +1,7 @@
 import { Injectable, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
 import { Consumer, KafkaMessage } from 'kafkajs';
 import { KafkaClientService } from '../kafka-client.service.js';
+import { KafkaMessageProcessingService } from '../kafka-message-processing.service.js';
 import { ConfigService } from '../../../core/config.service.js';
 import { LoggerService } from '../../../core/logger.service.js';
 
@@ -26,6 +27,7 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 	constructor(
 		private readonly kafkaClientService: KafkaClientService,
 		private readonly configService: ConfigService,
+		private readonly kafkaMessageProcessingService: KafkaMessageProcessingService,
 		loggerService: LoggerService,
 	) {
 		this.logger = loggerService;
@@ -168,6 +170,25 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 				return;
 			}
 
+			// On message receive: Lookup SENT record and increment attempt_count
+			// Record should already exist from producer with SENT status
+			// This ensures we track every message attempt, even if processing fails
+			const allConfig = this.configService.getAll();
+			const serviceName = String((allConfig as Record<string, unknown>)['SERVICE_NAME'] || 'agent-service');
+			await this.kafkaMessageProcessingService.lookupOrUpdateSentAndIncrementAttempt({
+				topic,
+				partition,
+				offset: message.offset,
+				messageKey: messageKey || undefined,
+				eventId: (parsedMessage as any)?.eventId || (parsedMessage as any)?.uuid || undefined,
+				payload: parsedMessage as Record<string, unknown>,
+				headers: message.headers ? Object.fromEntries(
+					Object.entries(message.headers).map(([k, v]) => [k, v?.toString() || ''])
+				) : undefined,
+				consumerGroup: this.groupId,
+				serviceName,
+			});
+
 			// Process the message with retry logic
 			await this.processMessageWithRetry(parsedMessage, topic, partition, message.offset);
 
@@ -205,6 +226,14 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 		for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
 			try {
 				await this.processAgentUpdate(message);
+				
+				// After successful processing: Update status = PROCESSED, processed_at = now(), updated_at = now()
+				await this.kafkaMessageProcessingService.markAsProcessed(
+					topic,
+					partition,
+					offset,
+				);
+
 				// Success - log if it was a retry
 				if (attempt > 1) {
 					this.logger.info('Message processed successfully after retry', {
@@ -219,6 +248,15 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 			} catch (error) {
 				lastError = error;
 				const isLastAttempt = attempt === this.maxRetries;
+				
+				// Mark as error in database (non-blocking)
+				await this.kafkaMessageProcessingService.markAsError(
+					topic,
+					partition,
+					offset,
+					error instanceof Error ? error : new Error(String(error)),
+					!isLastAttempt, // Retryable if not last attempt
+				);
 				
 				if (isLastAttempt) {
 					this.logger.error('Message processing failed after all retries', {

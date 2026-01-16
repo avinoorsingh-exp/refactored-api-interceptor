@@ -1,10 +1,16 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { KafkaClientService } from './kafka-client.service.js';
 import { KafkaProducerService } from './kafka-producer.service.js';
 import { EnterpriseAgentUpdatedConsumer } from './consumers/enterprise-agent-updated.consumer.js';
 import { SponsorChangedService } from './sponsor-changed.service.js';
 import { SponsorChangedController } from './sponsor-changed.controller.js';
+import { KafkaMessageProcessingService } from './kafka-message-processing.service.js';
+import { KafkaMessageProcessingController } from './kafka-message-processing.controller.js';
+import { KafkaMessageCleanupService } from './kafka-message-cleanup.service.js';
 import { AgentModule } from '../agents/agent.module.js';
+import { KafkaMessageProcessingEntity } from '@exprealty/database';
+import { PaginationModule } from '../../common/pagination/pagination.module.js';
 
 /**
  * Kafka Module
@@ -22,15 +28,20 @@ import { AgentModule } from '../agents/agent.module.js';
 @Module({
 	imports: [
 		AgentModule, // Required for IAgentRepository
+		TypeOrmModule.forFeature([KafkaMessageProcessingEntity]),
+		PaginationModule, // Required for PaginationInterceptor
 	],
 	providers: [
 		KafkaClientService,
 		KafkaProducerService,
 		EnterpriseAgentUpdatedConsumer,
 		SponsorChangedService,
+		KafkaMessageProcessingService,
+		KafkaMessageCleanupService,
 	],
 	controllers: [
 		SponsorChangedController,
+		KafkaMessageProcessingController,
 	],
 	exports: [
 		KafkaClientService,
