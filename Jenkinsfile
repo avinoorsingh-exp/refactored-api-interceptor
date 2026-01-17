@@ -54,8 +54,11 @@ pipeline
         script {
           // Trigger centralized coverage job asynchronously (do not delay build; do not fail build)
           try {
-            build job: 'AgentService/agent-service-coverage/main',
-              wait: false,
+            def ccJob = 'AgentService/agent-service-coverage/main'
+            // Flip to `true` later if we decide to gate this pipeline on coverage/test results.
+            def coverageWait = false
+            def ccRun = build job: ccJob,
+              wait: coverageWait,
               propagate: false,
                   parameters: [
                       string(name: 'SERVICE_NAME', value: 'agent-service'),
@@ -74,11 +77,27 @@ pipeline
                       string(name: 'MIN_STMT_COVERAGE', value: env.COVERAGE_MIN_STMT_COVERAGE),
                       booleanParam(name: 'FAIL_ON_COVERAGE_THRESHOLD', value: (env.COVERAGE_FAIL_ON_THRESHOLD ?: 'true').toBoolean())
                   ]
+            def base = (env.JENKINS_URL ?: '').toString().trim()
+            def ccJobUrl = base ? "${base}job/AgentService/job/agent-service-coverage/job/main/" : ccJob
+            env.COVERAGE_STATUS = (coverageWait ? (ccRun?.result ?: 'UNKNOWN') : 'TRIGGERED').toString()
+            env.COVERAGE_URL = (coverageWait ? (ccRun?.absoluteUrl ?: ccJobUrl) : ccJobUrl).toString()
+            if (coverageWait) {
+              if (ccRun?.result && ccRun.result != 'SUCCESS') {
+                def ccUrl = ccRun?.absoluteUrl ?: ccJobUrl
+                error("AgentService coverage job failed (${ccRun.result}). See: ${ccUrl}")
+              }
+            } else {
+              echo "ℹ️  INFO: AgentService coverage job triggered (async, non-blocking): ${ccJobUrl}"
+            }
           } catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException e) {
             // FlowInterruptedException is expected when wait: false and downstream job returns UNSTABLE/FAILURE
             // This is not a real error - the job was triggered successfully
+            echo "ℹ️  INFO: AgentService coverage job trigger interrupted (non-blocking): ${e.getMessage()}"
+            env.COVERAGE_STATUS = 'TRIGGER_INTERRUPTED'
           } catch (Exception e) {
             // Log error but don't fail the build
+            echo "❌ DEBUG: Error calling AgentService coverage job: ${e.getClass().getSimpleName()}: ${e.getMessage()}"
+            env.COVERAGE_STATUS = 'ERROR'
           }
         }
       }
@@ -725,6 +744,11 @@ pipeline
   }
   post {
     always {
+      script {
+        def s = (env.COVERAGE_STATUS ?: 'NOT_RUN').toString()
+        def u = (env.COVERAGE_URL ?: '').toString()
+        echo "🧾 Coverage summary: ${s}${u ? " - ${u}" : ""}"
+      }
       cleanWs()
       sh "docker rmi $TF_VAR_app_image | true"
     }
