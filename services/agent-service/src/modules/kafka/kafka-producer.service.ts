@@ -3,6 +3,7 @@ import { Producer } from 'kafkajs';
 import { KafkaClientService } from './kafka-client.service.js';
 import { LoggerService } from '../../core/logger.service.js';
 import { ConfigService } from '../../core/config.service.js';
+import { KafkaMessageProcessingService } from './kafka-message-processing.service.js';
 
 /**
  * Kafka Producer Service
@@ -22,6 +23,7 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
 		private readonly kafkaClientService: KafkaClientService,
 		private readonly configService: ConfigService,
 		loggerService: LoggerService,
+		private readonly kafkaMessageProcessingService: KafkaMessageProcessingService,
 	) {
 		this.logger = loggerService;
 		this.logger.setContext('KafkaProducerService');
@@ -127,8 +129,41 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
 		const nodeEnv = this.configService.get('NODE_ENV');
 		const messageValue = typeof message === 'string' ? message : JSON.stringify(message);
 
-		// Skip sending in local environment, but log the message
+		// Skip sending in local environment, but log the message and create a mock SENT record
 		if (nodeEnv === 'local') {
+			// Extract eventId from message if available
+			let eventId: string | undefined;
+			if (typeof message === 'object' && message !== null) {
+				const msg = message as Record<string, unknown>;
+				eventId = (msg.eventId as string) || (msg.uuid as string) || undefined;
+			}
+
+			const allConfig = this.configService.getAll();
+			const serviceName = String((allConfig as Record<string, unknown>)['SERVICE_NAME'] || 'agent-service');
+
+			// Create a mock SENT record with partition=0, offset=0 for local environment
+			// This allows testing the flow even when Kafka is not available
+			const recordCreated = await this.kafkaMessageProcessingService.createSentRecord({
+				topic,
+				partition: 0,
+				offset: '0',
+				messageKey: key,
+				eventId,
+				payload: typeof message === 'object' && message !== null ? message as Record<string, unknown> : { value: messageValue },
+				headers,
+				serviceName,
+			});
+
+			if (!recordCreated) {
+				this.logger.warn('Failed to create SENT record in database (local environment) - check logs for details', {
+					topic,
+					partition: 0,
+					offset: '0',
+					messageKey: key,
+					eventId,
+				});
+			}
+
 			this.logger.info('Kafka message skipped (local environment) - message would be sent to topic', {
 				topic,
 				key,
@@ -155,7 +190,7 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
 		}
 
 		try {
-			await this.producer.send({
+			const result = await this.producer.send({
 				topic,
 				messages: [
 					{
@@ -165,6 +200,58 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
 					},
 				],
 			});
+
+			// Extract partition and offset from the send result
+			// result is an array of RecordMetadata arrays (one per topic partition)
+			// For a single message, we get the first partition's metadata
+			const recordMetadata = result[0]?.[0];
+			const partition = recordMetadata?.partition ?? 0;
+			const offset = recordMetadata?.offset?.toString() ?? '0';
+
+			// Log if metadata extraction failed (for debugging)
+			if (!recordMetadata || recordMetadata.partition === undefined || recordMetadata.offset === undefined) {
+				this.logger.warn('Kafka send result metadata incomplete - using defaults', {
+					topic,
+					key,
+					resultStructure: JSON.stringify(result),
+					recordMetadata: recordMetadata ? JSON.stringify(recordMetadata) : 'undefined',
+					usingPartition: partition,
+					usingOffset: offset,
+				});
+			}
+
+			// Create SENT record in database (non-blocking)
+			// Extract eventId from message if available
+			let eventId: string | undefined;
+			if (typeof message === 'object' && message !== null) {
+				const msg = message as Record<string, unknown>;
+				eventId = (msg.eventId as string) || (msg.uuid as string) || undefined;
+			}
+
+			const allConfig = this.configService.getAll();
+			const serviceName = String((allConfig as Record<string, unknown>)['SERVICE_NAME'] || 'agent-service');
+
+			// Create SENT record - this is non-blocking, errors are logged but not thrown
+			const recordCreated = await this.kafkaMessageProcessingService.createSentRecord({
+				topic,
+				partition,
+				offset,
+				messageKey: key,
+				eventId,
+				payload: typeof message === 'object' && message !== null ? message as Record<string, unknown> : { value: messageValue },
+				headers,
+				serviceName,
+			});
+
+			if (!recordCreated) {
+				this.logger.warn('Failed to create SENT record in database - check logs for details', {
+					topic,
+					partition,
+					offset,
+					messageKey: key,
+					eventId,
+				});
+			}
 
 			// Log the full message payload for CloudWatch visibility
 			// Parse message for better readability in logs (if it's a string, try to parse it)
@@ -183,6 +270,8 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
 			this.logger.info('Kafka message sent to topic', {
 				topic,
 				key,
+				partition,
+				offset,
 				message: logMessage, // Pass object directly - logger will handle JSON serialization properly
 				headers,
 			});

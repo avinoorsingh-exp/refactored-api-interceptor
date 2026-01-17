@@ -51,6 +51,7 @@ import { ArtifactEntity } from './entities/core/artifact.entity.js'
 import { CustomFlagEntity } from './entities/core/custom-flag.entity.js'
 import { FeesEntity } from './entities/core/fees.entity.js'
 import { ApprovalEntity } from './entities/core/approval.entity.js'
+import { KafkaMessageProcessingEntity } from './entities/core/kafka-message-processing.entity.js'
 
 /**
  * Get SSL configuration for RDS connections
@@ -193,6 +194,7 @@ export const AppDataSource = new DataSource({
 		CustomFlagEntity,
 		FeesEntity,
 		ApprovalEntity,
+		KafkaMessageProcessingEntity,
 	],
 
 	// Migrations

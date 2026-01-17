@@ -1,5 +1,6 @@
 // services/agent-service/src/app.module.ts
 import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common'
+import { ScheduleModule } from '@nestjs/schedule'
 import { DatabaseModule } from './core/database.module.js'
 import { ConfigModule } from './core/config.module.js'
 import { LoggerModule } from './core/logger.module.js'
@@ -22,6 +23,7 @@ import { CorrelationIdMiddleware } from './common/correlation-id.middleware.js'
     LoggerModule,
     ConfigModule,
     DatabaseModule,
+    ScheduleModule.forRoot(), // Enable scheduled tasks
     QueryModule,  // Global module - provides QueryService and search strategies
     MetadataModule,  // Global module - provides MetadataService for entity metadata
     CountriesModule,
