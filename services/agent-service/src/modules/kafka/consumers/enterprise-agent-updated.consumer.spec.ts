@@ -384,6 +384,8 @@ describe('EnterpriseAgentUpdatedConsumer', () => {
 				unit: 'A',
 				county: 'Sangamon',
 				label: 'Home',
+				type: 'personal',
+				role: 'contact',
 				isPrimary: true,
 				stateCode: 'IL',
 				countryAlpha2: 'US',
