@@ -24,12 +24,20 @@ export class SeedKafkaServices1769100000001 implements MigrationInterface {
 			return;
 		}
 
+		// Get consumer group ID from environment variable
+		// Each environment (dev, staging, prod) should have this set in their secrets
+		const consumerGroupId = process.env.KAFKA_CONSUMER_GROUP_ID || 'agent-service-group';
+
 		// Insert Enterprise Agent Updated Consumer
-		await queryRunner.query(`
+		// Use parameterized query to safely insert the group_id from environment variable
+		await queryRunner.query(
+			`
 			INSERT INTO "core"."kafka_service" ("type", "topic", "group_id", "enabled", "created_at", "updated_at")
-			VALUES ('consumer', 'Enterprise_AgentUpdated_V2', 'agent-service-group', true, NOW(), NOW())
+			VALUES ($1, $2, $3, true, NOW(), NOW())
 			ON CONFLICT ("topic", "group_id") DO NOTHING
-		`);
+		`,
+			['consumer', 'Enterprise_AgentUpdated_V2', consumerGroupId],
+		);
 
 		// Insert Kafka Producer Service
 		// Note: Producer uses 'global' as topic (not topic-specific) and has no group_id
@@ -42,11 +50,18 @@ export class SeedKafkaServices1769100000001 implements MigrationInterface {
 
 	public async down(queryRunner: QueryRunner): Promise<void> {
 		// Remove the seeded Kafka service definitions
-		await queryRunner.query(`
+		// Note: This will remove the consumer regardless of group_id value
+		// since we can't know which environment's group_id was used
+		const consumerGroupId = process.env.KAFKA_CONSUMER_GROUP_ID || 'agent-service-group';
+		
+		await queryRunner.query(
+			`
 			DELETE FROM "core"."kafka_service"
-			WHERE ("topic" = 'Enterprise_AgentUpdated_V2' AND "group_id" = 'agent-service-group')
+			WHERE ("topic" = $1 AND "group_id" = $2)
 			OR ("topic" = 'global' AND "group_id" IS NULL)
-		`);
+		`,
+			['Enterprise_AgentUpdated_V2', consumerGroupId],
+		);
 	}
 }
 
