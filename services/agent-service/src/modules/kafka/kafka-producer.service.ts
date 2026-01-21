@@ -1,9 +1,10 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Producer } from 'kafkajs';
 import { KafkaClientService } from './kafka-client.service.js';
 import { LoggerService } from '../../core/logger.service.js';
 import { ConfigService } from '../../core/config.service.js';
 import { KafkaMessageProcessingService } from './kafka-message-processing.service.js';
+import { RegisterableKafkaService } from './kafka-runtime-manager.service.js';
 
 /**
  * Kafka Producer Service
@@ -11,13 +12,14 @@ import { KafkaMessageProcessingService } from './kafka-message-processing.servic
  * Provides functionality to produce messages to Kafka topics.
  * Manages producer lifecycle and connection.
  * 
- * Note: Kafka producer is disabled when NODE_ENV === 'local' to prevent
- * connection attempts in local development environments.
+ * Implements RegisterableKafkaService to be managed by KafkaRuntimeManager.
+ * Lifecycle is controlled by the runtime manager, not NestJS lifecycle hooks.
  */
 @Injectable()
-export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
+export class KafkaProducerService implements RegisterableKafkaService {
 	private producer: Producer | null = null;
 	private readonly logger: LoggerService;
+	private readonly serviceId: string;
 
 	constructor(
 		private readonly kafkaClientService: KafkaClientService,
@@ -27,49 +29,56 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
 	) {
 		this.logger = loggerService;
 		this.logger.setContext('KafkaProducerService');
-	}
-
-	async onModuleInit() {
-		const nodeEnv = this.configService.get('NODE_ENV');
-		
-		// Skip Kafka producer initialization in local environment
-		if (nodeEnv === 'local') {
-			this.logger.info('Kafka producer skipped - NODE_ENV is "local". Kafka integration only runs in AWS environments.');
-			return;
-		}
-
-		// Attempt to connect, but don't fail startup if connection fails
-		try {
-			await this.connect();
-		} catch (error) {
-			this.logger.warn('Kafka producer connection failed during startup - will retry on first use', {
-				error: error instanceof Error ? error.message : 'Unknown error',
-			});
-			// Don't throw - allow service to start without Kafka producer
-		}
-	}
-
-	async onModuleDestroy() {
-		const nodeEnv = this.configService.get('NODE_ENV');
-		
-		// Skip Kafka producer shutdown in local environment
-		if (nodeEnv === 'local') {
-			return;
-		}
-
-		await this.disconnect();
+		// Generate a unique service ID for the producer
+		// Producer doesn't have a specific topic, so we use a generic ID
+		this.serviceId = 'producer-global';
 	}
 
 	/**
-	 * Connect the producer to Kafka
+	 * Get unique identifier for this service.
 	 */
-	private async connect(): Promise<void> {
+	getId(): string {
+		return this.serviceId;
+	}
+
+	/**
+	 * Get service type.
+	 */
+	getType(): 'consumer' | 'producer' {
+		return 'producer';
+	}
+
+	/**
+	 * Get Kafka topic name.
+	 * Producer can send to multiple topics, so we return a generic value.
+	 */
+	getTopic(): string {
+		return 'global'; // Producer is not topic-specific
+	}
+
+	/**
+	 * Get consumer group ID (not applicable for producers).
+	 */
+	getGroupId(): string | undefined {
+		return undefined;
+	}
+
+	/**
+	 * Start the producer and connect to Kafka.
+	 * Returns the Producer instance for runtime tracking.
+	 */
+	async start(): Promise<Producer> {
 		try {
 			const kafka = this.kafkaClientService.getClient();
 			this.producer = kafka.producer();
 
 			await this.producer.connect();
 			this.logger.info('Kafka producer connected');
+			
+			if (!this.producer) {
+				throw new Error('Producer instance is null after start');
+			}
+			return this.producer;
 		} catch (error) {
 			this.logger.error('Failed to connect Kafka producer', {
 				error: error instanceof Error ? error.message : 'Unknown error',
@@ -81,9 +90,9 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
 	}
 
 	/**
-	 * Disconnect the producer from Kafka
+	 * Stop the producer and disconnect from Kafka.
 	 */
-	private async disconnect(): Promise<void> {
+	async stop(): Promise<void> {
 		if (this.producer) {
 			try {
 				await this.producer.disconnect();
@@ -177,7 +186,7 @@ export class KafkaProducerService implements OnModuleInit, OnModuleDestroy {
 		if (!this.producer) {
 			this.logger.warn('Kafka producer not connected, attempting to connect...');
 			try {
-				await this.connect();
+				await this.start();
 			} catch (error) {
 				const errorMessage = 'Kafka producer is not available. Cannot send message.';
 				this.logger.error(errorMessage, {
