@@ -569,6 +569,32 @@ export class AgentTypeOrmRepository
 		// Apply the sort - use orderBy since this is the primary requested sort
 		qb.orderBy(`${primaryEmailAlias}.value`, sortCondition.direction, 'NULLS LAST');
 	}
+	/**
+	 * Applies full name search using SQL CONCAT.
+	 * This works alongside existing individual field searches (firstName, lastName).
+	 * 
+	 * @param qb - Query builder
+	 * @param searchQuery - Optional search query string
+	 */
+	private applyFullNameSearch<T>(
+		qb: SelectQueryBuilder<T>,
+		searchQuery?: string,
+	): void {
+		if (!searchQuery || !searchQuery.trim()) {
+			return;
+		}
+
+		const alias = this.getAlias();
+		const paramName = 'fullNameSearch';
+
+		// Use CONCAT to concatenate firstName and lastName with a space
+		// TypeORM will resolve property names to column names (firstName -> first_name, lastName -> last_name)
+		// Use COALESCE to handle null values gracefully
+		qb.orWhere(
+			`CONCAT(COALESCE(${alias}.firstName, ''), ' ', COALESCE(${alias}.lastName, '')) ILIKE :${paramName}`,
+			{ [paramName]: `%${searchQuery.trim()}%` },
+		);
+	}
 
 	/**
 	 * Finds agents with pagination, filtering, sorting, and search.
@@ -643,9 +669,12 @@ export class AgentTypeOrmRepository
 						!primaryEmailIncluded,
 					);
 				}
+				// Apply full name search if search query is provided
+				this.applyFullNameSearch(qb, modifiedQuery.search);
 			}, { skipDefaultSort: hasRelationalSort });
 		}
 
-		return this.findWithQuery(modifiedQuery, selection);
+		return this.findWithQuery(modifiedQuery, selection,(qb) => {
+			this.applyFullNameSearch(qb, modifiedQuery.search)});
 	}
 }
