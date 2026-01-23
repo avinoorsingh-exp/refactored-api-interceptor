@@ -88,20 +88,44 @@ export class AuAgentDetailsAgentUpdatedConsumer implements RegisterableKafkaServ
 			await this.consumer.subscribe({ topic: this.topic, fromBeginning: false });
 			this.logger.info('Subscribed to topic', { topic: this.topic });
 
-			this.consumer.run({
-				eachMessage: async ({ topic, partition, message }) => {
+			// Track when consumer actually starts consuming (after partition assignment)
+			let hasStartedConsuming = false;
+			const consumptionStartedPromise = new Promise<void>((resolve) => {
+				const originalEachMessage = async ({ topic, partition, message }: any) => {
+					// First message indicates partition assignment is complete and consumer is ready
+					if (!hasStartedConsuming) {
+						hasStartedConsuming = true;
+						this.logger.info('Consumer started consuming - partition assignment complete', {
+							topic: this.topic,
+							groupId: this.groupId,
+							partition,
+						});
+						resolve();
+					}
 					await this.handleMessage(topic, partition, message);
-				},
-			}).catch((error) => {
-				this.logger.error('Kafka consumer run() promise rejected', {
-					error: error instanceof Error ? error.message : 'Unknown error',
-					stack: error instanceof Error ? error.stack : undefined,
+				};
+
+				this.consumer.run({
+					eachMessage: originalEachMessage,
+				}).catch((error) => {
+					this.logger.error('Kafka consumer run() promise rejected', {
+						error: error instanceof Error ? error.message : 'Unknown error',
+						stack: error instanceof Error ? error.stack : undefined,
+					});
 				});
 			});
 
-			// Wait for consumer group to stabilize after rebalancing
-			// This delay prevents user error - allows starting multiple consumers without manual waiting
-			await new Promise(resolve => setTimeout(resolve, 3000));
+			// Wait for consumer to actually start consuming (indicates partition assignment is complete)
+			// This is critical for multi-consumer scenarios - ensures rebalancing completes
+			const timeoutPromise = new Promise<void>((resolve) => {
+				setTimeout(() => {
+					// If no message arrives within 10 seconds, assume consumer is ready anyway
+					// (topics might be empty, but consumer is still assigned partitions)
+					resolve();
+				}, 10000);
+			});
+
+			await Promise.race([consumptionStartedPromise, timeoutPromise]);
 
 			this.logger.info('AU Agent Details Agent Updated consumer started successfully');
 			
