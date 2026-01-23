@@ -33,7 +33,7 @@ export class KafkaClientService implements OnModuleDestroy {
 		
 		// Only add SSL/SASL if KAFKA_SSL is explicitly true
 		// For plaintext connections (port 9092), omit ssl and sasl entirely
-		const kafkaSslEnabled = config.KAFKA_SSL || String(config.KAFKA_SSL).toLowerCase() === 'true';
+		const kafkaSslEnabled = config.KAFKA_SSL === true || String(config.KAFKA_SSL).toLowerCase() === 'true' || String(config.KAFKA_SSL) === '1';
 		
 		if (kafkaSslEnabled) {
 			kafkaConfig.ssl = true;
