@@ -116,7 +116,7 @@ describe('PaginationService', () => {
         headers: { host: 'api.test' },
       };
       const meta = svc.buildMeta({ total: 123, offset: 50, limit: 25 });
-      const link = svc.buildLinkHeader(req as any, meta, { includeFirstLast: true });
+      const link = svc.buildLinkHeader(req, meta, { includeFirstLast: true });
 
       expect(link).toContain('rel="next"');
       expect(link).toContain('rel="prev"');
@@ -133,7 +133,7 @@ describe('PaginationService', () => {
         headers: { host: 'api.test' },
       };
       const meta = svc.buildMeta({ total: 100, offset: 0, limit: 25 });
-      const link = svc.buildLinkHeader(req as any, meta, { includeFirstLast: true });
+      const link = svc.buildLinkHeader(req, meta, { includeFirstLast: true });
 
       expect(link).toContain('rel="next"');
       expect(link).not.toContain('rel="prev"');
@@ -149,7 +149,7 @@ describe('PaginationService', () => {
         headers: { host: 'api.test' },
       };
       const meta = svc.buildMeta({ total: 100, offset: 75, limit: 25 });
-      const link = svc.buildLinkHeader(req as any, meta, { includeFirstLast: true });
+      const link = svc.buildLinkHeader(req, meta, { includeFirstLast: true });
 
       expect(link).not.toContain('rel="next"');
       expect(link).toContain('rel="prev"');
@@ -165,7 +165,7 @@ describe('PaginationService', () => {
         headers: { host: 'api.test' },
       };
       const meta = svc.buildMeta({ total: 100, offset: 25, limit: 25 });
-      const link = svc.buildLinkHeader(req as any, meta, { includeFirstLast: false });
+      const link = svc.buildLinkHeader(req, meta, { includeFirstLast: false });
 
       expect(link).toContain('rel="next"');
       expect(link).toContain('rel="prev"');
@@ -181,7 +181,7 @@ describe('PaginationService', () => {
         headers: { host: 'api.test' },
       };
       const meta = svc.buildMeta({ total: 10, offset: 0, limit: 25 });
-      const link = svc.buildLinkHeader(req as any, meta, { includeFirstLast: false });
+      const link = svc.buildLinkHeader(req, meta, { includeFirstLast: false });
 
       expect(link).toBeNull();
     });
@@ -197,7 +197,7 @@ describe('PaginationService', () => {
         },
       };
       const meta = svc.buildMeta({ total: 100, offset: 0, limit: 25 });
-      const link = svc.buildLinkHeader(req as any, meta, { includeFirstLast: true });
+      const link = svc.buildLinkHeader(req, meta, { includeFirstLast: true });
 
       expect(link).toContain('public-api.example.com');
       expect(link).not.toContain('internal-nlb.example.com');
@@ -214,7 +214,7 @@ describe('PaginationService', () => {
         },
       };
       const meta = svc.buildMeta({ total: 100, offset: 0, limit: 25 });
-      const link = svc.buildLinkHeader(req as any, meta, { includeFirstLast: true });
+      const link = svc.buildLinkHeader(req, meta, { includeFirstLast: true });
 
       expect(link).toContain('https://');
       expect(link).not.toContain('http://');
@@ -232,7 +232,7 @@ describe('PaginationService', () => {
         },
       };
       const meta = svc.buildMeta({ total: 100, offset: 25, limit: 25 });
-      const link = svc.buildLinkHeader(req as any, meta, { includeFirstLast: true });
+      const link = svc.buildLinkHeader(req, meta, { includeFirstLast: true });
 
       expect(link).toContain('https://public-api.example.com');
       expect(link).not.toContain('internal-nlb');
@@ -247,7 +247,7 @@ describe('PaginationService', () => {
         headers: { host: 'api.test' },
       };
       const meta = svc.buildMeta({ total: 100, offset: 0, limit: 25 });
-      const link = svc.buildLinkHeader(req as any, meta, { includeFirstLast: true });
+      const link = svc.buildLinkHeader(req, meta, { includeFirstLast: true });
 
       expect(link).toContain('http://api.test');
     });

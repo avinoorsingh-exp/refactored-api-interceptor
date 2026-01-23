@@ -52,6 +52,7 @@ import { CustomFlagEntity } from './entities/core/custom-flag.entity.js'
 import { FeesEntity } from './entities/core/fees.entity.js'
 import { ApprovalEntity } from './entities/core/approval.entity.js'
 import { KafkaMessageProcessingEntity } from './entities/core/kafka-message-processing.entity.js'
+import { KafkaServiceEntity } from './entities/core/kafka-service.entity.js'
 
 /**
  * Get SSL configuration for RDS connections
@@ -195,9 +196,13 @@ export const AppDataSource = new DataSource({
 		FeesEntity,
 		ApprovalEntity,
 		KafkaMessageProcessingEntity,
+		KafkaServiceEntity,
 	],
 
 	// Migrations
+	// TypeORM will automatically use the correct path based on whether we're running from source or compiled code
+	// In development: uses './src/migrations/*.ts' (via tsx/ts-node)
+	// In production: uses './dist/migrations/*.js' (compiled migrations)
 	migrations: ['./src/migrations/*.ts'],
 
 	// Migration settings

@@ -46,7 +46,7 @@ export class ConfigService {
 			METRICS_EXPORTER_HEADERS: get('METRICS_EXPORTER_HEADERS'),
 		} as Config
 	}
-	/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+	 
 
 	get<K extends keyof Config>(key: K): Config[K] {
 		return this.config[key]

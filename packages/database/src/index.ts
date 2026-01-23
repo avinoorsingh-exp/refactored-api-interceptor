@@ -325,6 +325,14 @@ export { ApprovalEntity } from './entities/core/approval.entity.js'
  */
 export { KafkaMessageProcessingEntity, KafkaMessageStatus } from './entities/core/kafka-message-processing.entity.js'
 
+/**
+ * TypeORM entity for KafkaService table.
+ * Stores Kafka service definitions (consumers and producers).
+ * Runtime state is NOT stored here - only service configuration.
+ * @public
+ */
+export { KafkaServiceEntity, KafkaServiceType } from './entities/core/kafka-service.entity.js'
+
 // ============================================================================
 // Query Decorators
 // ============================================================================

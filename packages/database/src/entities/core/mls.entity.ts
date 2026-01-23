@@ -85,7 +85,7 @@ export class MLSEntity extends AuditableEntity {
 	 * MLS display name.
 	 * @public
 	 */
-	@Column({ type: 'text', unique: true })
+	@Column({ type: 'text' })
 	@Searchable({ weight: 10, behavior: 'partial', description: 'MLS display name' })
 	@Filterable()
 	@Sortable()

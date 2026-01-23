@@ -31,7 +31,7 @@ const PAY_PLANS_QUERY_CONFIG: BaseQueryConfig = {
  */
 @Injectable()
 export class PayPlansTypeOrmRepository
-	extends BaseTypeOrmRepository<PayPlanEntity, PayPlan, string>
+	extends BaseTypeOrmRepository<PayPlanEntity, PayPlan>
 	implements IPayPlansRepository
 {
 	constructor(
@@ -67,8 +67,8 @@ export class PayPlansTypeOrmRepository
 			active: entity.active,
 			agentPercentage: Number(entity.agentPercentage),
 			cap: Number(entity.cap),
-			created: entity.created as PayPlan['created'],
-			lastModified: entity.lastModified as PayPlan['lastModified'],
+			created: entity.created,
+			lastModified: entity.lastModified,
 			modifiedBy: entity.modifiedBy,
 			payPlanVariants: entity.payPlanVariants,
 			paymentSettings: entity.paymentSettings,

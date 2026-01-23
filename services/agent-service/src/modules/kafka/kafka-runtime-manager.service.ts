@@ -1,0 +1,741 @@
+import { Injectable } from '@nestjs/common';
+import { Consumer, Producer, KafkaMessage } from 'kafkajs';
+import { LoggerService } from '../../core/logger.service.js';
+
+/**
+ * Runtime status for a Kafka service.
+ */
+export enum KafkaServiceStatus {
+	RUNNING = 'running',
+	STOPPED = 'stopped',
+	ERROR = 'error',
+	ATTACHED = 'attached', // Service is attached to a shared consumer
+}
+
+/**
+ * Runtime registry entry for a Kafka service.
+ * Tracks in-memory state only - NOT persisted to database.
+ */
+export interface KafkaServiceRuntime {
+	id: string;
+	type: 'consumer' | 'producer';
+	topic: string;
+	groupId?: string;
+	status: KafkaServiceStatus;
+	startedAt?: Date;
+	error?: string;
+	instance?: Consumer | Producer;
+}
+
+/**
+ * Message handler function type for routing messages to services.
+ * Matches KafkaJS EachMessageHandler signature.
+ */
+type MessageHandler = (payload: { topic: string; partition: number; message: KafkaMessage }) => Promise<void>;
+
+/**
+ * Group-based consumer registry entry.
+ * 
+ * CRITICAL: Kafka consumer groups only allow ONE active consumer instance per groupId.
+ * Multiple services with the same groupId must share a single Consumer instance.
+ * This structure enforces that constraint.
+ */
+interface GroupConsumerRegistry {
+	consumerInstance: Consumer;
+	groupId: string;
+	topics: Set<string>; // Topics currently subscribed
+	services: Set<string>; // Service IDs attached to this consumer
+	messageHandlers: Map<string, MessageHandler>; // topic -> handler function
+	status: KafkaServiceStatus;
+	startedAt: Date;
+}
+
+/**
+ * Interface for services that can be registered with KafkaRuntimeManager.
+ */
+export interface RegisterableKafkaService {
+	/**
+	 * Unique identifier for the service.
+	 */
+	getId(): string;
+
+	/**
+	 * Service type (consumer or producer).
+	 */
+	getType(): 'consumer' | 'producer';
+
+	/**
+	 * Kafka topic name.
+	 */
+	getTopic(): string;
+
+	/**
+	 * Consumer group ID (nullable for producers).
+	 */
+	getGroupId(): string | undefined;
+
+	/**
+	 * Start the service.
+	 * For consumers: Returns Consumer instance but does NOT call consumer.run().
+	 * The runtime manager will call consumer.run() with a message router.
+	 * For producers: Returns Producer instance.
+	 */
+	start(): Promise<Consumer | Producer>;
+
+	/**
+	 * Stop the service gracefully.
+	 */
+	stop(): Promise<void>;
+
+	/**
+	 * Get message handler for this service (consumers only).
+	 * Used by runtime manager to route messages to the correct handler.
+	 * Returns a function matching KafkaJS EachMessageHandler signature.
+	 * 
+	 * @returns Message handler function, or undefined for producers
+	 */
+	getMessageHandler?(): ((payload: { topic: string; partition: number; message: KafkaMessage }) => Promise<void>) | undefined;
+}
+
+/**
+ * Kafka Runtime Manager
+ * 
+ * Manages runtime state of Kafka consumers and producers in memory.
+ * Provides centralized registration, starting, and stopping of Kafka services.
+ * 
+ * CRITICAL ARCHITECTURE:
+ * - Kafka consumer groups enforce ONE active consumer instance per groupId
+ * - Multiple services with the same groupId MUST share a single Consumer instance
+ * - This manager enforces that constraint by keying consumers by groupId
+ * 
+ * Runtime state is NOT persisted to the database - only service definitions are stored.
+ */
+@Injectable()
+export class KafkaRuntimeManager {
+	/**
+	 * Service-level registry for UI visibility and service management.
+	 * Key: serviceId
+	 */
+	private readonly registry = new Map<string, KafkaServiceRuntime>();
+
+	/**
+	 * Group-based consumer registry for enforcing singleton Consumer instances.
+	 * Key: groupId (only for consumers)
+	 * 
+	 * This ensures only ONE Consumer instance exists per groupId, even when
+	 * multiple services share the same groupId and subscribe to different topics.
+	 */
+	private readonly groupConsumers = new Map<string, GroupConsumerRegistry>();
+
+	private readonly logger: LoggerService;
+
+	constructor(loggerService: LoggerService) {
+		this.logger = loggerService;
+		this.logger.setContext('KafkaRuntimeManager');
+	}
+
+	/**
+	 * Register a Kafka service with the runtime manager.
+	 * Does not start the service - use start() to begin processing.
+	 * 
+	 * @param service - The service to register
+	 */
+	register(service: RegisterableKafkaService): void {
+		const id = service.getId();
+		
+		if (this.registry.has(id)) {
+			this.logger.warn(`Service ${id} is already registered - skipping registration`, {
+				id,
+				type: service.getType(),
+				topic: service.getTopic(),
+			});
+			return;
+		}
+
+		const runtime: KafkaServiceRuntime = {
+			id,
+			type: service.getType(),
+			topic: service.getTopic(),
+			groupId: service.getGroupId(),
+			status: KafkaServiceStatus.STOPPED,
+		};
+
+		this.registry.set(id, runtime);
+		this.logger.info(`Registered Kafka service`, {
+			id,
+			type: runtime.type,
+			topic: runtime.topic,
+			groupId: runtime.groupId,
+		});
+	}
+
+	/**
+	 * Start a registered Kafka service.
+	 * 
+	 * CRITICAL: For consumers with the same groupId, this enforces a singleton Consumer instance.
+	 * Multiple services sharing a groupId will attach to the same Consumer and subscribe to
+	 * their respective topics. Messages are routed to the correct service handler by topic.
+	 * 
+	 * Idempotent - safe to call multiple times.
+	 * 
+	 * @param id - Service ID
+	 * @param service - The service instance (required for starting)
+	 */
+	async start(id: string, service: RegisterableKafkaService): Promise<void> {
+		const runtime = this.registry.get(id);
+		
+		if (!runtime) {
+			throw new Error(`Service ${id} is not registered`);
+		}
+
+		if (runtime.status === KafkaServiceStatus.RUNNING || runtime.status === KafkaServiceStatus.ATTACHED) {
+			this.logger.info(`Service ${id} is already running/attached - skipping start`, {
+				id,
+				type: runtime.type,
+				topic: runtime.topic,
+				status: runtime.status,
+			});
+			return;
+		}
+
+		try {
+			// Producers are straightforward - one instance per service
+			if (runtime.type === 'producer') {
+				this.logger.info(`Starting Kafka producer`, {
+					id,
+					topic: runtime.topic,
+				});
+
+				const instance = await service.start() as Producer;
+				runtime.instance = instance;
+				runtime.status = KafkaServiceStatus.RUNNING;
+				runtime.startedAt = new Date();
+				runtime.error = undefined;
+
+				this.logger.info(`Kafka producer started successfully`, {
+					id,
+					topic: runtime.topic,
+					startedAt: runtime.startedAt,
+				});
+				return;
+			}
+
+			// Consumers require groupId-based singleton enforcement
+			const groupId = runtime.groupId;
+			if (!groupId) {
+				throw new Error(`Consumer service ${id} must have a groupId`);
+			}
+
+			// Check if a consumer with this groupId already exists
+			const existingGroup = this.groupConsumers.get(groupId);
+
+			if (existingGroup) {
+				// Attach to existing consumer - do NOT create a new Consumer instance
+				this.logger.info(`Attaching service to existing consumer group`, {
+					serviceId: id,
+					groupId,
+					topic: runtime.topic,
+					existingTopics: Array.from(existingGroup.topics),
+					existingServices: Array.from(existingGroup.services),
+				});
+
+				// Add service to the group
+				existingGroup.services.add(id);
+				
+				// CRITICAL: Topic should already be subscribed (we subscribe to all topics upfront)
+				// If it's not, this means a new service was registered after the consumer started
+				// In this case, we need to subscribe to it (KafkaJS may support this via rebalancing)
+				if (!existingGroup.topics.has(runtime.topic)) {
+					this.logger.warn(`Topic ${runtime.topic} not in subscribed topics - attempting to subscribe`, {
+						groupId,
+						subscribedTopics: Array.from(existingGroup.topics),
+					});
+					try {
+						await existingGroup.consumerInstance.subscribe({ 
+							topic: runtime.topic, 
+							fromBeginning: false 
+						});
+						existingGroup.topics.add(runtime.topic);
+						this.logger.info(`Successfully subscribed existing consumer to new topic`, {
+							groupId,
+							topic: runtime.topic,
+						});
+					} catch (error) {
+						this.logger.error(`Failed to subscribe to new topic after consumer.run() - may need restart`, {
+							groupId,
+							topic: runtime.topic,
+							error: error instanceof Error ? error.message : 'Unknown error',
+						});
+						// Continue anyway - the handler will be registered but may not receive messages
+					}
+				}
+
+				// Register message handler for this topic
+				// This is what actually enables message processing for this service
+				const handler = await this.createMessageHandler(service, runtime.topic);
+				existingGroup.messageHandlers.set(runtime.topic, handler);
+				
+				this.logger.info(`Registered message handler for topic`, {
+					groupId,
+					topic: runtime.topic,
+					totalHandlers: existingGroup.messageHandlers.size,
+				});
+
+				// Update service runtime to reflect attachment
+				runtime.instance = existingGroup.consumerInstance;
+				runtime.status = KafkaServiceStatus.ATTACHED;
+				runtime.startedAt = existingGroup.startedAt; // Use group's start time
+				runtime.error = undefined;
+
+				this.logger.info(`Service attached to consumer group successfully`, {
+					serviceId: id,
+					groupId,
+					topic: runtime.topic,
+					totalServices: existingGroup.services.size,
+					totalTopics: existingGroup.topics.size,
+				});
+			} else {
+				// Create new consumer group - this is the first service with this groupId
+				this.logger.info(`Creating new consumer group`, {
+					serviceId: id,
+					groupId,
+					topic: runtime.topic,
+				});
+
+				const instance = await service.start() as Consumer;
+				
+				// CRITICAL: Subscribe to ALL topics that might be used by this groupId
+				// This ensures we don't have issues with dynamic subscriptions after consumer.run()
+				// Find all registered services with the same groupId to subscribe upfront
+				const allTopicsForGroup = Array.from(this.registry.values())
+					.filter(r => r.groupId === groupId && r.type === 'consumer')
+					.map(r => r.topic);
+				
+				// Remove duplicates and ensure current topic is included
+				const uniqueTopics = Array.from(new Set([...allTopicsForGroup, runtime.topic]));
+				
+				// Subscribe to all topics at once BEFORE calling consumer.run()
+				if (uniqueTopics.length > 0) {
+					await instance.subscribe({ 
+						topics: uniqueTopics,  // Subscribe to all topics upfront
+						fromBeginning: false 
+					});
+					this.logger.info(`Subscribed consumer to all topics for group`, {
+						groupId,
+						topics: uniqueTopics,
+					});
+				}
+				
+				// Create group registry entry with all topics
+				const handler = await this.createMessageHandler(service, runtime.topic);
+				const groupRegistry: GroupConsumerRegistry = {
+					consumerInstance: instance,
+					groupId,
+					topics: new Set(uniqueTopics),  // Track all subscribed topics
+					services: new Set([id]),
+					messageHandlers: new Map([[runtime.topic, handler]]),
+					status: KafkaServiceStatus.RUNNING,
+					startedAt: new Date(),
+				};
+
+				this.groupConsumers.set(groupId, groupRegistry);
+
+				// Update service runtime
+				runtime.instance = instance;
+				runtime.status = KafkaServiceStatus.RUNNING;
+				runtime.startedAt = groupRegistry.startedAt;
+				runtime.error = undefined;
+
+				// Set up message routing for the shared consumer
+				// This calls consumer.run() AFTER all topics are subscribed
+				this.setupMessageRouting(groupRegistry);
+
+				this.logger.info(`Consumer group created successfully`, {
+					serviceId: id,
+					groupId,
+					topic: runtime.topic,
+					allTopics: uniqueTopics,
+				});
+			}
+		} catch (error) {
+			runtime.status = KafkaServiceStatus.ERROR;
+			runtime.error = error instanceof Error ? error.message : String(error);
+			runtime.startedAt = undefined;
+
+			this.logger.error(`Failed to start Kafka service`, {
+				id,
+				type: runtime.type,
+				topic: runtime.topic,
+				error: runtime.error,
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+
+			throw error;
+		}
+	}
+
+	/**
+	 * Create a message handler that routes to the service's handleMessage method.
+	 */
+	private async createMessageHandler(
+		service: RegisterableKafkaService,
+		topic: string,
+	): Promise<MessageHandler> {
+		if (service.getMessageHandler) {
+			const handler = service.getMessageHandler();
+			if (handler) {
+				// Wrap the handler to match KafkaJS EachMessageHandler signature
+				return async (payload: { topic: string; partition: number; message: KafkaMessage }) => {
+					await handler(payload);
+				};
+			}
+		}
+
+		// Fallback: return a handler that logs and does nothing
+		// This should not happen if consumers are properly updated
+		this.logger.warn('Service does not expose message handler - messages will be dropped', {
+			serviceId: service.getId(),
+			topic,
+		});
+
+		return async (payload: { topic: string; partition: number; message: KafkaMessage }) => {
+			this.logger.warn('Message received but no handler available', {
+				topic: payload.topic,
+				expectedTopic: topic,
+				serviceId: service.getId(),
+			});
+		};
+	}
+
+	/**
+	 * Set up message routing for a consumer group.
+	 * Routes messages to the correct service handler based on topic.
+	 * 
+	 * This is called when the first consumer in a group starts.
+	 * The routing handler dispatches messages to the appropriate service handler.
+	 * 
+	 * CRITICAL: Consumers should NOT call consumer.run() themselves.
+	 * The runtime manager handles this to ensure proper message routing.
+	 */
+	private setupMessageRouting(groupRegistry: GroupConsumerRegistry): void {
+		const consumer = groupRegistry.consumerInstance;
+		
+		// Create a router that dispatches messages to the correct handler
+		const router: MessageHandler = async (payload: { topic: string; partition: number; message: KafkaMessage }) => {
+			try {
+				const handler = groupRegistry.messageHandlers.get(payload.topic);
+				if (handler) {
+					await handler(payload);
+				} else {
+					this.logger.warn('Message received for topic with no registered handler', {
+						groupId: groupRegistry.groupId,
+						topic: payload.topic,
+						registeredTopics: Array.from(groupRegistry.messageHandlers.keys()),
+					});
+				}
+			} catch (error) {
+				// Catch any unhandled errors in message processing to prevent consumer crash
+				this.logger.error('Error in message router - handler threw unhandled exception', {
+					groupId: groupRegistry.groupId,
+					topic: payload.topic,
+					partition: payload.partition,
+					offset: payload.message.offset,
+					error: error instanceof Error ? error.message : 'Unknown error',
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+				// Re-throw to let KafkaJS handle it (it will log and continue)
+				throw error;
+			}
+		};
+
+		// Start the consumer with the router
+		// NOTE: Consumers should NOT call consumer.run() in their start() method.
+		// The runtime manager handles this to ensure proper multi-topic routing.
+		
+		consumer.run({
+			eachMessage: router,
+		}).catch((error) => {
+			this.logger.error('Consumer run() promise rejected', {
+				groupId: groupRegistry.groupId,
+				error: error instanceof Error ? error.message : 'Unknown error',
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		});
+
+		this.logger.info('Message routing set up for consumer group', {
+			groupId: groupRegistry.groupId,
+			topics: Array.from(groupRegistry.topics),
+		});
+	}
+
+	/**
+	 * Stop a registered Kafka service.
+	 * 
+	 * CRITICAL: For consumers sharing a groupId, this detaches the service from the shared consumer.
+	 * The Consumer instance is only disconnected when NO services remain attached to it.
+	 * 
+	 * Idempotent - safe to call multiple times.
+	 * 
+	 * @param id - Service ID
+	 * @param service - The service instance (required for stopping)
+	 */
+	async stop(id: string, service: RegisterableKafkaService): Promise<void> {
+		const runtime = this.registry.get(id);
+		
+		if (!runtime) {
+			throw new Error(`Service ${id} is not registered`);
+		}
+
+		if (runtime.status === KafkaServiceStatus.STOPPED) {
+			this.logger.info(`Service ${id} is already stopped - skipping stop`, {
+				id,
+				type: runtime.type,
+				topic: runtime.topic,
+			});
+			return;
+		}
+
+		try {
+			// Producers are straightforward - just stop them
+			if (runtime.type === 'producer') {
+				this.logger.info(`Stopping Kafka producer`, {
+					id,
+					topic: runtime.topic,
+				});
+
+				await service.stop();
+				runtime.instance = undefined;
+				runtime.status = KafkaServiceStatus.STOPPED;
+				runtime.startedAt = undefined;
+				runtime.error = undefined;
+
+				this.logger.info(`Kafka producer stopped successfully`, {
+					id,
+					topic: runtime.topic,
+				});
+				return;
+			}
+
+			// Consumers require group-based handling
+			const groupId = runtime.groupId;
+			if (!groupId) {
+				throw new Error(`Consumer service ${id} must have a groupId`);
+			}
+
+			const groupRegistry = this.groupConsumers.get(groupId);
+			if (!groupRegistry) {
+				this.logger.warn(`No group registry found for groupId ${groupId} - service may be in inconsistent state`, {
+					serviceId: id,
+					groupId,
+				});
+				// Fall through to standard stop
+				await service.stop();
+				runtime.instance = undefined;
+				runtime.status = KafkaServiceStatus.STOPPED;
+				runtime.startedAt = undefined;
+				runtime.error = undefined;
+				return;
+			}
+
+			// Detach service from group
+			groupRegistry.services.delete(id);
+			
+			// CRITICAL: Remove the message handler so this service stops receiving messages
+			// Check if other services are using the same topic before removing handler
+			const otherServicesUsingTopic = Array.from(groupRegistry.services).some(
+				serviceId => {
+					const otherRuntime = this.registry.get(serviceId);
+					return otherRuntime?.topic === runtime.topic;
+				}
+			);
+			
+			if (!otherServicesUsingTopic) {
+				// No other services are using this topic, remove the handler
+				groupRegistry.messageHandlers.delete(runtime.topic);
+				this.logger.info(`Removed message handler for topic (no other services using it)`, {
+					groupId,
+					topic: runtime.topic,
+				});
+			} else {
+				// Other services are still using this topic, keep the handler
+				this.logger.info(`Keeping message handler for topic (other services still using it)`, {
+					groupId,
+					topic: runtime.topic,
+					remainingServices: Array.from(groupRegistry.services),
+				});
+			}
+
+			this.logger.info(`Detaching service from consumer group`, {
+				serviceId: id,
+				groupId,
+				topic: runtime.topic,
+				remainingServices: groupRegistry.services.size,
+				handlerRemoved: !otherServicesUsingTopic,
+			});
+
+			// Update service runtime
+			runtime.instance = undefined;
+			runtime.status = KafkaServiceStatus.STOPPED;
+			runtime.startedAt = undefined;
+			runtime.error = undefined;
+
+			// Only disconnect the Consumer if NO services remain attached
+			if (groupRegistry.services.size === 0) {
+				this.logger.info(`No services remain in consumer group - disconnecting consumer`, {
+					groupId,
+				});
+
+				try {
+					await groupRegistry.consumerInstance.disconnect();
+					this.groupConsumers.delete(groupId);
+					this.logger.info(`Consumer group disconnected and removed`, {
+						groupId,
+					});
+				} catch (error) {
+					this.logger.error(`Error disconnecting consumer group`, {
+						groupId,
+						error: error instanceof Error ? error.message : 'Unknown error',
+					});
+					// Still remove from registry even if disconnect fails
+					this.groupConsumers.delete(groupId);
+					throw error;
+				}
+			} else {
+				// Other services still using this consumer - just unsubscribe from this topic
+				// Note: KafkaJS doesn't support unsubscribing from individual topics
+				// The consumer will continue to receive messages for all subscribed topics
+				// but we've removed the handler, so messages for this topic will be ignored
+				this.logger.info(`Consumer group still in use - keeping consumer running`, {
+					groupId,
+					remainingServices: Array.from(groupRegistry.services),
+					remainingTopics: Array.from(groupRegistry.topics),
+				});
+			}
+
+			this.logger.info(`Service detached from consumer group successfully`, {
+				serviceId: id,
+				groupId,
+				consumerStillRunning: groupRegistry.services.size > 0,
+			});
+		} catch (error) {
+			runtime.status = KafkaServiceStatus.ERROR;
+			runtime.error = error instanceof Error ? error.message : String(error);
+			
+			this.logger.error(`Failed to stop Kafka service`, {
+				id,
+				type: runtime.type,
+				topic: runtime.topic,
+				error: runtime.error,
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+
+			// Still clear the instance even if stop failed
+			runtime.instance = undefined;
+			runtime.startedAt = undefined;
+
+			throw error;
+		}
+	}
+
+	/**
+	 * Get runtime state for a specific service.
+	 * 
+	 * @param id - Service ID
+	 * @returns Runtime state or undefined if not registered
+	 */
+	getRuntime(id: string): KafkaServiceRuntime | undefined {
+		return this.registry.get(id);
+	}
+
+	/**
+	 * Get all registered services' runtime state.
+	 * 
+	 * @returns Array of runtime states
+	 */
+	getAllRuntimes(): KafkaServiceRuntime[] {
+		return Array.from(this.registry.values());
+	}
+
+	/**
+	 * Stop all running services gracefully.
+	 * Used during application shutdown.
+	 */
+	async stopAll(): Promise<void> {
+		// Disconnect all consumer groups (this handles all consumers sharing groupIds)
+		const groupStopPromises = Array.from(this.groupConsumers.values()).map(async (group) => {
+			try {
+				await group.consumerInstance.disconnect();
+				this.logger.info('Consumer group disconnected', {
+					groupId: group.groupId,
+				});
+			} catch (error) {
+				this.logger.error('Error disconnecting consumer group', {
+					groupId: group.groupId,
+					error: error instanceof Error ? error.message : 'Unknown error',
+				});
+			}
+		});
+
+		// Disconnect all producers
+		const producerRuntimes = Array.from(this.registry.values()).filter(
+			(runtime) => runtime.type === 'producer' && runtime.status === KafkaServiceStatus.RUNNING,
+		);
+
+		const producerStopPromises = producerRuntimes.map(async (runtime) => {
+			try {
+				if (runtime.instance) {
+					await (runtime.instance as Producer).disconnect();
+					runtime.instance = undefined;
+					runtime.status = KafkaServiceStatus.STOPPED;
+					runtime.startedAt = undefined;
+					runtime.error = undefined;
+				}
+			} catch (error) {
+				this.logger.error(`Error stopping producer ${runtime.id}`, {
+					id: runtime.id,
+					topic: runtime.topic,
+					error: error instanceof Error ? error.message : String(error),
+				});
+				runtime.status = KafkaServiceStatus.ERROR;
+				runtime.error = error instanceof Error ? error.message : String(error);
+			}
+		});
+
+		// Update all service runtimes to stopped
+		for (const runtime of this.registry.values()) {
+			if (runtime.status === KafkaServiceStatus.RUNNING || runtime.status === KafkaServiceStatus.ATTACHED) {
+				runtime.instance = undefined;
+				runtime.status = KafkaServiceStatus.STOPPED;
+				runtime.startedAt = undefined;
+				runtime.error = undefined;
+			}
+		}
+
+		await Promise.allSettled([...groupStopPromises, ...producerStopPromises]);
+
+		// Clear registries
+		this.groupConsumers.clear();
+
+		this.logger.info('All Kafka services stopped');
+	}
+
+	/**
+	 * Check if a service is registered.
+	 * 
+	 * @param id - Service ID
+	 * @returns True if registered, false otherwise
+	 */
+	isRegistered(id: string): boolean {
+		return this.registry.has(id);
+	}
+
+	/**
+	 * Get group consumer registry for a groupId.
+	 * Used internally for debugging and monitoring.
+	 */
+	getGroupConsumer(groupId: string): GroupConsumerRegistry | undefined {
+		return this.groupConsumers.get(groupId);
+	}
+}
+
+

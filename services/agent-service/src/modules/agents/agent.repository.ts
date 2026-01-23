@@ -60,7 +60,7 @@ const RELATIONAL_SORT_FIELDS = ['primaryEmail'] as const;
  */
 @Injectable()
 export class AgentTypeOrmRepository
-	extends BaseTypeOrmRepository<AgentEntity, Agent, string>
+	extends BaseTypeOrmRepository<AgentEntity, Agent>
 	implements IAgentRepository
 {
 	constructor(
@@ -569,6 +569,67 @@ export class AgentTypeOrmRepository
 		// Apply the sort - use orderBy since this is the primary requested sort
 		qb.orderBy(`${primaryEmailAlias}.value`, sortCondition.direction, 'NULLS LAST');
 	}
+	/**
+	 * Applies full name search using SQL CONCAT.
+	 * This works alongside existing individual field searches (firstName, lastName).
+	 * 
+	 * @param qb - Query builder
+	 * @param searchQuery - Optional search query string
+	 */
+	private applyFullNameSearch<T>(
+		qb: SelectQueryBuilder<T>,
+		searchQuery?: string,
+	): void {
+		if (!searchQuery || !searchQuery.trim()) {
+			return;
+		}
+
+		const alias = this.getAlias();
+		const paramName = 'fullNameSearch';
+
+		// Use CONCAT to concatenate firstName and lastName with a space
+		// TypeORM will resolve property names to column names (firstName -> first_name, lastName -> last_name)
+		// Use COALESCE to handle null values gracefully
+		qb.orWhere(
+			`CONCAT(COALESCE(${alias}.firstName, ''), ' ', COALESCE(${alias}.lastName, '')) ILIKE :${paramName}`,
+			{ [paramName]: `%${searchQuery.trim()}%` },
+		);
+	}
+	/**
+ * Applies email search using LEFT JOIN on contactMethods.
+ * Searches on contactMethods.value where channel='email' to match email addresses.
+ * This works alongside existing individual field searches and full name search.
+ * 
+ * @param qb - Query builder
+ * @param searchQuery - Optional search query string
+ */
+	private applyEmailSearch<T>(
+		qb: SelectQueryBuilder<T>,
+		searchQuery?: string,
+	): void {
+		if (!searchQuery || !searchQuery.trim()) {
+			return;
+		}
+
+		const alias = this.getAlias();
+		const emailSearchAlias = 'emailSearch';
+		const paramName = 'emailSearchValue';
+
+		// LEFT JOIN contactMethods where channel='email' for email search
+		// This allows searching email addresses even if agent has no email (LEFT JOIN)
+		qb.leftJoin(
+			`${alias}.contactMethods`,
+			emailSearchAlias,
+			`${emailSearchAlias}.channel = :emailSearchChannel`,
+			{ emailSearchChannel: 'email' },
+		);
+
+		// Search on the value field (email address) with case-insensitive partial matching
+		qb.orWhere(
+			`${emailSearchAlias}.value ILIKE :${paramName}`,
+			{ [paramName]: `%${searchQuery.trim()}%` },
+		);
+	}
 
 	/**
 	 * Finds agents with pagination, filtering, sorting, and search.
@@ -643,9 +704,17 @@ export class AgentTypeOrmRepository
 						!primaryEmailIncluded,
 					);
 				}
+				// Apply full name search if search query is provided
+				this.applyFullNameSearch(qb, modifiedQuery.search);
+
+				// Apply email search if search query is provided
+				this.applyEmailSearch(qb, modifiedQuery.search);
 			}, { skipDefaultSort: hasRelationalSort });
 		}
 
-		return this.findWithQuery(modifiedQuery, selection);
+		return this.findWithQuery(modifiedQuery, selection,(qb) => {
+			this.applyFullNameSearch(qb, modifiedQuery.search);
+			this.applyEmailSearch(qb, modifiedQuery.search);
+		});
 	}
 }

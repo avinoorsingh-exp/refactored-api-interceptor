@@ -1,9 +1,10 @@
-import { Injectable, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Consumer, KafkaMessage } from 'kafkajs';
 import { KafkaClientService } from '../kafka-client.service.js';
 import { KafkaMessageProcessingService } from '../kafka-message-processing.service.js';
 import { ConfigService } from '../../../core/config.service.js';
 import { LoggerService } from '../../../core/logger.service.js';
+import { RegisterableKafkaService } from '../kafka-runtime-manager.service.js';
 
 /**
  * Enterprise Agent Updated Consumer
@@ -11,18 +12,18 @@ import { LoggerService } from '../../../core/logger.service.js';
  * Consumes messages from the Enterprise_AgentUpdated_V2 topic.
  * This is a proof of concept consumer that processes one message at a time.
  * 
- * Uses OnApplicationBootstrap/OnApplicationShutdown to match transaction-service pattern.
- * This ensures the consumer only starts after the app is fully bootstrapped and
- * only shuts down during actual app shutdown, not during module lifecycle events.
+ * Implements RegisterableKafkaService to be managed by KafkaRuntimeManager.
+ * Lifecycle is controlled by the runtime manager, not NestJS lifecycle hooks.
  */
 @Injectable()
-export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, OnApplicationShutdown {
+export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService {
 	private readonly topic = 'Enterprise_AgentUpdated_V2';
 	private readonly groupId: string;
 	private consumer: Consumer | null = null;
 	private readonly logger: LoggerService;
 	private readonly maxRetries = 3;
 	private readonly retryDelayMs = 1000; // Initial delay: 1 second
+	private readonly serviceId: string;
 
 	constructor(
 		private readonly kafkaClientService: KafkaClientService,
@@ -33,43 +34,68 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 		this.logger = loggerService;
 		this.logger.setContext('EnterpriseAgentUpdatedConsumer');
 		this.groupId = this.configService.get('KAFKA_CONSUMER_GROUP_ID');
-	}
-
-	async onApplicationBootstrap() {
-		const nodeEnv = this.configService.get('NODE_ENV');
-		
-		// Skip Kafka initialization in local environment
-		if (nodeEnv === 'local') {
-			this.logger.info('Kafka consumer skipped - NODE_ENV is "local". Kafka integration only runs in AWS environments.');
-			return;
-		}
-
-		// Start the consumer after the application is fully bootstrapped
-		// This matches transaction-service's pattern and prevents module lifecycle issues
-		await this.start();
-	}
-
-	async onApplicationShutdown(signal?: string) {
-		const nodeEnv = this.configService.get('NODE_ENV');
-		
-		// Skip Kafka consumer shutdown in local environment
-		if (nodeEnv === 'local') {
-			return;
-		}
-
-		await this.stop();
-		if (signal) {
-			this.logger.info(`Kafka consumer shut down on signal: ${signal}`);
-		}
+		// Generate a unique service ID based on topic and groupId
+		this.serviceId = `consumer-${this.topic}-${this.groupId}`;
 	}
 
 	/**
-	 * Start the consumer and begin processing messages
+	 * Get unique identifier for this service.
 	 */
-	private async start(): Promise<void> {
+	getId(): string {
+		return this.serviceId;
+	}
+
+	/**
+	 * Get service type.
+	 */
+	getType(): 'consumer' | 'producer' {
+		return 'consumer';
+	}
+
+	/**
+	 * Get Kafka topic name.
+	 */
+	getTopic(): string {
+		return this.topic;
+	}
+
+	/**
+	 * Get consumer group ID.
+	 */
+	getGroupId(): string | undefined {
+		return this.groupId;
+	}
+
+	/**
+	 * Start the consumer and begin processing messages.
+	 * Returns the Consumer instance for runtime tracking.
+	 */
+	async start(): Promise<Consumer> {
 		try {
 			const kafka = this.kafkaClientService.getClient();
-			this.consumer = kafka.consumer({ groupId: this.groupId });
+			// Add sessionTimeout and heartbeatInterval to help with rebalancing
+			this.consumer = kafka.consumer({ 
+				groupId: this.groupId,
+				sessionTimeout: 30000, // 30 seconds
+				heartbeatInterval: 3000, // 3 seconds
+			});
+
+			// Set up event handlers for logging (KafkaJS handles rebalancing automatically)
+			this.consumer.on(this.consumer.events.GROUP_JOIN, (event) => {
+				this.logger.info('Consumer joined group', {
+					topic: this.topic,
+					groupId: this.groupId,
+					memberId: event.payload.memberId,
+					isLeader: event.payload.isLeader,
+				});
+			});
+
+			this.consumer.on(this.consumer.events.CRASH, (event) => {
+				this.logger.error('Consumer crashed', {
+					topic: this.topic,
+					error: event.payload.error.message,
+				});
+			});
 
 			await this.consumer.connect();
 			this.logger.info('Kafka consumer connected', {
@@ -80,39 +106,32 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 			await this.consumer.subscribe({ topic: this.topic, fromBeginning: false });
 			this.logger.info('Subscribed to topic', { topic: this.topic });
 
-			// consumer.run() returns a promise that resolves when the consumer starts
-			// but continues running in the background. If it rejects later (e.g., on crash),
-			// we need to handle that rejection to prevent unhandled promise rejections
-			this.consumer.run({
-				eachMessage: async ({ topic, partition, message }) => {
-					await this.handleMessage(topic, partition, message);
-				},
-			}).catch((error) => {
-				// Handle consumer run errors (crashes, disconnections, etc.)
-				this.logger.error('Kafka consumer run() promise rejected', {
-					error: error instanceof Error ? error.message : 'Unknown error',
-					stack: error instanceof Error ? error.stack : undefined,
-				});
-				// Don't rethrow - the consumer is already stopped/crashed
-				// This prevents unhandled promise rejections that could cause module destruction
-			});
+			// CRITICAL: Do NOT call consumer.run() here.
+			// The KafkaRuntimeManager will call consumer.run() with a message router
+			// that handles multiple topics sharing the same groupId.
+			// This ensures only ONE Consumer instance exists per groupId.
 
 			this.logger.info('Enterprise Agent Updated consumer started successfully');
+			
+			// Return the consumer instance for runtime tracking
+			if (!this.consumer) {
+				throw new Error('Consumer instance is null after start');
+			}
+			return this.consumer;
 		} catch (error) {
 			this.logger.error('Failed to start Kafka consumer', {
 				error: error instanceof Error ? error.message : 'Unknown error',
 				stack: error instanceof Error ? error.stack : undefined,
 			});
-			this.logger.warn('Kafka unavailable — continuing without consumer.');
-			// Don't throw - allow service to start without consumer
-			// This matches transaction-service's error handling pattern
+			// Re-throw to let runtime manager handle the error state
+			throw error;
 		}
 	}
 
 	/**
-	 * Stop the consumer gracefully
+	 * Stop the consumer gracefully.
 	 */
-	private async stop(): Promise<void> {
+	async stop(): Promise<void> {
 		if (this.consumer) {
 			try {
 				await this.consumer.disconnect();
@@ -124,6 +143,17 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 			}
 			this.consumer = null;
 		}
+	}
+
+	/**
+	 * Get message handler for this consumer.
+	 * Used by KafkaRuntimeManager to route messages when multiple services share a groupId.
+	 * Returns a function matching KafkaJS EachMessageHandler signature.
+	 */
+	getMessageHandler(): (payload: { topic: string; partition: number; message: KafkaMessage }) => Promise<void> {
+		return async (payload: { topic: string; partition: number; message: KafkaMessage }) => {
+			await this.handleMessage(payload.topic, payload.partition, payload.message);
+		};
 	}
 
 	/**
@@ -346,12 +376,80 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 	}
 
 	/**
+	 * Maps address label to type and role based on common patterns in the database.
+	 * 
+	 * Based on analysis of core.address table in test environment:
+	 * - Most addresses are 'personal' type unless explicitly business/company related
+	 * - Role is determined by the label's purpose (billing, shipping, contact, etc.)
+	 * 
+	 * Common label patterns observed:
+	 * - "Contactinfo", "Buyer Address", "Seller Address", "Home address" → type: 'personal', role: 'contact'
+	 * - "Billing Address", "BillTo", "Bill To" → type: 'personal', role: 'bill_to'
+	 * - "W9", "w9", "W9 address", "1099" → type: 'personal', role: 'pay_to'
+	 * - "Mailing address", "Mailing Address", "Shipping address" → type: 'personal', role: 'ship_to'
+	 * - "Office", "Business", "Company" → type: 'company', role: 'contact'
+	 * - "Title Address", "Lender Address", "Attorney Address", "Escrow Address" → type: 'company', role: 'contact'
+	 * 
+	 * @param label - Address label from Kafka payload (e.g., "Contactinfo", "Billing Address", "W9")
+	 * @returns Object with type ('personal' | 'company') and role ('contact' | 'bill_to' | 'pay_to' | 'ship_to' | 'return_to')
+	 */
+	private mapAddressLabelToTypeAndRole(label?: string): {
+		type?: 'personal' | 'company';
+		role?: 'contact' | 'bill_to' | 'pay_to' | 'ship_to' | 'return_to';
+	} {
+		if (!label) {
+			return { type: 'personal', role: 'contact' };
+		}
+		const normalizedLabel = label.trim().toLowerCase();
+		// Determine type (personal vs company)
+		// Company type indicators: business, company, office, MLS, title, lender, attorney, escrow, transaction, miscellaneous
+		const isCompanyType = normalizedLabel.includes('business') ||
+			normalizedLabel.includes('company') ||
+			normalizedLabel.includes('office') ||
+			normalizedLabel.includes('mls') ||
+			normalizedLabel.includes('title') ||
+			normalizedLabel.includes('lender') ||
+			normalizedLabel.includes('attorney') ||
+			normalizedLabel.includes('escrow') ||
+			normalizedLabel.includes('home warranty') ||
+			normalizedLabel.includes('transaction') ||
+			normalizedLabel.includes('miscellaneous') ||
+			normalizedLabel.includes('agent representing');
+		const type: 'personal' | 'company' = isCompanyType ? 'company' : 'personal';
+		// Determine role based on label patterns (order matters - check more specific patterns first)
+		let role: 'contact' | 'bill_to' | 'pay_to' | 'ship_to' | 'return_to' | undefined;
+		if (normalizedLabel === 'billto' || normalizedLabel === 'bill to' || normalizedLabel.startsWith('bill')) {
+			role = 'bill_to';
+		} else if (normalizedLabel.includes('w9') || normalizedLabel.includes('1099') || normalizedLabel.includes('pay')) {
+			role = 'pay_to';
+		} else if (normalizedLabel.includes('return')) {
+			role = 'return_to';
+		} else if (normalizedLabel.includes('ship') || normalizedLabel.includes('mail')) {
+			role = 'ship_to';
+		} else if (
+			normalizedLabel.includes('contact') ||
+			normalizedLabel.includes('buyer') ||
+			normalizedLabel.includes('seller') ||
+			normalizedLabel.includes('home') ||
+			normalizedLabel === 'contactinfo' ||
+			normalizedLabel === 'contact info'
+		) {
+			role = 'contact';
+		} else {
+			// Default to 'contact' for unknown labels (most common pattern in database)
+			role = 'contact';
+		}
+		return { type, role };
+	}
+
+	/**
 	 * Translate Enterprise_AgentUpdated_V2 Kafka message to database upsert format
 	 */
 	private translateKafkaMessageToUpsertData(payload: any): {
 		agent: {
 			id?: string;
 			agentId?: string;
+			systemId?: number;
 			firstName: string;
 			middleName?: string;
 			lastName: string;
@@ -382,6 +480,8 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 			unit?: string;
 			county?: string;
 			label?: string;
+			type?: 'personal' | 'company';
+			role?: 'contact' | 'bill_to' | 'pay_to' | 'ship_to' | 'return_to';
 			isPrimary: boolean;
 			stateCode?: string;
 			countryAlpha2?: string;
@@ -410,6 +510,7 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 		const agent = {
 			id: payload.uuid || undefined,
 			agentId: payload.source_system_member_key?.toString() || undefined,
+			systemId: payload.systemkey || undefined,
 			firstName: payload.member_first_name || '',
 			middleName: payload.member_middle_name || undefined,
 			lastName: payload.member_last_name || '',
@@ -471,6 +572,18 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 			});
 		}
 
+		// Fax Number: name = Fax Number, is_primary = false, channel = phone, sub_type = fax, sms_opt_in = false
+		if (payload.fax) {
+			contactMethods.push({
+				name: 'Fax Number',
+				channel: 'phone',
+				value: payload.fax,
+				isPrimary: false,
+				subType: 'fax',
+				smsOptIn: false,
+			});
+		}
+
 		// Translate addresses
 		const addresses: Array<{
 			line1: string;
@@ -480,6 +593,8 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 			unit?: string;
 			county?: string;
 			label?: string;
+			type?: 'personal' | 'company';
+			role?: 'contact' | 'bill_to' | 'pay_to' | 'ship_to' | 'return_to';
 			isPrimary: boolean;
 			stateCode?: string;
 			countryAlpha2?: string;
@@ -491,6 +606,8 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 				const line1 = addr.address_line_1 || addr.line_1;
 				const postalCode = addr.postal_code || addr.zip;
 				if (line1 && addr.city && postalCode) {
+					const label = addr.label || undefined;
+					const { type, role } = this.mapAddressLabelToTypeAndRole(label);
 					addresses.push({
 						line1: line1,
 						line2: addr.address_line_2 || addr.line_2 || undefined,
@@ -498,7 +615,9 @@ export class EnterpriseAgentUpdatedConsumer implements OnApplicationBootstrap, O
 						postalCode: postalCode,
 						unit: addr.unit_number || undefined,
 						county: addr.county || undefined,
-						label: addr.label || undefined,
+						label: label,
+						type: type,
+						role: role,
 						isPrimary: addr.is_primary === true || addr.is_primary === 'true',
 						stateCode: addr.state?.code || undefined,
 						countryAlpha2: addr.country?.iso_3166_1?.alpha_2 || undefined,
