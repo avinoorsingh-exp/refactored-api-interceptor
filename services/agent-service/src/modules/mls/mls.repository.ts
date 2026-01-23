@@ -32,7 +32,7 @@ const MLS_QUERY_CONFIG: BaseQueryConfig = {
  */
 @Injectable()
 export class MLSTypeOrmRepository
-	extends BaseTypeOrmRepository<MLSEntity, MLSType, string>
+	extends BaseTypeOrmRepository<MLSEntity, MLSType>
 	implements IMLSRepository
 {
 	constructor(
@@ -73,8 +73,8 @@ export class MLSTypeOrmRepository
 			orgType: entity.orgType as MLSType['orgType'],
 			kunversionUrl: entity.kunversionUrl,
 			addressId: entity.addressId,
-			created: entity.created as MLSType['created'],
-			lastModified: entity.lastModified as MLSType['lastModified'],
+			created: entity.created,
+			lastModified: entity.lastModified,
 			modifiedBy: entity.modifiedBy,
 			// Map address relation
 			address: entity.address ? {

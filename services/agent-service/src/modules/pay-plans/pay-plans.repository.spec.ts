@@ -80,7 +80,7 @@ describe('PayPlansTypeOrmRepository', () => {
     it('should return mapped domain pay plan when found', async () => {
       mockTypeOrmRepo.findOne.mockResolvedValue(mockPayPlanEntity);
 
-      const result = await repository.findById(mockPayPlanEntity.id as string);
+      const result = await repository.findById(mockPayPlanEntity.id);
 
       expect(result).toEqual(expectedDomainPayPlan);
       expect(mockTypeOrmRepo.findOne).toHaveBeenCalledWith({
@@ -281,7 +281,7 @@ describe('PayPlansTypeOrmRepository', () => {
       // The base repository uses findOne after update, not findOneOrFail
       mockTypeOrmRepo.findOne.mockResolvedValue(updatedEntity);
 
-      const result = await repository.update(mockPayPlanEntity.id as string, updateData);
+      const result = await repository.update(mockPayPlanEntity.id, updateData);
 
       expect(result.name).toBe('Updated Plan');
       expect(result.agentPercentage).toBe(90);
@@ -312,7 +312,7 @@ describe('PayPlansTypeOrmRepository', () => {
     it('should delete pay plan by id', async () => {
       mockTypeOrmRepo.delete.mockResolvedValue({ affected: 1 });
 
-      await repository.delete(mockPayPlanEntity.id as string);
+      await repository.delete(mockPayPlanEntity.id);
 
       expect(mockTypeOrmRepo.delete).toHaveBeenCalledWith({ id: mockPayPlanEntity.id });
     });
@@ -326,7 +326,7 @@ describe('PayPlansTypeOrmRepository', () => {
     it('should correctly map all entity fields to domain model', async () => {
       mockTypeOrmRepo.findOne.mockResolvedValue(mockPayPlanEntity);
 
-      const result = await repository.findById(mockPayPlanEntity.id as string);
+      const result = await repository.findById(mockPayPlanEntity.id);
 
       expect(result).not.toBeNull();
       expect(result!.id).toBe(mockPayPlanEntity.id);
@@ -350,7 +350,7 @@ describe('PayPlansTypeOrmRepository', () => {
       };
       mockTypeOrmRepo.findOne.mockResolvedValue(entityWithStringDecimals);
 
-      const result = await repository.findById(mockPayPlanEntity.id as string);
+      const result = await repository.findById(mockPayPlanEntity.id);
 
       expect(result!.agentPercentage).toBe(85.5);
       expect(result!.cap).toBe(25000);

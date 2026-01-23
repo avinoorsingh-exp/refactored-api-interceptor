@@ -60,7 +60,7 @@ const RELATIONAL_SORT_FIELDS = ['primaryEmail'] as const;
  */
 @Injectable()
 export class AgentTypeOrmRepository
-	extends BaseTypeOrmRepository<AgentEntity, Agent, string>
+	extends BaseTypeOrmRepository<AgentEntity, Agent>
 	implements IAgentRepository
 {
 	constructor(

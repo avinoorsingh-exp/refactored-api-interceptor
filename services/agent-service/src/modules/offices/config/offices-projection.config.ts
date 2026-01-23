@@ -53,5 +53,5 @@ export const OFFICES_PROJECTION_CONFIG: ProjectionConfig = {
 export const OFFICES_FIELD_PRESETS = {
 	minimal: ['id', 'name', 'lifecycleStatus'],
 	summary: OFFICES_PROJECTION_CONFIG.default,
-	detail: [...OFFICES_PROJECTION_CONFIG.default!, 'website', 'company'],
+	detail: [...OFFICES_PROJECTION_CONFIG.default, 'website', 'company'],
 };

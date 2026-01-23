@@ -90,7 +90,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['dialingCode'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.type.expected_number')
@@ -109,7 +109,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['name'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.required')
@@ -128,7 +128,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['code'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.string.max_length')
@@ -147,7 +147,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['email'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.string.invalid_email')
@@ -166,7 +166,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['age'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.number.too_small')
@@ -185,7 +185,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['alpha2'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.string.invalid_format')
@@ -204,7 +204,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._i18nType).toBe('agent.country.validation')
 			}
 		})
@@ -234,7 +234,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['website'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.string.invalid_url')
@@ -253,7 +253,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['id'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.string.invalid_uuid')
@@ -272,7 +272,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['status'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.invalid_enum')
@@ -291,7 +291,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['percentage'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.number.too_large')
@@ -310,7 +310,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['active'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.type.expected_boolean')
@@ -329,7 +329,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['createdAt'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.invalid_date')
@@ -348,7 +348,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['name'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.string.min_length')
@@ -367,7 +367,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['items'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.type.expected_array')
@@ -386,7 +386,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._i18nType).toBeUndefined()
 			}
@@ -411,7 +411,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues.length).toBe(3)
@@ -441,7 +441,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				
 				// Should have _zodIssues array
 				expect(response._zodIssues).toBeDefined()
@@ -474,7 +474,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				
 				expect(response._zodIssues).toBeDefined()
 				expect(Array.isArray(response._zodIssues)).toBe(true)
@@ -503,7 +503,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				
 				expect(response._zodIssues).toBeDefined()
 				expect(response._i18nType).toBe('agent.country.validation')
@@ -530,7 +530,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues.length).toBe(2)
@@ -560,7 +560,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['tags'])

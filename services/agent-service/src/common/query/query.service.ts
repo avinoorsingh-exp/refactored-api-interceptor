@@ -86,7 +86,7 @@ export class QueryService {
       // Use all searchable fields if none specified
       normalized.search = {
         query: parsed.search,
-        fields: Array.from(allowedSearchFields) as string[],
+        fields: Array.from(allowedSearchFields),
       };
     }
 

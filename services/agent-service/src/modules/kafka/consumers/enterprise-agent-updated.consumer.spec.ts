@@ -264,7 +264,7 @@ describe('EnterpriseAgentUpdatedConsumer', () => {
 		it('should translate basic agent fields', () => {
 			const payload = {
 				uuid: '550e8400-e29b-41d4-a716-446655440000',
-				systemkey: '12345',
+				systemkey: 12345,
 				source_system_member_key: '67890',
 				member_first_name: 'John',
 				member_last_name: 'Doe',
@@ -283,7 +283,8 @@ describe('EnterpriseAgentUpdatedConsumer', () => {
 
 			expect(result.agent).toEqual({
 				id: '550e8400-e29b-41d4-a716-446655440000',
-				agentId: '67890', // source_system_member_key maps to agentId (swapped from systemkey)
+				agentId: '67890', // source_system_member_key maps to agentId
+				systemId: 12345, // systemkey maps to systemId
 				firstName: 'John',
 				lastName: 'Doe',
 				middleName: 'Middle',

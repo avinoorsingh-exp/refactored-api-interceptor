@@ -73,7 +73,29 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 	async start(): Promise<Consumer> {
 		try {
 			const kafka = this.kafkaClientService.getClient();
-			this.consumer = kafka.consumer({ groupId: this.groupId });
+			// Add sessionTimeout and heartbeatInterval to help with rebalancing
+			this.consumer = kafka.consumer({ 
+				groupId: this.groupId,
+				sessionTimeout: 30000, // 30 seconds
+				heartbeatInterval: 3000, // 3 seconds
+			});
+
+			// Set up event handlers for logging (KafkaJS handles rebalancing automatically)
+			this.consumer.on(this.consumer.events.GROUP_JOIN, (event) => {
+				this.logger.info('Consumer joined group', {
+					topic: this.topic,
+					groupId: this.groupId,
+					memberId: event.payload.memberId,
+					isLeader: event.payload.isLeader,
+				});
+			});
+
+			this.consumer.on(this.consumer.events.CRASH, (event) => {
+				this.logger.error('Consumer crashed', {
+					topic: this.topic,
+					error: event.payload.error.message,
+				});
+			});
 
 			await this.consumer.connect();
 			this.logger.info('Kafka consumer connected', {
@@ -84,22 +106,10 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 			await this.consumer.subscribe({ topic: this.topic, fromBeginning: false });
 			this.logger.info('Subscribed to topic', { topic: this.topic });
 
-			// consumer.run() returns a promise that resolves when the consumer starts
-			// but continues running in the background. If it rejects later (e.g., on crash),
-			// we need to handle that rejection to prevent unhandled promise rejections
-			this.consumer.run({
-				eachMessage: async ({ topic, partition, message }) => {
-					await this.handleMessage(topic, partition, message);
-				},
-			}).catch((error) => {
-				// Handle consumer run errors (crashes, disconnections, etc.)
-				this.logger.error('Kafka consumer run() promise rejected', {
-					error: error instanceof Error ? error.message : 'Unknown error',
-					stack: error instanceof Error ? error.stack : undefined,
-				});
-				// Don't rethrow - the consumer is already stopped/crashed
-				// This prevents unhandled promise rejections that could cause module destruction
-			});
+			// CRITICAL: Do NOT call consumer.run() here.
+			// The KafkaRuntimeManager will call consumer.run() with a message router
+			// that handles multiple topics sharing the same groupId.
+			// This ensures only ONE Consumer instance exists per groupId.
 
 			this.logger.info('Enterprise Agent Updated consumer started successfully');
 			
@@ -133,6 +143,17 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 			}
 			this.consumer = null;
 		}
+	}
+
+	/**
+	 * Get message handler for this consumer.
+	 * Used by KafkaRuntimeManager to route messages when multiple services share a groupId.
+	 * Returns a function matching KafkaJS EachMessageHandler signature.
+	 */
+	getMessageHandler(): (payload: { topic: string; partition: number; message: KafkaMessage }) => Promise<void> {
+		return async (payload: { topic: string; partition: number; message: KafkaMessage }) => {
+			await this.handleMessage(payload.topic, payload.partition, payload.message);
+		};
 	}
 
 	/**
@@ -428,6 +449,7 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 		agent: {
 			id?: string;
 			agentId?: string;
+			systemId?: number;
 			firstName: string;
 			middleName?: string;
 			lastName: string;
@@ -488,6 +510,7 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 		const agent = {
 			id: payload.uuid || undefined,
 			agentId: payload.source_system_member_key?.toString() || undefined,
+			systemId: payload.systemkey || undefined,
 			firstName: payload.member_first_name || '',
 			middleName: payload.member_middle_name || undefined,
 			lastName: payload.member_last_name || '',

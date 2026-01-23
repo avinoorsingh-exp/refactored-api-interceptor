@@ -173,12 +173,12 @@ export class SponsorChangedService {
 	): SponsorChangedMessage {
 		// Extract primary email: first contact method where channel=email and isPrimary=true
 		const primaryEmail = agent.contactMethod?.find(
-			(cm) => cm.channel === 'email' && cm.isPrimary === true,
+			(cm) => cm.channel === 'email' && cm.isPrimary,
 		);
 
 		// Extract secondary email: first contact method where channel=email and isPrimary=false
 		const secondaryEmail = agent.contactMethod?.find(
-			(cm) => cm.channel === 'email' && cm.isPrimary === false,
+			(cm) => cm.channel === 'email' && !cm.isPrimary,
 		);
 
 		// Extract phone list: all contact methods where channel=phone
