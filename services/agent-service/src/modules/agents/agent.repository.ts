@@ -595,6 +595,41 @@ export class AgentTypeOrmRepository
 			{ [paramName]: `%${searchQuery.trim()}%` },
 		);
 	}
+	/**
+ * Applies email search using LEFT JOIN on contactMethods.
+ * Searches on contactMethods.value where channel='email' to match email addresses.
+ * This works alongside existing individual field searches and full name search.
+ * 
+ * @param qb - Query builder
+ * @param searchQuery - Optional search query string
+ */
+	private applyEmailSearch<T>(
+		qb: SelectQueryBuilder<T>,
+		searchQuery?: string,
+	): void {
+		if (!searchQuery || !searchQuery.trim()) {
+			return;
+		}
+
+		const alias = this.getAlias();
+		const emailSearchAlias = 'emailSearch';
+		const paramName = 'emailSearchValue';
+
+		// LEFT JOIN contactMethods where channel='email' for email search
+		// This allows searching email addresses even if agent has no email (LEFT JOIN)
+		qb.leftJoin(
+			`${alias}.contactMethods`,
+			emailSearchAlias,
+			`${emailSearchAlias}.channel = :emailSearchChannel`,
+			{ emailSearchChannel: 'email' },
+		);
+
+		// Search on the value field (email address) with case-insensitive partial matching
+		qb.orWhere(
+			`${emailSearchAlias}.value ILIKE :${paramName}`,
+			{ [paramName]: `%${searchQuery.trim()}%` },
+		);
+	}
 
 	/**
 	 * Finds agents with pagination, filtering, sorting, and search.
@@ -671,10 +706,15 @@ export class AgentTypeOrmRepository
 				}
 				// Apply full name search if search query is provided
 				this.applyFullNameSearch(qb, modifiedQuery.search);
+
+				// Apply email search if search query is provided
+				this.applyEmailSearch(qb, modifiedQuery.search);
 			}, { skipDefaultSort: hasRelationalSort });
 		}
 
 		return this.findWithQuery(modifiedQuery, selection,(qb) => {
-			this.applyFullNameSearch(qb, modifiedQuery.search)});
+			this.applyFullNameSearch(qb, modifiedQuery.search);
+			this.applyEmailSearch(qb, modifiedQuery.search);
+		});
 	}
 }
