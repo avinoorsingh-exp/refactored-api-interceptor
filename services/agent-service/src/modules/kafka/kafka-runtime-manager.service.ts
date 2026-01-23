@@ -227,6 +227,14 @@ export class KafkaRuntimeManager {
 			}
 
 			// Check if a consumer with this groupId already exists
+			this.logger.info(`Checking for existing consumer group`, {
+				serviceId: id,
+				groupId,
+				topic: runtime.topic,
+				existingGroupIds: Array.from(this.groupConsumers.keys()),
+				registrySize: this.groupConsumers.size,
+			});
+			
 			const existingGroup = this.groupConsumers.get(groupId);
 
 			if (existingGroup) {

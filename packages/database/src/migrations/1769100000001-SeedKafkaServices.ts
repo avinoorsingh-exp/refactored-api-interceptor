@@ -25,7 +25,8 @@ export class SeedKafkaServices1769100000001 implements MigrationInterface {
 		}
 
 		// Get consumer group ID from environment variable
-		// Each environment (dev, staging, prod) should have this set in their secrets
+		// Each environment (dev, test, qa, prod) should have this set in AWS Secrets Manager
+		// Falls back to default if not set (Jenkinsfile ensures it's set, but this prevents migration failures)
 		const consumerGroupId = process.env.KAFKA_CONSUMER_GROUP_ID || 'agent-service-group';
 
 		// Insert Enterprise Agent Updated Consumer
@@ -90,8 +91,8 @@ export class SeedKafkaServices1769100000001 implements MigrationInterface {
 
 	public async down(queryRunner: QueryRunner): Promise<void> {
 		// Remove the seeded Kafka service definitions
-		// Note: This will remove the consumers regardless of group_id value
-		// since we can't know which environment's group_id was used
+		// Note: This will remove the consumers for the current environment's group_id
+		// Falls back to default if not set (Jenkinsfile ensures it's set, but this prevents migration failures)
 		const consumerGroupId = process.env.KAFKA_CONSUMER_GROUP_ID || 'agent-service-group';
 		
 		await queryRunner.query(

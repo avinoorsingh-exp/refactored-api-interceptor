@@ -196,6 +196,9 @@ pipeline
               export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD // .password // .database_password // .DATABASE_PASSWORD // empty')
               export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME // .database_name // .DATABASE_NAME // .database // .DATABASE // empty')
 
+              # Extract Kafka consumer group ID from secrets
+              export KAFKA_CONSUMER_GROUP_ID=\$(cat db-secrets.json | jq -r '.KAFKA_CONSUMER_GROUP_ID // empty')
+
               # Validate required fields (fail if null or empty)
               if [ -z "\$DB_HOST" ] || [ "\$DB_HOST" == "null" ]; then
                 echo "ERROR: DB_HOST is missing or null"
@@ -219,6 +222,12 @@ pipeline
                 echo "ERROR: DB_NAME is missing or null"
                 exit 1
               fi
+              if [ -z "\$KAFKA_CONSUMER_GROUP_ID" ] || [ "\$KAFKA_CONSUMER_GROUP_ID" == "null" ]; then
+                echo "ERROR: KAFKA_CONSUMER_GROUP_ID is missing or null in secrets"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                exit 1
+              fi
 
               # Debug: Show extracted values (mask password)
               echo "=== Database configuration ==="
@@ -227,6 +236,7 @@ pipeline
               echo "DB_USERNAME: \$DB_USERNAME"
               echo "DB_PASSWORD: [REDACTED]"
               echo "DB_NAME: \$DB_NAME"
+              echo "KAFKA_CONSUMER_GROUP_ID: \$KAFKA_CONSUMER_GROUP_ID"
               echo ""
 
               # Download AWS RDS CA certificate bundle for SSL connections
@@ -327,6 +337,9 @@ pipeline
               export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD // .password // .database_password // .DATABASE_PASSWORD // empty')
               export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME // .database_name // .DATABASE_NAME // .database // .DATABASE // empty')
 
+              # Extract Kafka consumer group ID from secrets
+              export KAFKA_CONSUMER_GROUP_ID=\$(cat db-secrets.json | jq -r '.KAFKA_CONSUMER_GROUP_ID // empty')
+
               # Validate required fields (fail if null or empty)
               if [ -z "\$DB_HOST" ] || [ "\$DB_HOST" == "null" ]; then
                 echo "ERROR: DB_HOST is missing or null"
@@ -350,6 +363,12 @@ pipeline
                 echo "ERROR: DB_NAME is missing or null"
                 exit 1
               fi
+              if [ -z "\$KAFKA_CONSUMER_GROUP_ID" ] || [ "\$KAFKA_CONSUMER_GROUP_ID" == "null" ]; then
+                echo "ERROR: KAFKA_CONSUMER_GROUP_ID is missing or null in secrets"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                exit 1
+              fi
 
               # Debug: Show extracted values (mask password)
               echo "=== Database configuration ==="
@@ -358,6 +377,7 @@ pipeline
               echo "DB_USERNAME: \$DB_USERNAME"
               echo "DB_PASSWORD: [REDACTED]"
               echo "DB_NAME: \$DB_NAME"
+              echo "KAFKA_CONSUMER_GROUP_ID: \$KAFKA_CONSUMER_GROUP_ID"
               echo ""
 
               # Download AWS RDS CA certificate bundle for SSL connections
@@ -461,6 +481,9 @@ pipeline
               export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD // .password // .database_password // .DATABASE_PASSWORD // empty')
               export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME // .database_name // .DATABASE_NAME // .database // .DATABASE // empty')
 
+              # Extract Kafka consumer group ID from secrets
+              export KAFKA_CONSUMER_GROUP_ID=\$(cat db-secrets.json | jq -r '.KAFKA_CONSUMER_GROUP_ID // empty')
+
               # Validate required fields (fail if null or empty)
               if [ -z "\$DB_HOST" ] || [ "\$DB_HOST" == "null" ]; then
                 echo "ERROR: DB_HOST is missing or null"
@@ -484,6 +507,12 @@ pipeline
                 echo "ERROR: DB_NAME is missing or null"
                 exit 1
               fi
+              if [ -z "\$KAFKA_CONSUMER_GROUP_ID" ] || [ "\$KAFKA_CONSUMER_GROUP_ID" == "null" ]; then
+                echo "ERROR: KAFKA_CONSUMER_GROUP_ID is missing or null in secrets"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                exit 1
+              fi
 
               # Debug: Show extracted values (mask password)
               echo "=== Database configuration ==="
@@ -492,6 +521,7 @@ pipeline
               echo "DB_USERNAME: \$DB_USERNAME"
               echo "DB_PASSWORD: [REDACTED]"
               echo "DB_NAME: \$DB_NAME"
+              echo "KAFKA_CONSUMER_GROUP_ID: \$KAFKA_CONSUMER_GROUP_ID"
               echo ""
 
               # Download AWS RDS CA certificate bundle for SSL connections
@@ -595,6 +625,9 @@ pipeline
               export DB_PASSWORD=\$(cat db-secrets.json | jq -r '.DB_PASSWORD // .password // .database_password // .DATABASE_PASSWORD // empty')
               export DB_NAME=\$(cat db-secrets.json | jq -r '.DB_NAME // .database_name // .DATABASE_NAME // .database // .DATABASE // empty')
 
+              # Extract Kafka consumer group ID from secrets
+              export KAFKA_CONSUMER_GROUP_ID=\$(cat db-secrets.json | jq -r '.KAFKA_CONSUMER_GROUP_ID // empty')
+
               # Validate required fields (fail if null or empty)
               if [ -z "\$DB_HOST" ] || [ "\$DB_HOST" == "null" ]; then
                 echo "ERROR: DB_HOST is missing or null"
@@ -618,6 +651,12 @@ pipeline
                 echo "ERROR: DB_NAME is missing or null"
                 exit 1
               fi
+              if [ -z "\$KAFKA_CONSUMER_GROUP_ID" ] || [ "\$KAFKA_CONSUMER_GROUP_ID" == "null" ]; then
+                echo "ERROR: KAFKA_CONSUMER_GROUP_ID is missing or null in secrets"
+                echo "Available keys in secrets:"
+                cat db-secrets.json | jq 'keys'
+                exit 1
+              fi
 
               # Debug: Show extracted values (mask password)
               echo "=== Database configuration ==="
@@ -626,6 +665,7 @@ pipeline
               echo "DB_USERNAME: \$DB_USERNAME"
               echo "DB_PASSWORD: [REDACTED]"
               echo "DB_NAME: \$DB_NAME"
+              echo "KAFKA_CONSUMER_GROUP_ID: \$KAFKA_CONSUMER_GROUP_ID"
               echo ""
 
               # Download AWS RDS CA certificate bundle for SSL connections
