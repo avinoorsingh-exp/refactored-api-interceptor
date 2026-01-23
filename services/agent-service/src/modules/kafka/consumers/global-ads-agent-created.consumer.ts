@@ -62,9 +62,9 @@ export class GlobalAdsAgentCreatedConsumer implements RegisterableKafkaService {
 				heartbeatInterval: 3000, // 3 seconds
 			});
 
-			// Set up rebalancing event handlers BEFORE connecting
+			// Set up event handlers for logging (KafkaJS handles rebalancing automatically)
 			this.consumer.on(this.consumer.events.GROUP_JOIN, (event) => {
-				this.logger.info('Consumer joining group', {
+				this.logger.info('Consumer joined group', {
 					topic: this.topic,
 					groupId: this.groupId,
 					memberId: event.payload.memberId,
@@ -88,44 +88,18 @@ export class GlobalAdsAgentCreatedConsumer implements RegisterableKafkaService {
 			await this.consumer.subscribe({ topic: this.topic, fromBeginning: false });
 			this.logger.info('Subscribed to topic', { topic: this.topic });
 
-			// Track when consumer actually starts consuming (after partition assignment)
-			let hasStartedConsuming = false;
-			const consumptionStartedPromise = new Promise<void>((resolve) => {
-				const originalEachMessage = async ({ topic, partition, message }: { topic: string; partition: number; message: KafkaMessage }) => {
-					// First message indicates partition assignment is complete and consumer is ready
-					if (!hasStartedConsuming) {
-						hasStartedConsuming = true;
-						this.logger.info('Consumer started consuming - partition assignment complete', {
-							topic: this.topic,
-							groupId: this.groupId,
-							partition,
-						});
-						resolve();
-					}
+			// Start consuming - KafkaJS handles rebalancing automatically
+			// No need to wait for events or add delays - let KafkaJS manage the group
+			this.consumer.run({
+				eachMessage: async ({ topic, partition, message }) => {
 					await this.handleMessage(topic, partition, message);
-				};
-
-				this.consumer.run({
-					eachMessage: originalEachMessage,
-				}).catch((error) => {
-					this.logger.error('Kafka consumer run() promise rejected', {
-						error: error instanceof Error ? error.message : 'Unknown error',
-						stack: error instanceof Error ? error.stack : undefined,
-					});
+				},
+			}).catch((error) => {
+				this.logger.error('Kafka consumer run() promise rejected', {
+					error: error instanceof Error ? error.message : 'Unknown error',
+					stack: error instanceof Error ? error.stack : undefined,
 				});
 			});
-
-			// Wait for consumer to actually start consuming (indicates partition assignment is complete)
-			// This is critical for multi-consumer scenarios - ensures rebalancing completes
-			const timeoutPromise = new Promise<void>((resolve) => {
-				setTimeout(() => {
-					// If no message arrives within 10 seconds, assume consumer is ready anyway
-					// (topics might be empty, but consumer is still assigned partitions)
-					resolve();
-				}, 10000);
-			});
-
-			await Promise.race([consumptionStartedPromise, timeoutPromise]);
 
 			this.logger.info('Global ADS Agent Created consumer started successfully');
 			
