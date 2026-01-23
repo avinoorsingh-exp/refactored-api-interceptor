@@ -109,7 +109,7 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 			// Track when consumer actually starts consuming (after partition assignment)
 			let hasStartedConsuming = false;
 			const consumptionStartedPromise = new Promise<void>((resolve) => {
-				const originalEachMessage = async ({ topic, partition, message }: any) => {
+				const originalEachMessage = async ({ topic, partition, message }: { topic: string; partition: number; message: KafkaMessage }) => {
 					// First message indicates partition assignment is complete and consumer is ready
 					if (!hasStartedConsuming) {
 						hasStartedConsuming = true;
