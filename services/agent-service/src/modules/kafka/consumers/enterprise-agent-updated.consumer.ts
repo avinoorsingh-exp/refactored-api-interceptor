@@ -106,26 +106,50 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 			await this.consumer.subscribe({ topic: this.topic, fromBeginning: false });
 			this.logger.info('Subscribed to topic', { topic: this.topic });
 
-			// consumer.run() returns a promise that resolves when the consumer starts
-			// but continues running in the background. If it rejects later (e.g., on crash),
-			// we need to handle that rejection to prevent unhandled promise rejections
-			this.consumer.run({
-				eachMessage: async ({ topic, partition, message }) => {
+			// Track when consumer actually starts consuming (after partition assignment)
+			let hasStartedConsuming = false;
+			const consumptionStartedPromise = new Promise<void>((resolve) => {
+				const originalEachMessage = async ({ topic, partition, message }: { topic: string; partition: number; message: KafkaMessage }) => {
+					// First message indicates partition assignment is complete and consumer is ready
+					if (!hasStartedConsuming) {
+						hasStartedConsuming = true;
+						this.logger.info('Consumer started consuming - partition assignment complete', {
+							topic: this.topic,
+							groupId: this.groupId,
+							partition,
+						});
+						resolve();
+					}
 					await this.handleMessage(topic, partition, message);
-				},
-			}).catch((error) => {
-				// Handle consumer run errors (crashes, disconnections, etc.)
-				this.logger.error('Kafka consumer run() promise rejected', {
-					error: error instanceof Error ? error.message : 'Unknown error',
-					stack: error instanceof Error ? error.stack : undefined,
+				};
+
+				// consumer.run() returns a promise that resolves when the consumer starts
+				// but continues running in the background. If it rejects later (e.g., on crash),
+				// we need to handle that rejection to prevent unhandled promise rejections
+				this.consumer.run({
+					eachMessage: originalEachMessage,
+				}).catch((error) => {
+					// Handle consumer run errors (crashes, disconnections, etc.)
+					this.logger.error('Kafka consumer run() promise rejected', {
+						error: error instanceof Error ? error.message : 'Unknown error',
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+					// Don't rethrow - the consumer is already stopped/crashed
+					// This prevents unhandled promise rejections that could cause module destruction
 				});
-				// Don't rethrow - the consumer is already stopped/crashed
-				// This prevents unhandled promise rejections that could cause module destruction
 			});
 
-			// Wait for consumer group to stabilize after rebalancing
-			// This delay prevents user error - allows starting multiple consumers without manual waiting
-			await new Promise(resolve => setTimeout(resolve, 3000));
+			// Wait for consumer to actually start consuming (indicates partition assignment is complete)
+			// This is critical for multi-consumer scenarios - ensures rebalancing completes
+			const timeoutPromise = new Promise<void>((resolve) => {
+				setTimeout(() => {
+					// If no message arrives within 10 seconds, assume consumer is ready anyway
+					// (topics might be empty, but consumer is still assigned partitions)
+					resolve();
+				}, 10000);
+			});
+
+			await Promise.race([consumptionStartedPromise, timeoutPromise]);
 
 			this.logger.info('Enterprise Agent Updated consumer started successfully');
 			
