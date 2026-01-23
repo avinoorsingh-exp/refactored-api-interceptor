@@ -173,8 +173,8 @@ export class PaginationInterceptor implements NestInterceptor {
 
   private extractResult(result: any): { items: any[] | undefined; total: number | undefined; shape: 'items-total' | 'array' | 'unknown' } {
     if (result && typeof result === 'object' && 'items' in result && 'total' in result) {
-      const items = (result as any).items;
-      const total = (result as any).total;
+      const items = (result).items;
+      const total = (result).total;
       return { items, total, shape: 'items-total' };
     }
     if (Array.isArray(result)) {

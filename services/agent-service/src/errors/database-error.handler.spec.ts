@@ -322,7 +322,7 @@ describe('DatabaseErrorHandler - Property-Based Tests', () => {
 			fc.assert(
 				fc.property(postgres23CodeArbitrary, (code) => {
 					const error = { code, message: 'test error' }
-					return DatabaseErrorHandler.isDatabaseError(error) === true
+					return DatabaseErrorHandler.isDatabaseError(error)
 				}),
 				{ numRuns: 100 },
 			)
@@ -340,7 +340,7 @@ describe('DatabaseErrorHandler - Property-Based Tests', () => {
 			fc.assert(
 				fc.property(nonPostgres23CodeArbitrary, (code) => {
 					const error = { code, message: 'test error' }
-					return DatabaseErrorHandler.isDatabaseError(error) === false
+					return !DatabaseErrorHandler.isDatabaseError(error)
 				}),
 				{ numRuns: 100 },
 			)

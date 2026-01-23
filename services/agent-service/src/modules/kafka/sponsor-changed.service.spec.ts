@@ -235,7 +235,7 @@ describe('SponsorChangedService', () => {
 			const agentWithoutSecondaryEmail = {
 				...mockAgent,
 				contactMethod: mockAgent.contactMethod?.filter(
-					(cm) => !(cm.channel === 'email' && cm.isPrimary === false),
+					(cm) => !(cm.channel === 'email' && !cm.isPrimary),
 				),
 			};
 
@@ -263,7 +263,7 @@ describe('SponsorChangedService', () => {
 			const agentWithoutPrimaryEmail = {
 				...mockAgent,
 				contactMethod: mockAgent.contactMethod?.filter(
-					(cm) => !(cm.channel === 'email' && cm.isPrimary === true),
+					(cm) => !(cm.channel === 'email' && cm.isPrimary),
 				),
 			};
 

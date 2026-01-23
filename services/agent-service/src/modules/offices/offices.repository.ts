@@ -31,7 +31,7 @@ const OFFICES_QUERY_CONFIG: BaseQueryConfig = {
  */
 @Injectable()
 export class OfficesTypeOrmRepository
-	extends BaseTypeOrmRepository<OfficeEntity, Office, string>
+	extends BaseTypeOrmRepository<OfficeEntity, Office>
 	implements IOfficesRepository
 {
 	constructor(
@@ -69,8 +69,8 @@ export class OfficesTypeOrmRepository
 			lifecycleStatus: entity.lifecycleStatus,
 			primaryState: entity.primaryState,
 			companyId: entity.companyId,
-			created: entity.created as Office['created'],
-			lastModified: entity.lastModified as Office['lastModified'],
+			created: entity.created,
+			lastModified: entity.lastModified,
 			modifiedBy: entity.modifiedBy,
 			// Map company relation - spread all fields, override BigInt id for JSON serialization
 			company: entity.company ? {

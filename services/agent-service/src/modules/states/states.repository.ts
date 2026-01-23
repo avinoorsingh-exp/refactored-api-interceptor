@@ -35,7 +35,7 @@ const STATES_QUERY_CONFIG: BaseQueryConfig = {
  */
 @Injectable()
 export class StatesTypeOrmRepository
-	extends BaseTypeOrmRepository<StateEntity, State, string>
+	extends BaseTypeOrmRepository<StateEntity, State>
 	implements IStatesRepository
 {
 	constructor(
@@ -74,8 +74,8 @@ export class StatesTypeOrmRepository
 			signatureDistributionEmail: entity.signatureDistributionEmail as State['signatureDistributionEmail'],
 			regionId: String(entity.regionId),
 			countryId: entity.countryId,
-			created: entity.created as State['created'],
-			lastModified: entity.lastModified as State['lastModified'],
+			created: entity.created,
+			lastModified: entity.lastModified,
 			modifiedBy: entity.modifiedBy,
 			region: entity.region ? { id: entity.region.id, name: entity.region.name } : undefined,
 			country: entity.country ? { id: entity.country.id, name: entity.country.name, alpha2: entity.country.alpha2, alpha3: entity.country.alpha3 } : undefined,

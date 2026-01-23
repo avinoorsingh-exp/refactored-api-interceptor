@@ -48,5 +48,5 @@ export const PAY_PLANS_PROJECTION_CONFIG: ProjectionConfig = {
 export const PAY_PLANS_FIELD_PRESETS = {
 	minimal: ['id', 'name', 'active'],
 	summary: PAY_PLANS_PROJECTION_CONFIG.default,
-	detail: [...PAY_PLANS_PROJECTION_CONFIG.default!, 'payPlanVariant'],
+	detail: [...PAY_PLANS_PROJECTION_CONFIG.default, 'payPlanVariant'],
 };

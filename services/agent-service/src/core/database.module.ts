@@ -25,7 +25,7 @@ import { LoggerModule } from './logger.module.js'
         // Diagnostic: print SSL value early (use console to ensure it appears
         // even if logger isn't fully ready). This helps verify the value we
         // received from ConfigService / AWS Secrets Manager.
-        // eslint-disable-next-line no-console
+         
         console.log('[DB DIAG] cfg.DB_SSL ->', cfg.DB_SSL, 'typeof ->', typeof cfg.DB_SSL, 'process.env.DB_SSL ->', process.env.DB_SSL)
 
         logger.info('Initializing database connection', {
