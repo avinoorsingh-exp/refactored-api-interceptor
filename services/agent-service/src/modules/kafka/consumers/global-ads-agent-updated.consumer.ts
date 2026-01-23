@@ -66,8 +66,9 @@ export class GlobalAdsAgentUpdatedConsumer implements RegisterableKafkaService {
 			this.consumer.on(this.consumer.events.GROUP_JOIN, (event) => {
 				this.logger.info('Consumer joining group', {
 					topic: this.topic,
+					groupId: this.groupId,
 					memberId: event.payload.memberId,
-					groupGenerationId: event.payload.groupGenerationId,
+					isLeader: event.payload.isLeader,
 				});
 			});
 
@@ -98,8 +99,9 @@ export class GlobalAdsAgentUpdatedConsumer implements RegisterableKafkaService {
 				});
 			});
 
-			// Wait a moment for consumer group to stabilize after rebalancing
-			await new Promise(resolve => setTimeout(resolve, 1000));
+			// Wait for consumer group to stabilize after rebalancing
+			// This delay prevents user error - allows starting multiple consumers without manual waiting
+			await new Promise(resolve => setTimeout(resolve, 3000));
 
 			this.logger.info('Global ADS Agent Updated consumer started successfully');
 			
