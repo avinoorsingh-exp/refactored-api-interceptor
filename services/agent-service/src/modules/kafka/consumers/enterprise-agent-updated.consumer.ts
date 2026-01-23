@@ -106,23 +106,10 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 			await this.consumer.subscribe({ topic: this.topic, fromBeginning: false });
 			this.logger.info('Subscribed to topic', { topic: this.topic });
 
-			// consumer.run() returns a promise that resolves when the consumer starts
-			// but continues running in the background. If it rejects later (e.g., on crash),
-			// we need to handle that rejection to prevent unhandled promise rejections
-			// KafkaJS handles rebalancing automatically - no need to wait for events or add delays
-			this.consumer.run({
-				eachMessage: async ({ topic, partition, message }) => {
-					await this.handleMessage(topic, partition, message);
-				},
-			}).catch((error) => {
-				// Handle consumer run errors (crashes, disconnections, etc.)
-				this.logger.error('Kafka consumer run() promise rejected', {
-					error: error instanceof Error ? error.message : 'Unknown error',
-					stack: error instanceof Error ? error.stack : undefined,
-				});
-				// Don't rethrow - the consumer is already stopped/crashed
-				// This prevents unhandled promise rejections that could cause module destruction
-			});
+			// CRITICAL: Do NOT call consumer.run() here.
+			// The KafkaRuntimeManager will call consumer.run() with a message router
+			// that handles multiple topics sharing the same groupId.
+			// This ensures only ONE Consumer instance exists per groupId.
 
 			this.logger.info('Enterprise Agent Updated consumer started successfully');
 			
@@ -156,6 +143,17 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 			}
 			this.consumer = null;
 		}
+	}
+
+	/**
+	 * Get message handler for this consumer.
+	 * Used by KafkaRuntimeManager to route messages when multiple services share a groupId.
+	 * Returns a function matching KafkaJS EachMessageHandler signature.
+	 */
+	getMessageHandler(): (payload: { topic: string; partition: number; message: KafkaMessage }) => Promise<void> {
+		return async (payload: { topic: string; partition: number; message: KafkaMessage }) => {
+			await this.handleMessage(payload.topic, payload.partition, payload.message);
+		};
 	}
 
 	/**

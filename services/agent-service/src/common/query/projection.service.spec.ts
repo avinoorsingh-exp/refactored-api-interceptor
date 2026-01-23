@@ -98,7 +98,7 @@ describe('ProjectionService', () => {
       };
 
       expect(() =>
-        service.applyProjection(mockQueryBuilder, 'entity', selection, defaultConfig),
+        { service.applyProjection(mockQueryBuilder, 'entity', selection, defaultConfig); },
       ).toThrow(BadRequestException);
     });
 
@@ -127,7 +127,7 @@ describe('ProjectionService', () => {
 
       service.applyProjection(mockQueryBuilder, 'entity', selection, defaultConfig);
 
-      const selectCall = mockQueryBuilder.select.mock.calls[0][0] as string[];
+      const selectCall = mockQueryBuilder.select.mock.calls[0][0];
       const idCount = selectCall.filter((f) => f === 'entity.id').length;
       expect(idCount).toBe(1);
     });
@@ -219,7 +219,7 @@ describe('ProjectionService', () => {
       };
 
       expect(() =>
-        service.applyRelations(mockQueryBuilder, 'entity', selection, defaultConfig),
+        { service.applyRelations(mockQueryBuilder, 'entity', selection, defaultConfig); },
       ).toThrow(BadRequestException);
     });
 
@@ -373,7 +373,7 @@ describe('ProjectionService - Property-Based Tests', () => {
 
             service.applyProjection(mockQueryBuilder, 'entity', selection, defaultConfig);
 
-            const selectCall = mockQueryBuilder.select.mock.calls[0][0] as string[];
+            const selectCall = mockQueryBuilder.select.mock.calls[0][0];
 
             // Invariant: required fields are always included
             requiredFields.forEach((reqField) => {
@@ -398,7 +398,7 @@ describe('ProjectionService - Property-Based Tests', () => {
             const selection: FieldSelection = { fields: [invalidField] };
 
             expect(() =>
-              service.applyProjection(mockQueryBuilder, 'entity', selection, defaultConfig),
+              { service.applyProjection(mockQueryBuilder, 'entity', selection, defaultConfig); },
             ).toThrow(BadRequestException);
           },
         ),
@@ -419,7 +419,7 @@ describe('ProjectionService - Property-Based Tests', () => {
 
             service.applyProjection(mockQueryBuilder, 'entity', selection, defaultConfig);
 
-            const selectCall = mockQueryBuilder.select.mock.calls[0][0] as string[];
+            const selectCall = mockQueryBuilder.select.mock.calls[0][0];
 
             // Invariant: no duplicate fields in selection
             const uniqueSelectFields = [...new Set(selectCall)];
@@ -468,7 +468,7 @@ describe('ProjectionService - Property-Based Tests', () => {
             const selection: FieldSelection = { include: [invalidRelation] };
 
             expect(() =>
-              service.applyRelations(mockQueryBuilder, 'entity', selection, defaultConfig),
+              { service.applyRelations(mockQueryBuilder, 'entity', selection, defaultConfig); },
             ).toThrow(BadRequestException);
           },
         ),

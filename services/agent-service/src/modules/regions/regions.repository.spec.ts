@@ -59,7 +59,7 @@ describe('RegionsTypeOrmRepository', () => {
     it('should return mapped domain region when found', async () => {
       mockTypeOrmRepo.findOne.mockResolvedValue(mockRegionEntity);
 
-      const result = await repository.findById(mockRegionEntity.id as string);
+      const result = await repository.findById(mockRegionEntity.id);
 
       expect(result).toEqual(expectedDomainRegion);
       expect(mockTypeOrmRepo.findOne).toHaveBeenCalledWith({
@@ -251,7 +251,7 @@ describe('RegionsTypeOrmRepository', () => {
       mockTypeOrmRepo.update.mockResolvedValue({ affected: 1 });
       mockTypeOrmRepo.findOneOrFail.mockResolvedValue(updatedEntity);
 
-      const result = await repository.update(mockRegionEntity.id as string, updateData);
+      const result = await repository.update(mockRegionEntity.id, updateData);
 
       expect(result.name).toBe('southwest updated');
       expect(mockTypeOrmRepo.update).toHaveBeenCalledWith(
@@ -282,7 +282,7 @@ describe('RegionsTypeOrmRepository', () => {
     it('should delete region by id', async () => {
       mockTypeOrmRepo.delete.mockResolvedValue({ affected: 1 });
 
-      await repository.delete(mockRegionEntity.id as string);
+      await repository.delete(mockRegionEntity.id);
 
       expect(mockTypeOrmRepo.delete).toHaveBeenCalledWith({ id: mockRegionEntity.id });
     });
@@ -296,7 +296,7 @@ describe('RegionsTypeOrmRepository', () => {
     it('should correctly map all entity fields to domain model', async () => {
       mockTypeOrmRepo.findOne.mockResolvedValue(mockRegionEntity);
 
-      const result = await repository.findById(mockRegionEntity.id as string);
+      const result = await repository.findById(mockRegionEntity.id);
 
       expect(result).not.toBeNull();
       expect(result!.id).toBe(mockRegionEntity.id);

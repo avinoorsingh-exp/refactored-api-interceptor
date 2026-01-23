@@ -88,18 +88,10 @@ export class GlobalAdsAgentCreatedConsumer implements RegisterableKafkaService {
 			await this.consumer.subscribe({ topic: this.topic, fromBeginning: false });
 			this.logger.info('Subscribed to topic', { topic: this.topic });
 
-			// Start consuming - KafkaJS handles rebalancing automatically
-			// No need to wait for events or add delays - let KafkaJS manage the group
-			this.consumer.run({
-				eachMessage: async ({ topic, partition, message }) => {
-					await this.handleMessage(topic, partition, message);
-				},
-			}).catch((error) => {
-				this.logger.error('Kafka consumer run() promise rejected', {
-					error: error instanceof Error ? error.message : 'Unknown error',
-					stack: error instanceof Error ? error.stack : undefined,
-				});
-			});
+			// CRITICAL: Do NOT call consumer.run() here.
+			// The KafkaRuntimeManager will call consumer.run() with a message router
+			// that handles multiple topics sharing the same groupId.
+			// This ensures only ONE Consumer instance exists per groupId.
 
 			this.logger.info('Global ADS Agent Created consumer started successfully');
 			
@@ -128,6 +120,17 @@ export class GlobalAdsAgentCreatedConsumer implements RegisterableKafkaService {
 			}
 			this.consumer = null;
 		}
+	}
+
+	/**
+	 * Get message handler for this consumer.
+	 * Used by KafkaRuntimeManager to route messages when multiple services share a groupId.
+	 * Returns a function matching KafkaJS EachMessageHandler signature.
+	 */
+	getMessageHandler(): (payload: { topic: string; partition: number; message: KafkaMessage }) => Promise<void> {
+		return async (payload: { topic: string; partition: number; message: KafkaMessage }) => {
+			await this.handleMessage(payload.topic, payload.partition, payload.message);
+		};
 	}
 
 	private async handleMessage(

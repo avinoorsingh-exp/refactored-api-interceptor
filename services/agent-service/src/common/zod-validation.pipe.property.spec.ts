@@ -193,7 +193,7 @@ describe('ZodValidationPipe Property Tests', () => {
 						fail('Should have thrown BadRequestException')
 					} catch (error: any) {
 						expect(error).toBeInstanceOf(BadRequestException)
-						const response = error.getResponse() as any
+						const response = error.getResponse()
 						expect(response._zodIssues).toBeDefined()
 						expect(Array.isArray(response._zodIssues)).toBe(true)
 						expect(response._zodIssues.length).toBeGreaterThan(0)
@@ -219,7 +219,7 @@ describe('ZodValidationPipe Property Tests', () => {
 							fail('Should have thrown BadRequestException')
 						} catch (error: any) {
 							expect(error).toBeInstanceOf(BadRequestException)
-							const response = error.getResponse() as any
+							const response = error.getResponse()
 							expect(response._zodIssues).toBeDefined()
 							expect(response._zodIssues[0].message).toBe('errors.validation.type.expected_number')
 						}
@@ -258,7 +258,7 @@ describe('ZodValidationPipe Property Tests', () => {
 								fail('Should have thrown BadRequestException')
 							} catch (error: any) {
 								expect(error).toBeInstanceOf(BadRequestException)
-								const response = error.getResponse() as any
+								const response = error.getResponse()
 								expect(response._zodIssues).toBeDefined()
 								expect(response._zodIssues.length).toBeGreaterThan(0)
 								// At least one issue should be about a required field
@@ -290,7 +290,7 @@ describe('ZodValidationPipe Property Tests', () => {
 							fail('Should have thrown BadRequestException')
 						} catch (error: any) {
 							expect(error).toBeInstanceOf(BadRequestException)
-							const response = error.getResponse() as any
+							const response = error.getResponse()
 							expect(response._zodIssues).toBeDefined()
 							expect(response._zodIssues[0].message).toBe('errors.validation.string.min_length')
 						}
@@ -314,7 +314,7 @@ describe('ZodValidationPipe Property Tests', () => {
 						fail('Should have thrown BadRequestException')
 					} catch (error: any) {
 						expect(error).toBeInstanceOf(BadRequestException)
-						const response = error.getResponse() as any
+						const response = error.getResponse()
 						expect(response._zodIssues).toBeDefined()
 						expect(response._zodIssues[0].message).toBe('errors.validation.string.max_length')
 					}
@@ -337,7 +337,7 @@ describe('ZodValidationPipe Property Tests', () => {
 						fail('Should have thrown BadRequestException')
 					} catch (error: any) {
 						expect(error).toBeInstanceOf(BadRequestException)
-						const response = error.getResponse() as any
+						const response = error.getResponse()
 						expect(response._zodIssues).toBeDefined()
 						expect(response._zodIssues[0].message).toBe('errors.validation.number.too_small')
 					}
@@ -360,7 +360,7 @@ describe('ZodValidationPipe Property Tests', () => {
 						fail('Should have thrown BadRequestException')
 					} catch (error: any) {
 						expect(error).toBeInstanceOf(BadRequestException)
-						const response = error.getResponse() as any
+						const response = error.getResponse()
 						expect(response._zodIssues).toBeDefined()
 						expect(response._zodIssues[0].message).toBe('errors.validation.number.too_large')
 					}
@@ -385,7 +385,7 @@ describe('ZodValidationPipe Property Tests', () => {
 							fail('Should have thrown BadRequestException')
 						} catch (error: any) {
 							expect(error).toBeInstanceOf(BadRequestException)
-							const response = error.getResponse() as any
+							const response = error.getResponse()
 							expect(response._i18nType).toBe(i18nType)
 						}
 					},
@@ -416,7 +416,7 @@ describe('ZodValidationPipe Property Tests', () => {
 							fail('Should have thrown BadRequestException')
 						} catch (error: any) {
 							expect(error).toBeInstanceOf(BadRequestException)
-							const response = error.getResponse() as any
+							const response = error.getResponse()
 							expect(response._zodIssues).toBeDefined()
 
 							// All issues should have i18n error codes

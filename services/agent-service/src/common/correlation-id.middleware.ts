@@ -29,7 +29,7 @@ export class CorrelationIdMiddleware implements NestMiddleware {
 				method: req.method,
 				ip: req.ip,
 			},
-			() => next(),
+			() => { next(); },
 		)
 	}
 }
