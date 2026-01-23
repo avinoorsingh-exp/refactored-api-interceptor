@@ -17,10 +17,13 @@ import {
 	ApiResponse,
 	ApiParam,
 } from '@nestjs/swagger';
-import { KafkaServiceEntity } from '@exprealty/database';
+import { KafkaServiceEntity, KafkaServiceType } from '@exprealty/database';
 import { KafkaRuntimeManager, KafkaServiceRuntime, KafkaServiceStatus } from './kafka-runtime-manager.service.js';
 import { KafkaBootstrapService } from './kafka-bootstrap.service.js';
 import { LoggerService } from '../../core/logger.service.js';
+import { KafkaServiceResponseDto } from './dto/kafka-service-response.dto.js';
+import { KafkaServiceOperationResponseDto } from './dto/kafka-service-operation-response.dto.js';
+import { KafkaServiceIdParamDto } from './dto/kafka-service-id-param.dto.js';
 
 /**
  * Kafka Admin Controller
@@ -66,25 +69,9 @@ export class KafkaAdminController {
 	@ApiResponse({
 		status: HttpStatus.OK,
 		description: 'List of services with runtime state',
-		schema: {
-			type: 'array',
-			items: {
-				type: 'object',
-				properties: {
-					entityId: { type: 'string', description: 'Database entity ID (UUID) - use this for start/stop operations' },
-					serviceId: { type: 'string', description: 'Runtime service ID' },
-					type: { type: 'string', enum: ['consumer', 'producer'] },
-					topic: { type: 'string' },
-					groupId: { type: 'string', nullable: true },
-					status: { type: 'string', enum: ['running', 'stopped', 'error', 'not_registered'] },
-					startedAt: { type: 'string', format: 'date-time', nullable: true },
-					error: { type: 'string', nullable: true },
-					enabled: { type: 'boolean', description: 'Whether the service is enabled in database' },
-				},
-			},
-		},
+		type: [KafkaServiceResponseDto],
 	})
-	async getServices(@Req() req: Request): Promise<Array<KafkaServiceRuntime & { entityId: string; enabled: boolean }>> {
+	async getServices(@Req() req: Request): Promise<KafkaServiceResponseDto[]> {
 		const correlationId = this.getCorrelationId(req);
 		this.logger.info(`[${correlationId}] GET /v1/kafka/services - Listing all Kafka services`);
 
@@ -103,21 +90,21 @@ export class KafkaAdminController {
 		}
 
 		// Merge database services with runtime state
-		const servicesWithState = dbServices.map((entity) => {
+		const servicesWithState: KafkaServiceResponseDto[] = dbServices.map((entity) => {
 			const runtime = runtimeMap.get(entity.id);
 			const serviceId = runtime?.id || this.kafkaBootstrapService.getServiceIdByEntityId(entity.id) || entity.id;
 
 			return {
-				id: serviceId, // Required by KafkaServiceRuntime interface
+				id: serviceId,
 				entityId: entity.id,
 				serviceId,
-				type: entity.type,
+				type: entity.type, // entity.type is already KafkaServiceType
 				topic: entity.topic,
-				groupId: entity.groupId || undefined,
+				groupId: entity.groupId || null,
 				status: runtime?.status || KafkaServiceStatus.STOPPED,
-				startedAt: runtime?.startedAt,
-				error: runtime?.error,
 				enabled: entity.enabled,
+				startedAt: runtime?.startedAt || null,
+				error: runtime?.error || null,
 			};
 		});
 		
@@ -148,24 +135,7 @@ export class KafkaAdminController {
 	@ApiResponse({
 		status: HttpStatus.OK,
 		description: 'Service started successfully',
-		schema: {
-			type: 'object',
-			properties: {
-				message: { type: 'string' },
-				service: {
-					type: 'object',
-					properties: {
-						id: { type: 'string' },
-						entityId: { type: 'string' },
-						type: { type: 'string' },
-						topic: { type: 'string' },
-						status: { type: 'string' },
-						enabled: { type: 'boolean' },
-						startedAt: { type: 'string', format: 'date-time', nullable: true },
-					},
-				},
-			},
-		},
+		type: KafkaServiceOperationResponseDto,
 	})
 	@ApiResponse({
 		status: HttpStatus.NOT_FOUND,
@@ -174,7 +144,7 @@ export class KafkaAdminController {
 	async startService(
 		@Param('id') id: string,
 		@Req() req: Request,
-	): Promise<{ message: string; service: KafkaServiceRuntime & { entityId: string; enabled: boolean } }> {
+	): Promise<KafkaServiceOperationResponseDto> {
 		const correlationId = this.getCorrelationId(req);
 		this.logger.info(`[${correlationId}] POST /v1/kafka/services/${id}/start - Starting service`);
 
@@ -217,7 +187,18 @@ export class KafkaAdminController {
 
 			return {
 				message: 'Service started successfully',
-				service: { ...runtime, entityId: id, enabled: updatedEntity.enabled },
+				service: {
+					id: runtime.id,
+					entityId: id,
+					serviceId: runtime.id,
+					type: runtime.type as KafkaServiceType,
+					topic: runtime.topic,
+					groupId: runtime.groupId || null,
+					status: runtime.status,
+					enabled: updatedEntity.enabled,
+					startedAt: runtime.startedAt || null,
+					error: runtime.error || null,
+				},
 			};
 		} catch (error) {
 			this.logger.error(`[${correlationId}] Failed to start service ${id}`, {
@@ -248,23 +229,7 @@ export class KafkaAdminController {
 	@ApiResponse({
 		status: HttpStatus.OK,
 		description: 'Service stopped successfully',
-		schema: {
-			type: 'object',
-			properties: {
-				message: { type: 'string' },
-				service: {
-					type: 'object',
-					properties: {
-						id: { type: 'string' },
-						entityId: { type: 'string' },
-						type: { type: 'string' },
-						topic: { type: 'string' },
-						status: { type: 'string' },
-						enabled: { type: 'boolean' },
-					},
-				},
-			},
-		},
+		type: KafkaServiceOperationResponseDto,
 	})
 	@ApiResponse({
 		status: HttpStatus.NOT_FOUND,
@@ -273,7 +238,7 @@ export class KafkaAdminController {
 	async stopService(
 		@Param('id') id: string,
 		@Req() req: Request,
-	): Promise<{ message: string; service: KafkaServiceRuntime & { entityId: string; enabled: boolean } }> {
+	): Promise<KafkaServiceOperationResponseDto> {
 		const correlationId = this.getCorrelationId(req);
 		this.logger.info(`[${correlationId}] POST /v1/kafka/services/${id}/stop - Stopping service`);
 
@@ -316,7 +281,18 @@ export class KafkaAdminController {
 
 			return {
 				message: 'Service stopped successfully',
-				service: { ...runtime, entityId: id, enabled: updatedEntity.enabled },
+				service: {
+					id: runtime.id,
+					entityId: id,
+					serviceId: runtime.id,
+					type: runtime.type as KafkaServiceType,
+					topic: runtime.topic,
+					groupId: runtime.groupId || null,
+					status: runtime.status,
+					enabled: updatedEntity.enabled,
+					startedAt: runtime.startedAt || null,
+					error: runtime.error || null,
+				},
 			};
 		} catch (error) {
 			this.logger.error(`[${correlationId}] Failed to stop service ${id}`, {
@@ -348,24 +324,7 @@ export class KafkaAdminController {
 	@ApiResponse({
 		status: HttpStatus.OK,
 		description: 'Service enabled and started successfully',
-		schema: {
-			type: 'object',
-			properties: {
-				message: { type: 'string' },
-				service: {
-					type: 'object',
-					properties: {
-						id: { type: 'string' },
-						entityId: { type: 'string' },
-						type: { type: 'string' },
-						topic: { type: 'string' },
-						status: { type: 'string' },
-						enabled: { type: 'boolean' },
-						startedAt: { type: 'string', format: 'date-time', nullable: true },
-					},
-				},
-			},
-		},
+		type: KafkaServiceOperationResponseDto,
 	})
 	@ApiResponse({
 		status: HttpStatus.NOT_FOUND,
@@ -374,7 +333,7 @@ export class KafkaAdminController {
 	async enableService(
 		@Param('id') id: string,
 		@Req() req: Request,
-	): Promise<{ message: string; service: KafkaServiceRuntime & { entityId: string; enabled: boolean } }> {
+	): Promise<KafkaServiceOperationResponseDto> {
 		const correlationId = this.getCorrelationId(req);
 		this.logger.info(`[${correlationId}] POST /v1/kafka/services/${id}/enable - Enabling service`);
 
@@ -451,7 +410,18 @@ export class KafkaAdminController {
 
 			return {
 				message: 'Service enabled and started successfully',
-				service: { ...runtime, entityId: id, enabled: updatedEntity.enabled },
+				service: {
+					id: runtime.id,
+					entityId: id,
+					serviceId: runtime.id,
+					type: runtime.type as KafkaServiceType,
+					topic: runtime.topic,
+					groupId: runtime.groupId || null,
+					status: runtime.status,
+					enabled: updatedEntity.enabled,
+					startedAt: runtime.startedAt || null,
+					error: runtime.error || null,
+				},
 			};
 		} catch (error) {
 			this.logger.error(`[${correlationId}] Failed to enable service ${id}`, {
@@ -483,23 +453,7 @@ export class KafkaAdminController {
 	@ApiResponse({
 		status: HttpStatus.OK,
 		description: 'Service disabled and stopped successfully',
-		schema: {
-			type: 'object',
-			properties: {
-				message: { type: 'string' },
-				service: {
-					type: 'object',
-					properties: {
-						id: { type: 'string' },
-						entityId: { type: 'string' },
-						type: { type: 'string' },
-						topic: { type: 'string' },
-						status: { type: 'string' },
-						enabled: { type: 'boolean' },
-					},
-				},
-			},
-		},
+		type: KafkaServiceOperationResponseDto,
 	})
 	@ApiResponse({
 		status: HttpStatus.NOT_FOUND,
@@ -508,7 +462,7 @@ export class KafkaAdminController {
 	async disableService(
 		@Param('id') id: string,
 		@Req() req: Request,
-	): Promise<{ message: string; service: KafkaServiceRuntime & { entityId: string; enabled: boolean } }> {
+	): Promise<KafkaServiceOperationResponseDto> {
 		const correlationId = this.getCorrelationId(req);
 		this.logger.info(`[${correlationId}] POST /v1/kafka/services/${id}/disable - Disabling service`);
 
@@ -576,7 +530,7 @@ export class KafkaAdminController {
 			type: entity.type,
 			topic: entity.topic,
 			groupId: entity.groupId || undefined,
-			status: 'stopped' as any,
+			status: KafkaServiceStatus.STOPPED,
 		};
 
 		this.logger.info(`[${correlationId}] Service ${id} disabled successfully`, {
@@ -587,7 +541,18 @@ export class KafkaAdminController {
 
 		return {
 			message: 'Service disabled successfully',
-			service: { ...responseRuntime, entityId: id, enabled: updatedEntity.enabled },
+			service: {
+				id: responseRuntime.id,
+				entityId: id,
+				serviceId: responseRuntime.id,
+				type: responseRuntime.type as KafkaServiceType,
+				topic: responseRuntime.topic,
+				groupId: responseRuntime.groupId || null,
+				status: responseRuntime.status,
+				enabled: updatedEntity.enabled,
+				startedAt: responseRuntime.startedAt || null,
+				error: responseRuntime.error || null,
+			},
 		};
 	}
 

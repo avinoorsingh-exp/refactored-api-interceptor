@@ -4,6 +4,10 @@ import { Repository } from 'typeorm';
 import { KafkaServiceEntity, KafkaServiceType } from '@exprealty/database';
 import { KafkaRuntimeManager } from './kafka-runtime-manager.service.js';
 import { EnterpriseAgentUpdatedConsumer } from './consumers/enterprise-agent-updated.consumer.js';
+import { AuAgentDetailsAgentUpdatedConsumer } from './consumers/au-agent-details-agent-updated.consumer.js';
+import { UkAgentDetailsAgentUpdatedConsumer } from './consumers/uk-agent-details-agent-updated.consumer.js';
+import { GlobalAdsAgentCreatedConsumer } from './consumers/global-ads-agent-created.consumer.js';
+import { GlobalAdsAgentUpdatedConsumer } from './consumers/global-ads-agent-updated.consumer.js';
 import { KafkaProducerService } from './kafka-producer.service.js';
 import { ConfigService } from '../../core/config.service.js';
 import { LoggerService } from '../../core/logger.service.js';
@@ -24,6 +28,10 @@ export class KafkaBootstrapService implements OnApplicationBootstrap, OnApplicat
 		private readonly kafkaServiceRepo: Repository<KafkaServiceEntity>,
 		private readonly kafkaRuntimeManager: KafkaRuntimeManager,
 		private readonly enterpriseAgentUpdatedConsumer: EnterpriseAgentUpdatedConsumer,
+		private readonly auAgentDetailsAgentUpdatedConsumer: AuAgentDetailsAgentUpdatedConsumer,
+		private readonly ukAgentDetailsAgentUpdatedConsumer: UkAgentDetailsAgentUpdatedConsumer,
+		private readonly globalAdsAgentCreatedConsumer: GlobalAdsAgentCreatedConsumer,
+		private readonly globalAdsAgentUpdatedConsumer: GlobalAdsAgentUpdatedConsumer,
 		private readonly kafkaProducerService: KafkaProducerService,
 		private readonly configService: ConfigService,
 		loggerService: LoggerService,
@@ -146,9 +154,16 @@ export class KafkaBootstrapService implements OnApplicationBootstrap, OnApplicat
 
 			if (entity.type === KafkaServiceType.CONSUMER) {
 				// Map consumer entities to consumer service instances
-				// For now, we only have one consumer type
 				if (entity.topic === 'Enterprise_AgentUpdated_V2') {
 					service = this.enterpriseAgentUpdatedConsumer;
+				} else if (entity.topic === 'AU_AgentDetails_AgentUpdated_V2') {
+					service = this.auAgentDetailsAgentUpdatedConsumer;
+				} else if (entity.topic === 'UK_AgentDetails_AgentUpdated_V2') {
+					service = this.ukAgentDetailsAgentUpdatedConsumer;
+				} else if (entity.topic === 'Global_ADS_AgentCreated_V2') {
+					service = this.globalAdsAgentCreatedConsumer;
+				} else if (entity.topic === 'Global_ADS_AgentUpdated_V2') {
+					service = this.globalAdsAgentUpdatedConsumer;
 				} else {
 					this.logger.warn(`Unknown consumer topic: ${entity.topic}`, {
 						id: entity.id,
@@ -218,19 +233,34 @@ export class KafkaBootstrapService implements OnApplicationBootstrap, OnApplicat
 			return this.serviceMap.get(entity.id);
 		}
 
-		// Build service instance for this entity (don't clear existing map)
-		const entities = [entity];
-		this.buildServiceMap(entities, false);
-
-		// Return the newly registered service entry
-		const entry = this.serviceMap.get(entity.id);
-		if (entry) {
-			// Register with runtime manager
-			this.kafkaRuntimeManager.register(entry.service);
-			return entry;
+		let serviceInstance: any;
+		if (entity.type === KafkaServiceType.CONSUMER) {
+			if (entity.topic === 'Enterprise_AgentUpdated_V2') {
+				serviceInstance = this.enterpriseAgentUpdatedConsumer;
+			} else if (entity.topic === 'AU_AgentDetails_AgentUpdated_V2') {
+				serviceInstance = this.auAgentDetailsAgentUpdatedConsumer;
+			} else if (entity.topic === 'UK_AgentDetails_AgentUpdated_V2') {
+				serviceInstance = this.ukAgentDetailsAgentUpdatedConsumer;
+			} else if (entity.topic === 'Global_ADS_AgentCreated_V2') {
+				serviceInstance = this.globalAdsAgentCreatedConsumer;
+			} else if (entity.topic === 'Global_ADS_AgentUpdated_V2') {
+				serviceInstance = this.globalAdsAgentUpdatedConsumer;
+			} else {
+				this.logger.warn(`Unknown consumer topic for dynamic registration: ${entity.topic}`, { entityId: entity.id });
+				return undefined;
+			}
+		} else if (entity.type === KafkaServiceType.PRODUCER) {
+			serviceInstance = this.kafkaProducerService;
+		} else {
+			this.logger.warn(`Unknown service type for dynamic registration: ${entity.type}`, { entityId: entity.id });
+			return undefined;
 		}
 
-		return undefined;
+		const entry = { service: serviceInstance, entity };
+		this.serviceMap.set(entity.id, entry);
+		this.kafkaRuntimeManager.register(serviceInstance);
+		this.logger.info(`Dynamically registered Kafka service entity`, { entityId: entity.id, serviceId: serviceInstance.getId() });
+		return entry;
 	}
 }
 

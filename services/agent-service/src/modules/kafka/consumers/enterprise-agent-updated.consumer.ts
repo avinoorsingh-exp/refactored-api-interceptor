@@ -428,6 +428,7 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 		agent: {
 			id?: string;
 			agentId?: string;
+			systemId?: number;
 			firstName: string;
 			middleName?: string;
 			lastName: string;
@@ -488,6 +489,7 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 		const agent = {
 			id: payload.uuid || undefined,
 			agentId: payload.source_system_member_key?.toString() || undefined,
+			systemId: payload.systemkey || undefined,
 			firstName: payload.member_first_name || '',
 			middleName: payload.member_middle_name || undefined,
 			lastName: payload.member_last_name || '',
