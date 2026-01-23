@@ -31,7 +31,12 @@ export const ConfigSchema = BaseConfig.extend({
 	KAFKA_SASL_MECHANISM: z.enum(['plain', 'scram-sha-256', 'scram-sha-512']).optional(),
 	KAFKA_SASL_USERNAME: z.string().optional(),
 	KAFKA_SASL_PASSWORD: z.string().optional(),
-	KAFKA_SSL: z.coerce.boolean().default(false),
+	KAFKA_SSL: z.preprocess((val) => {
+		if (typeof val === 'string') {
+			return val.toLowerCase() === 'true' || val === '1';
+		}
+		return val;
+	}, z.boolean().default(false)),
 
 	// ==================== Metrics Config ====================
 	METRICS_EXPORTER_ENDPOINT: z.string().optional(),
