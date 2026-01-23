@@ -73,7 +73,28 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 	async start(): Promise<Consumer> {
 		try {
 			const kafka = this.kafkaClientService.getClient();
-			this.consumer = kafka.consumer({ groupId: this.groupId });
+			// Add sessionTimeout and heartbeatInterval to help with rebalancing
+			this.consumer = kafka.consumer({ 
+				groupId: this.groupId,
+				sessionTimeout: 30000, // 30 seconds
+				heartbeatInterval: 3000, // 3 seconds
+			});
+
+			// Set up rebalancing event handlers BEFORE connecting
+			this.consumer.on(this.consumer.events.GROUP_JOIN, (event) => {
+				this.logger.info('Consumer joining group', {
+					topic: this.topic,
+					memberId: event.payload.memberId,
+					groupGenerationId: event.payload.groupGenerationId,
+				});
+			});
+
+			this.consumer.on(this.consumer.events.CRASH, (event) => {
+				this.logger.error('Consumer crashed', {
+					topic: this.topic,
+					error: event.payload.error.message,
+				});
+			});
 
 			await this.consumer.connect();
 			this.logger.info('Kafka consumer connected', {
@@ -100,6 +121,9 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 				// Don't rethrow - the consumer is already stopped/crashed
 				// This prevents unhandled promise rejections that could cause module destruction
 			});
+
+			// Wait a moment for consumer group to stabilize after rebalancing
+			await new Promise(resolve => setTimeout(resolve, 1000));
 
 			this.logger.info('Enterprise Agent Updated consumer started successfully');
 			
