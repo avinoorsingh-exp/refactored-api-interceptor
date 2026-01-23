@@ -3,6 +3,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { KafkaClientService } from './kafka-client.service.js';
 import { KafkaProducerService } from './kafka-producer.service.js';
 import { EnterpriseAgentUpdatedConsumer } from './consumers/enterprise-agent-updated.consumer.js';
+import { AuAgentDetailsAgentUpdatedConsumer } from './consumers/au-agent-details-agent-updated.consumer.js';
+import { UkAgentDetailsAgentUpdatedConsumer } from './consumers/uk-agent-details-agent-updated.consumer.js';
+import { GlobalAdsAgentCreatedConsumer } from './consumers/global-ads-agent-created.consumer.js';
+import { GlobalAdsAgentUpdatedConsumer } from './consumers/global-ads-agent-updated.consumer.js';
 import { SponsorChangedService } from './sponsor-changed.service.js';
 import { SponsorChangedController } from './sponsor-changed.controller.js';
 import { KafkaMessageProcessingService } from './kafka-message-processing.service.js';
@@ -44,6 +48,10 @@ import { PaginationModule } from '../../common/pagination/pagination.module.js';
 		KafkaBootstrapService,
 		KafkaProducerService,
 		EnterpriseAgentUpdatedConsumer,
+		AuAgentDetailsAgentUpdatedConsumer,
+		UkAgentDetailsAgentUpdatedConsumer,
+		GlobalAdsAgentCreatedConsumer,
+		GlobalAdsAgentUpdatedConsumer,
 		SponsorChangedService,
 		KafkaMessageProcessingService,
 		KafkaMessageCleanupService,
