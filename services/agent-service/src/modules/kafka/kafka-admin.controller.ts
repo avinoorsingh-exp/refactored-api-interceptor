@@ -346,18 +346,8 @@ export class KafkaAdminController {
 			});
 		}
 
-		// Update database: set enabled = true
-		if (!entity.enabled) {
-			entity.enabled = true;
-			await this.kafkaServiceRepo.save(entity);
-			this.logger.info(`[${correlationId}] Service ${id} enabled in database`, {
-				entityId: id,
-				topic: entity.topic,
-				type: entity.type,
-			});
-		}
-
-		// Get service instance (may need to register if not already in service map)
+		// Get service instance first (before updating database)
+		// This allows us to validate the service exists before persisting enabled = true
 		let serviceEntry = this.kafkaBootstrapService.getServiceByEntityId(id);
 		if (!serviceEntry) {
 			// Service not in service map - register it now
@@ -375,6 +365,18 @@ export class KafkaAdminController {
 		}
 
 		const serviceId = serviceEntry.service.getId();
+
+		// Update database: set enabled = true
+		// Do this before starting so the service will start on next app restart even if current start fails
+		if (!entity.enabled) {
+			entity.enabled = true;
+			await this.kafkaServiceRepo.save(entity);
+			this.logger.info(`[${correlationId}] Service ${id} enabled in database`, {
+				entityId: id,
+				topic: entity.topic,
+				type: entity.type,
+			});
+		}
 
 		try {
 			// Register service if not already registered
@@ -424,11 +426,41 @@ export class KafkaAdminController {
 				},
 			};
 		} catch (error) {
-			this.logger.error(`[${correlationId}] Failed to enable service ${id}`, {
+			// Service is enabled in DB (will start on next restart), but failed to start now
+			// Get runtime to return current status (may be ERROR)
+			const runtime = this.kafkaRuntimeManager.getRuntime(serviceId);
+			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+			
+			this.logger.error(`[${correlationId}] Failed to start service ${id} after enabling`, {
 				id,
-				error: error instanceof Error ? error.message : 'Unknown error',
+				serviceId,
+				error: errorMessage,
 				stack: error instanceof Error ? error.stack : undefined,
+				note: 'Service is enabled in database and will start automatically on next application restart',
 			});
+
+			// Return the service state even though start failed
+			// This allows UI to show enabled=true but status=error
+			if (runtime) {
+				const updatedEntity = await this.kafkaServiceRepo.findOne({ where: { id } });
+				return {
+					message: `Service enabled in database but failed to start: ${errorMessage}. Service will start automatically on next application restart.`,
+					service: {
+						id: runtime.id,
+						entityId: id,
+						serviceId: runtime.id,
+						type: runtime.type as KafkaServiceType,
+						topic: runtime.topic,
+						groupId: runtime.groupId || null,
+						status: runtime.status, // Will be ERROR
+						enabled: updatedEntity?.enabled ?? true,
+						startedAt: runtime.startedAt || null,
+						error: runtime.error || errorMessage,
+					},
+				};
+			}
+
+			// If no runtime exists, throw the error (service wasn't even registered)
 			throw error;
 		}
 	}
