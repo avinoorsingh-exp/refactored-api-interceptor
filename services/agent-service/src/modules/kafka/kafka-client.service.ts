@@ -54,6 +54,8 @@ export class KafkaClientService implements OnModuleDestroy {
 			brokers: kafkaConfig.brokers,
 			ssl: kafkaConfig.ssl ?? false,
 			saslEnabled: !!kafkaConfig.sasl,
+			KAFKA_SSL_raw: config.KAFKA_SSL,
+			KAFKA_SSL_type: typeof config.KAFKA_SSL,
 		});
 
 		this.kafka = new Kafka(kafkaConfig);
