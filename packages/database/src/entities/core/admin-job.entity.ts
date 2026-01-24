@@ -45,6 +45,14 @@ export class AdminJobEntity {
 	enabled!: boolean;
 
 	/**
+	 * If true, job will run once automatically on app startup (if not already run).
+	 * Only applies to manual jobs (cron = null).
+	 * @public
+	 */
+	@Column({ name: 'run_on_startup', type: 'boolean', default: false })
+	runOnStartup!: boolean;
+
+	/**
 	 * Timestamp of last execution.
 	 * @public
 	 */

@@ -29,6 +29,12 @@ export class AdminJobResponseDto {
 	})
 	enabled!: boolean;
 
+	@ApiProperty({
+		description: 'If true, job will run once automatically on app startup (if not already run).',
+		example: false,
+	})
+	runOnStartup!: boolean;
+
 	@ApiPropertyOptional({
 		description: 'Timestamp of last execution',
 		example: '2024-01-15T02:00:00.000Z',
