@@ -333,6 +333,20 @@ export { KafkaMessageProcessingEntity, KafkaMessageStatus } from './entities/cor
  */
 export { KafkaServiceEntity, KafkaServiceType } from './entities/core/kafka-service.entity.js'
 
+/**
+ * TypeORM entity for AdminJob table.
+ * Stores scheduled job metadata and configuration.
+ * @public
+ */
+export { AdminJobEntity } from './entities/core/admin-job.entity.js'
+
+/**
+ * TypeORM entity for AdminJobExecution table.
+ * Stores execution history for scheduled jobs.
+ * @public
+ */
+export { AdminJobExecutionEntity, AdminJobExecutionStatus } from './entities/core/admin-job-execution.entity.js'
+
 // ============================================================================
 // Query Decorators
 // ============================================================================

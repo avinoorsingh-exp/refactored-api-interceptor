@@ -19,7 +19,12 @@ export const ConfigSchema = BaseConfig.extend({
 	DB_USERNAME: z.string(),
 	DB_PASSWORD: z.string(),
 	DB_NAME: z.string(),
-	DB_SSL: z.coerce.boolean().default(false),
+	DB_SSL: z.preprocess((val) => {
+		if (typeof val === 'string') {
+			return val.toLowerCase() === 'true' || val === '1';
+		}
+		return val;
+	}, z.boolean().default(false)),
 
 	// ===== Internal Service-to-Service Auth =====
 	S2S_INTERNAL_KEY: z.string().optional(),
