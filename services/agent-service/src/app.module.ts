@@ -16,6 +16,7 @@ import { OfficesModule } from './modules/offices/offices.module.js'
 import { MLSModule } from './modules/mls/mls.module.js'
 import { AgentModule } from './modules/agents/agent.module.js'
 import { KafkaModule } from './modules/kafka/kafka.module.js'
+import { AdminJobsModule } from './modules/admin/jobs/admin-jobs.module.js'
 import { CorrelationIdMiddleware } from './common/correlation-id.middleware.js'
 
 @Module({
@@ -35,6 +36,7 @@ import { CorrelationIdMiddleware } from './common/correlation-id.middleware.js'
     MLSModule,
     AgentModule,
     KafkaModule,
+    AdminJobsModule,
 	],
 	controllers: [AgentController, RootHealthController],
 	providers: [],

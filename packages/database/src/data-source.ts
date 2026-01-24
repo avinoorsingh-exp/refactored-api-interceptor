@@ -53,6 +53,8 @@ import { FeesEntity } from './entities/core/fees.entity.js'
 import { ApprovalEntity } from './entities/core/approval.entity.js'
 import { KafkaMessageProcessingEntity } from './entities/core/kafka-message-processing.entity.js'
 import { KafkaServiceEntity } from './entities/core/kafka-service.entity.js'
+import { AdminJobEntity } from './entities/core/admin-job.entity.js'
+import { AdminJobExecutionEntity } from './entities/core/admin-job-execution.entity.js'
 
 /**
  * Get SSL configuration for RDS connections
@@ -197,6 +199,8 @@ export const AppDataSource = new DataSource({
 		ApprovalEntity,
 		KafkaMessageProcessingEntity,
 		KafkaServiceEntity,
+		AdminJobEntity,
+		AdminJobExecutionEntity,
 	],
 
 	// Migrations

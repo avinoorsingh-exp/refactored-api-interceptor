@@ -65,6 +65,7 @@ import { PaginationModule } from '../../common/pagination/pagination.module.js';
 		KafkaClientService,
 		KafkaProducerService,
 		KafkaRuntimeManager,
+		KafkaMessageCleanupService,
 	],
 })
 export class KafkaModule {

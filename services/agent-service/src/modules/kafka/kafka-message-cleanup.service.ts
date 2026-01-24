@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import { DataSource } from 'typeorm';
 import { LoggerService } from '../../core/logger.service.js';
 import { ConfigService } from '../../core/config.service.js';
@@ -27,17 +26,36 @@ export class KafkaMessageCleanupService {
 	}
 
 	/**
-	 * Scheduled task that runs daily at 2:00 AM UTC to clean up old Kafka message processing records.
+	 * Clean up old Kafka message processing records.
 	 * 
 	 * Deletes records where created_at is older than the retention period (default 14 days).
 	 * This prevents the database from storing too many Kafka message processing records.
+	 * 
+	 * Note: Scheduling is now handled by AdminJobService via KafkaMessageCleanupJobHandler.
+	 * 
+	 * @param logCapture Optional log capture service for recording execution details
+	 * @returns Execution details including deleted count and cutoff date
 	 */
-	@Cron(CronExpression.EVERY_DAY_AT_2AM)
-	async cleanupOldMessages(): Promise<void> {
-		this.logger.info('Starting Kafka message processing cleanup', {
+	async cleanupOldMessages(logCapture?: {
+		log(level: 'info' | 'warn' | 'error' | 'debug', message: string, data?: Record<string, unknown>): void;
+		logQuery(sql: string, parameters?: unknown[], duration?: number): void;
+		logResult(data: Record<string, unknown>): void;
+	}): Promise<{
+		deletedCount: number;
+		retentionDays: number;
+		cutoffDate: string;
+		executionTime: string;
+	}> {
+		const startTime = Date.now();
+		const logData = {
 			event: 'kafka_message_cleanup_started',
 			retentionDays: this.retentionDays,
-		});
+		};
+		
+		this.logger.info('Starting Kafka message processing cleanup', logData);
+		if (logCapture) {
+			logCapture.log('info', 'Starting Kafka message processing cleanup', logData);
+		}
 
 		const queryRunner = this.dataSource.createQueryRunner();
 		await queryRunner.connect();
@@ -47,35 +65,75 @@ export class KafkaMessageCleanupService {
 			const cutoffDate = new Date();
 			cutoffDate.setDate(cutoffDate.getDate() - this.retentionDays);
 
+			if (logCapture) {
+				logCapture.log('info', 'Calculated cutoff date', {
+					cutoffDate: cutoffDate.toISOString(),
+					retentionDays: this.retentionDays,
+				});
+			}
+
 			// Delete records older than retention period
-			const deleteResult = await queryRunner.query(
-				`
+			const queryStart = Date.now();
+			const deleteSql = `
 				DELETE FROM core.kafka_message_processing
 				WHERE created_at < $1
 				RETURNING id
-				`,
-				[cutoffDate],
-			);
+			`;
+			const deleteResult = await queryRunner.query(deleteSql, [cutoffDate]);
+			const queryDuration = Date.now() - queryStart;
+
+			if (logCapture) {
+				logCapture.logQuery(deleteSql, [cutoffDate], queryDuration);
+			}
 
 			const deletedCount = deleteResult?.length || 0;
+			const executionTime = `${Date.now() - startTime}ms`;
 
 			await queryRunner.commitTransaction();
 
-			this.logger.info('Kafka message processing cleanup completed', {
+			const completionData = {
 				event: 'kafka_message_cleanup_completed',
 				retentionDays: this.retentionDays,
 				cutoffDate: cutoffDate.toISOString(),
 				deletedCount,
-			});
+				executionTime,
+			};
+
+			this.logger.info('Kafka message processing cleanup completed', completionData);
+			
+			if (logCapture) {
+				logCapture.log('info', 'Kafka message processing cleanup completed', completionData);
+				logCapture.logResult({
+					deletedCount,
+					retentionDays: this.retentionDays,
+					cutoffDate: cutoffDate.toISOString(),
+					executionTime,
+				});
+			}
+
+			return {
+				deletedCount,
+				retentionDays: this.retentionDays,
+				cutoffDate: cutoffDate.toISOString(),
+				executionTime,
+			};
 		} catch (error) {
 			await queryRunner.rollbackTransaction();
-			this.logger.error('Kafka message processing cleanup failed', {
+			const errorData = {
 				event: 'kafka_message_cleanup_failed',
 				retentionDays: this.retentionDays,
 				error: error instanceof Error ? error.message : 'Unknown error',
 				stack: error instanceof Error ? error.stack : undefined,
-			});
-			// Don't throw - allow the scheduled task to continue running
+			};
+			
+			this.logger.error('Kafka message processing cleanup failed', errorData);
+			
+			if (logCapture) {
+				logCapture.log('error', 'Kafka message processing cleanup failed', errorData);
+			}
+			
+			// Re-throw to allow AdminJobService to handle error tracking
+			throw error;
 		} finally {
 			await queryRunner.release();
 		}
