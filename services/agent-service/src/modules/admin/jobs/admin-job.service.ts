@@ -127,16 +127,38 @@ export class AdminJobService implements OnApplicationBootstrap {
 
 	/**
 	 * Add a cron job to the scheduler registry.
+	 * Checks if a cron job with the same name already exists to avoid duplicate registration errors.
 	 * @private
 	 */
 	private addCronJob(name: string, cronExpression: string, callback: () => Promise<void>): void {
+		try {
+			// Check if cron job already exists
+			const existingJob = this.schedulerRegistry.getCronJob(name);
+			if (existingJob) {
+				this.logger.warn(`Cron job '${name}' already exists, skipping registration`, { cronExpression });
+				return;
+			}
+		} catch (error) {
+			// Job doesn't exist, which is fine - we'll create it
+		}
+
 		const job = new CronJob(cronExpression, async () => {
 			this.logger.debug(`Scheduled job '${name}' triggered`);
 			await callback();
 		});
-		this.schedulerRegistry.addCronJob(name, job);
-		job.start();
-		this.logger.info(`Cron job '${name}' scheduled`, { cronExpression });
+		
+		try {
+			this.schedulerRegistry.addCronJob(name, job);
+			job.start();
+			this.logger.info(`Cron job '${name}' scheduled`, { cronExpression });
+		} catch (error) {
+			// Handle case where cron job already exists (e.g., from previous deployment or hot reload)
+			if (error instanceof Error && error.message.includes('already exists')) {
+				this.logger.warn(`Cron job '${name}' already exists in registry, skipping registration`, { cronExpression });
+			} else {
+				throw error; // Re-throw unexpected errors
+			}
+		}
 	}
 
 	/**
