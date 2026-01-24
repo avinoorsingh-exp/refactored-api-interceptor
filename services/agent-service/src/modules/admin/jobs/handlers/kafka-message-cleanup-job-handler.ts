@@ -1,5 +1,5 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { CronExpression } from '@nestjs/schedule';
 import { AdminJobHandler, JobExecutionResult, JobLogCapture } from '../admin-job-handler.interface.js';
 import { AdminJobService } from '../admin-job.service.js';
 import { KafkaMessageCleanupService } from '../../../kafka/kafka-message-cleanup.service.js';
@@ -42,28 +42,10 @@ export class KafkaMessageCleanupJobHandler implements AdminJobHandler, OnModuleI
 
 	/**
 	 * Execute the cleanup job.
-	 * This method is called by the @Cron decorator.
-	 * It checks if the job is enabled, then delegates to AdminJobService for execution tracking.
+	 * This method is called by AdminJobService when the cron schedule triggers or when manually triggered.
+	 * The actual cleanup work is delegated to KafkaMessageCleanupService.
 	 */
-	@Cron(CronExpression.EVERY_DAY_AT_2AM, {
-		name: 'kafka-message-cleanup',
-	})
-	async run(): Promise<void> {
-		const job = await this.adminJobService.getJob(this.name);
-		if (!job || !job.enabled) {
-			this.logger.debug('Job is disabled, skipping execution', { name: this.name });
-			return;
-		}
-
-		await this.adminJobService.executeJob(this.name);
-	}
-
-	/**
-	 * Internal method that performs the actual cleanup work.
-	 * Called by AdminJobService.executeJob after execution tracking is set up.
-	 * Returns execution details for logging.
-	 */
-	async execute(): Promise<JobExecutionResult> {
+	async run(): Promise<JobExecutionResult> {
 		// Pass log capture to cleanup service to capture queries and logs
 		const result = await this.kafkaMessageCleanupService.cleanupOldMessages(this.logCapture);
 		
