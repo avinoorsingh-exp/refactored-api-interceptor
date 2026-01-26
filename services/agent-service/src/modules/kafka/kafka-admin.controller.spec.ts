@@ -136,6 +136,173 @@ describe('KafkaAdminController', () => {
 
 			expect(result[0].enabled).toBe(false);
 		});
+
+		it('should sort services with global producer first', async () => {
+			const globalProducer = createMockEntity({
+				id: 'producer-entity',
+				type: KafkaServiceType.PRODUCER,
+				topic: 'global',
+				groupId: null,
+			});
+			const consumer1 = createMockEntity({
+				id: 'consumer-1',
+				type: KafkaServiceType.CONSUMER,
+				topic: 'Topic_B',
+			});
+			const consumer2 = createMockEntity({
+				id: 'consumer-2',
+				type: KafkaServiceType.CONSUMER,
+				topic: 'Topic_A',
+			});
+
+			mockKafkaServiceRepo.find.mockResolvedValue([consumer1, globalProducer, consumer2]);
+			mockKafkaRuntimeManager.getAllRuntimes.mockReturnValue([]);
+			mockKafkaBootstrapService.getServiceIdByEntityId.mockReturnValue(undefined);
+
+			const req = { headers: {} } as any;
+			const result = await controller.getServices(req);
+
+			expect(result).toHaveLength(3);
+			expect(result[0].type).toBe(KafkaServiceType.PRODUCER);
+			expect(result[0].topic).toBe('global');
+			expect(result[0].entityId).toBe('producer-entity');
+		});
+
+		it('should sort non-producer services alphabetically by topic after global producer', async () => {
+			const globalProducer = createMockEntity({
+				id: 'producer-entity',
+				type: KafkaServiceType.PRODUCER,
+				topic: 'global',
+				groupId: null,
+			});
+			const consumer1 = createMockEntity({
+				id: 'consumer-1',
+				type: KafkaServiceType.CONSUMER,
+				topic: 'Zebra_Topic',
+			});
+			const consumer2 = createMockEntity({
+				id: 'consumer-2',
+				type: KafkaServiceType.CONSUMER,
+				topic: 'Alpha_Topic',
+			});
+			const consumer3 = createMockEntity({
+				id: 'consumer-3',
+				type: KafkaServiceType.CONSUMER,
+				topic: 'Beta_Topic',
+			});
+
+			mockKafkaServiceRepo.find.mockResolvedValue([consumer1, globalProducer, consumer3, consumer2]);
+			mockKafkaRuntimeManager.getAllRuntimes.mockReturnValue([]);
+			mockKafkaBootstrapService.getServiceIdByEntityId.mockReturnValue(undefined);
+
+			const req = { headers: {} } as any;
+			const result = await controller.getServices(req);
+
+			expect(result).toHaveLength(4);
+			expect(result[0].topic).toBe('global');
+			expect(result[1].topic).toBe('Alpha_Topic');
+			expect(result[2].topic).toBe('Beta_Topic');
+			expect(result[3].topic).toBe('Zebra_Topic');
+		});
+
+		it('should maintain stable order when no global producer exists', async () => {
+			const consumer1 = createMockEntity({
+				id: 'consumer-1',
+				type: KafkaServiceType.CONSUMER,
+				topic: 'Zebra_Topic',
+			});
+			const consumer2 = createMockEntity({
+				id: 'consumer-2',
+				type: KafkaServiceType.CONSUMER,
+				topic: 'Alpha_Topic',
+			});
+			const consumer3 = createMockEntity({
+				id: 'consumer-3',
+				type: KafkaServiceType.CONSUMER,
+				topic: 'Beta_Topic',
+			});
+
+			mockKafkaServiceRepo.find.mockResolvedValue([consumer1, consumer3, consumer2]);
+			mockKafkaRuntimeManager.getAllRuntimes.mockReturnValue([]);
+			mockKafkaBootstrapService.getServiceIdByEntityId.mockReturnValue(undefined);
+
+			const req = { headers: {} } as any;
+			const result = await controller.getServices(req);
+
+			expect(result).toHaveLength(3);
+			expect(result[0].topic).toBe('Alpha_Topic');
+			expect(result[1].topic).toBe('Beta_Topic');
+			expect(result[2].topic).toBe('Zebra_Topic');
+		});
+
+		it('should handle empty services array', async () => {
+			mockKafkaServiceRepo.find.mockResolvedValue([]);
+			mockKafkaRuntimeManager.getAllRuntimes.mockReturnValue([]);
+
+			const req = { headers: {} } as any;
+			const result = await controller.getServices(req);
+
+			expect(result).toHaveLength(0);
+		});
+
+		it('should not treat non-global producers as global producer', async () => {
+			const topicProducer = createMockEntity({
+				id: 'topic-producer',
+				type: KafkaServiceType.PRODUCER,
+				topic: 'specific-topic',
+				groupId: null,
+			});
+			const consumer = createMockEntity({
+				id: 'consumer-1',
+				type: KafkaServiceType.CONSUMER,
+				topic: 'Alpha_Topic',
+			});
+
+			mockKafkaServiceRepo.find.mockResolvedValue([consumer, topicProducer]);
+			mockKafkaRuntimeManager.getAllRuntimes.mockReturnValue([]);
+			mockKafkaBootstrapService.getServiceIdByEntityId.mockReturnValue(undefined);
+
+			const req = { headers: {} } as any;
+			const result = await controller.getServices(req);
+
+			expect(result).toHaveLength(2);
+			// Both should be sorted alphabetically by topic (no global producer)
+			expect(result[0].topic).toBe('Alpha_Topic');
+			expect(result[1].topic).toBe('specific-topic');
+		});
+
+		it('should maintain consistent order across multiple calls', async () => {
+			const globalProducer = createMockEntity({
+				id: 'producer-entity',
+				type: KafkaServiceType.PRODUCER,
+				topic: 'global',
+				groupId: null,
+			});
+			const consumer1 = createMockEntity({
+				id: 'consumer-1',
+				type: KafkaServiceType.CONSUMER,
+				topic: 'Topic_B',
+			});
+			const consumer2 = createMockEntity({
+				id: 'consumer-2',
+				type: KafkaServiceType.CONSUMER,
+				topic: 'Topic_A',
+			});
+
+			mockKafkaServiceRepo.find.mockResolvedValue([consumer1, globalProducer, consumer2]);
+			mockKafkaRuntimeManager.getAllRuntimes.mockReturnValue([]);
+			mockKafkaBootstrapService.getServiceIdByEntityId.mockReturnValue(undefined);
+
+			const req = { headers: {} } as any;
+			const result1 = await controller.getServices(req);
+			const result2 = await controller.getServices(req);
+
+			expect(result1).toHaveLength(3);
+			expect(result2).toHaveLength(3);
+			expect(result1[0].entityId).toBe(result2[0].entityId);
+			expect(result1[1].entityId).toBe(result2[1].entityId);
+			expect(result1[2].entityId).toBe(result2[2].entityId);
+		});
 	});
 
 	describe('startService', () => {
