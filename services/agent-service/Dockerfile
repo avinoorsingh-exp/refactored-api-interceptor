@@ -14,6 +14,7 @@ COPY packages/logger ./packages/logger
 COPY packages/cache ./packages/cache
 COPY packages/database ./packages/database
 COPY packages/shared-domain ./packages/shared-domain
+COPY packages/api-monitoring ./packages/api-monitoring
 COPY services/agent-service ./services/agent-service
 
 # Install dependencies (allow build scripts to run, but skip husky)
@@ -34,6 +35,9 @@ WORKDIR /app/packages/shared-domain
 RUN pnpm build
 
 WORKDIR /app/packages/database
+RUN pnpm build
+
+WORKDIR /app/packages/api-monitoring
 RUN pnpm build
 
 # Build agent-service
@@ -63,6 +67,7 @@ COPY packages/logger/package.json ./packages/logger/
 COPY packages/cache/package.json ./packages/cache/
 COPY packages/database/package.json ./packages/database/
 COPY packages/shared-domain/package.json ./packages/shared-domain/
+COPY packages/api-monitoring/package.json ./packages/api-monitoring/
 COPY services/agent-service/package.json ./services/agent-service/
 
 # Install only production dependencies
@@ -75,6 +80,7 @@ COPY --from=builder /app/packages/logger/dist ./packages/logger/dist
 COPY --from=builder /app/packages/cache/dist ./packages/cache/dist
 COPY --from=builder /app/packages/database/dist ./packages/database/dist
 COPY --from=builder /app/packages/shared-domain/dist ./packages/shared-domain/dist
+COPY --from=builder /app/packages/api-monitoring/dist ./packages/api-monitoring/dist
 COPY --from=builder /app/services/agent-service/dist ./services/agent-service/dist
 
 WORKDIR /app/services/agent-service

@@ -5,6 +5,7 @@ import { AdminJobEntity, AdminJobExecutionEntity } from '@exprealty/database';
 import { AdminJobService } from './admin-job.service.js';
 import { AdminJobsController } from './admin-jobs.controller.js';
 import { KafkaMessageCleanupJobHandler } from './handlers/kafka-message-cleanup-job-handler.js';
+import { ApiRouteStatsAggregationJobHandler } from './handlers/api-route-stats-aggregation-job-handler.js';
 import { JobLogCaptureService } from './job-log-capture.service.js';
 import { KafkaModule } from '../../kafka/kafka.module.js';
 
@@ -18,11 +19,14 @@ import { KafkaModule } from '../../kafka/kafka.module.js';
 		TypeOrmModule.forFeature([AdminJobEntity, AdminJobExecutionEntity]),
 		ScheduleModule,
 		KafkaModule,
+		// ApiMonitoringModule is @Global() and already imported in AppModule,
+		// so ApiMetricsService is available without explicit import
 	],
 	providers: [
 		AdminJobService,
 		JobLogCaptureService,
 		KafkaMessageCleanupJobHandler,
+		ApiRouteStatsAggregationJobHandler,
 	],
 	controllers: [AdminJobsController],
 	exports: [AdminJobService],
