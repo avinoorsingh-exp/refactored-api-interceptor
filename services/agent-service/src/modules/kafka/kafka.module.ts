@@ -15,6 +15,8 @@ import { KafkaMessageCleanupService } from './kafka-message-cleanup.service.js';
 import { KafkaRuntimeManager } from './kafka-runtime-manager.service.js';
 import { KafkaBootstrapService } from './kafka-bootstrap.service.js';
 import { KafkaAdminController } from './kafka-admin.controller.js';
+import { KafkaBulkOperationsController } from './kafka-bulk-operations.controller.js';
+import { KafkaBulkOperationsService } from './services/kafka-bulk-operations.service.js';
 import { AgentModule } from '../agents/agent.module.js';
 import { KafkaMessageProcessingEntity, KafkaServiceEntity } from '@exprealty/database';
 import { PaginationModule } from '../../common/pagination/pagination.module.js';
@@ -55,11 +57,13 @@ import { PaginationModule } from '../../common/pagination/pagination.module.js';
 		SponsorChangedService,
 		KafkaMessageProcessingService,
 		KafkaMessageCleanupService,
+		KafkaBulkOperationsService,
 	],
 	controllers: [
 		SponsorChangedController,
 		KafkaMessageProcessingController,
 		KafkaAdminController,
+		KafkaBulkOperationsController,
 	],
 	exports: [
 		KafkaClientService,

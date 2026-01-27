@@ -108,12 +108,29 @@ export class KafkaAdminController {
 			};
 		});
 		
-		this.logger.info(`[${correlationId}] Retrieved ${servicesWithState.length} service(s) from database`, {
-			count: servicesWithState.length,
+		// Sort services: global producer first, then others by topic (stable order)
+		const sortedServices = servicesWithState.sort((a, b) => {
+			// Global producer always first (type === PRODUCER && topic === 'global')
+			const aIsGlobalProducer = a.type === KafkaServiceType.PRODUCER && a.topic === 'global';
+			const bIsGlobalProducer = b.type === KafkaServiceType.PRODUCER && b.topic === 'global';
+			
+			if (aIsGlobalProducer && !bIsGlobalProducer) {
+				return -1;
+			}
+			if (!aIsGlobalProducer && bIsGlobalProducer) {
+				return 1;
+			}
+			
+			// For all other services, sort by topic alphabetically for consistent ordering
+			return a.topic.localeCompare(b.topic);
+		});
+		
+		this.logger.info(`[${correlationId}] Retrieved ${sortedServices.length} service(s) from database`, {
+			count: sortedServices.length,
 			registered: runtimeMap.size,
 		});
 
-		return servicesWithState;
+		return sortedServices;
 	}
 
 	/**
