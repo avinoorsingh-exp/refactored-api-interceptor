@@ -403,6 +403,117 @@ describe('SponsorChangedService', () => {
 			);
 		});
 	});
+
+	describe('processSponsorWriteIn', () => {
+		const applicantUuid = '550e8400-e29b-41d4-a716-446655440000';
+		const sponsorName = 'John Doe';
+
+		it('should process sponsor write-in event successfully', async () => {
+			await service.processSponsorWriteIn(applicantUuid, sponsorName);
+
+			expect(mockKafkaProducer.sendSponsorChangedMessage).toHaveBeenCalledWith(
+				{
+					ApplicantUuid: applicantUuid,
+					SponsorWriteIn: {
+						Name: sponsorName,
+					},
+				},
+				applicantUuid,
+				expect.objectContaining({
+					'correlation-id': expect.any(String),
+					'applicant-uuid': applicantUuid,
+					'sponsor-write-in': 'true',
+				}),
+			);
+
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				expect.stringContaining('Sponsor write-in message sent successfully'),
+			);
+		});
+
+		it('should handle sponsor name with spaces', async () => {
+			const sponsorNameWithSpaces = 'John Michael Doe';
+			await service.processSponsorWriteIn(applicantUuid, sponsorNameWithSpaces);
+
+			expect(mockKafkaProducer.sendSponsorChangedMessage).toHaveBeenCalledWith(
+				{
+					ApplicantUuid: applicantUuid,
+					SponsorWriteIn: {
+						Name: sponsorNameWithSpaces,
+					},
+				},
+				applicantUuid,
+				expect.any(Object),
+			);
+		});
+
+		it('should handle empty sponsor name', async () => {
+			const emptyName = '';
+			await service.processSponsorWriteIn(applicantUuid, emptyName);
+
+			expect(mockKafkaProducer.sendSponsorChangedMessage).toHaveBeenCalledWith(
+				{
+					ApplicantUuid: applicantUuid,
+					SponsorWriteIn: {
+						Name: emptyName,
+					},
+				},
+				applicantUuid,
+				expect.any(Object),
+			);
+		});
+
+		it('should handle sponsor name with special characters', async () => {
+			const sponsorNameWithSpecialChars = "John O'Brien-Smith";
+			await service.processSponsorWriteIn(applicantUuid, sponsorNameWithSpecialChars);
+
+			expect(mockKafkaProducer.sendSponsorChangedMessage).toHaveBeenCalledWith(
+				{
+					ApplicantUuid: applicantUuid,
+					SponsorWriteIn: {
+						Name: sponsorNameWithSpecialChars,
+					},
+				},
+				applicantUuid,
+				expect.any(Object),
+			);
+		});
+
+		it('should log error and rethrow when kafka producer throws error', async () => {
+			const kafkaError = new Error('Kafka send failed');
+			mockKafkaProducer.sendSponsorChangedMessage.mockRejectedValue(kafkaError);
+
+			await expect(
+				service.processSponsorWriteIn(applicantUuid, sponsorName),
+			).rejects.toThrow(kafkaError);
+
+			expect(mockLogger.error).toHaveBeenCalledWith(
+				expect.stringContaining('Failed to process sponsor write-in event'),
+				expect.objectContaining({
+					applicantUuid,
+					sponsorName,
+				}),
+			);
+		});
+
+		it('should log message payload before sending', async () => {
+			await service.processSponsorWriteIn(applicantUuid, sponsorName);
+
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				'Sponsor write-in message payload - ready to send',
+				expect.objectContaining({
+					applicantUuid,
+					sponsorName,
+					message: {
+						ApplicantUuid: applicantUuid,
+						SponsorWriteIn: {
+							Name: sponsorName,
+						},
+					},
+				}),
+			);
+		});
+	});
 });
 
 

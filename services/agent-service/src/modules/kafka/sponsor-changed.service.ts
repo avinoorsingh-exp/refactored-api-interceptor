@@ -33,6 +33,16 @@ interface SponsorChangedMessage {
 }
 
 /**
+ * Interface for the sponsor write-in Kafka message payload.
+ */
+interface SponsorWriteInMessage {
+	ApplicantUuid: string;
+	SponsorWriteIn: {
+		Name: string;
+	};
+}
+
+/**
  * Service for handling sponsor changed events.
  * Builds and sends Kafka messages to Global_SMS_SponsorChanged_V2 topic.
  */
@@ -211,6 +221,78 @@ export class SponsorChangedService {
 				TypeOfActor: 'Agent',
 				PhoneList: phoneList,
 				AddressList: addressList,
+			},
+		};
+	}
+
+	/**
+	 * Processes a sponsor write-in event.
+	 * Builds the Kafka payload with applicant UUID and sponsor write-in name,
+	 * and sends it to Global_SMS_SponsorChanged_V2.
+	 *
+	 * @param applicantUuid - UUID of the applicant agent
+	 * @param sponsorName - Sponsor name (write-in text value, may contain spaces)
+	 */
+	async processSponsorWriteIn(applicantUuid: string, sponsorName: string): Promise<void> {
+		const startTime = Date.now();
+
+		try {
+			// Build Kafka payload
+			const message = this.buildSponsorWriteInMessage(applicantUuid, sponsorName);
+
+			// Log the message payload before sending (for CloudWatch visibility)
+			this.logger.info('Sponsor write-in message payload - ready to send', {
+				applicantUuid,
+				sponsorName,
+				message: message,
+			});
+
+			// Send to Kafka
+			await this.kafkaProducer.sendSponsorChangedMessage(
+				message,
+				applicantUuid, // Use applicant UUID as message key for partitioning
+				{
+					'correlation-id': `sponsor-write-in-${Date.now()}`,
+					'applicant-uuid': applicantUuid,
+					'sponsor-write-in': 'true',
+				},
+			);
+
+			const duration = Date.now() - startTime;
+			this.logger.info(
+				`Sponsor write-in message sent successfully for applicant ${applicantUuid} with sponsor name "${sponsorName}" in ${duration}ms`,
+			);
+		} catch (error) {
+			const duration = Date.now() - startTime;
+
+			this.logger.error(
+				`Failed to process sponsor write-in event: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
+				{
+					applicantUuid,
+					sponsorName,
+					stack: error instanceof Error ? error.stack : undefined,
+				},
+			);
+
+			throw error;
+		}
+	}
+
+	/**
+	 * Builds the sponsor write-in Kafka message payload.
+	 *
+	 * @param applicantUuid - UUID of the applicant agent
+	 * @param sponsorName - Sponsor name (write-in text value, may contain spaces)
+	 * @returns The formatted Kafka message payload
+	 */
+	private buildSponsorWriteInMessage(
+		applicantUuid: string,
+		sponsorName: string,
+	): SponsorWriteInMessage {
+		return {
+			ApplicantUuid: applicantUuid,
+			SponsorWriteIn: {
+				Name: sponsorName,
 			},
 		};
 	}
