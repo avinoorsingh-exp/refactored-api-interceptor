@@ -77,12 +77,12 @@ export class ScheduledJobsLogCleanupJobHandler implements AdminJobHandler, OnMod
 			`;
 			const deleteExecutionLogsParams = [executionLogCutoff.toISOString()];
 
-			this.logCapture?.log('info', 'SQL Query: Delete old job execution logs', {
-				sql: deleteExecutionLogsSql,
-				parameters: deleteExecutionLogsParams,
-			});
-
+			const queryStart = Date.now();
 			const deleteResult = await this.dataSource.query(deleteExecutionLogsSql, deleteExecutionLogsParams);
+			const queryDuration = Date.now() - queryStart;
+
+			// Log SQL query using logQuery() to match Kafka cleanup format (type: 'query')
+			this.logCapture?.logQuery(deleteExecutionLogsSql, deleteExecutionLogsParams, queryDuration);
 			// PostgreSQL query result format: { command: 'DELETE', rowCount: number, ... }
 			deletedCount = typeof deleteResult === 'object' && 'rowCount' in deleteResult
 				? (deleteResult.rowCount as number) || 0

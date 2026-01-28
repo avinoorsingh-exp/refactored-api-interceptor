@@ -1172,6 +1172,9 @@ export class ApiMetricsService {
 		method: HttpMethod,
 		startTime: Date,
 		endTime: Date,
+		logCapture?: {
+			logQuery(sql: string, parameters?: unknown[], duration?: number): void;
+		},
 	): Promise<{
 		p50: number;
 		p95: number;
@@ -1193,16 +1196,25 @@ export class ApiMetricsService {
 		const latenciesSql = latenciesQuery.getQuery();
 		const latenciesParams = latenciesQuery.getParameters();
 		
-		this.logger.info('SQL Query: Calculate latency percentiles', {
-			sql: latenciesSql,
-			parameters: latenciesParams,
-			route,
-			method,
-			startTime: startTime.toISOString(),
-			endTime: endTime.toISOString(),
-		});
-		
+		const queryStart = Date.now();
 		const latencies = await latenciesQuery.getRawMany();
+		const queryDuration = Date.now() - queryStart;
+
+		// Log SQL query using logQuery() if logCapture is available, otherwise use logger
+		// TypeORM parameters are an object, convert to array for logQuery
+		const latenciesParamsArray = Object.values(latenciesParams);
+		if (logCapture) {
+			logCapture.logQuery(latenciesSql, latenciesParamsArray, queryDuration);
+		} else {
+			this.logger.info('SQL Query: Calculate latency percentiles', {
+				sql: latenciesSql,
+				parameters: latenciesParams,
+				route,
+				method,
+				startTime: startTime.toISOString(),
+				endTime: endTime.toISOString(),
+			});
+		}
 
 		if (latencies.length === 0) {
 			return { p50: 0, p95: 0, p99: 0, min: 0, max: 0 };
@@ -1236,6 +1248,9 @@ export class ApiMetricsService {
 		timeBucket: TimeBucket,
 		bucketStart: Date,
 		bucketEnd: Date,
+		logCapture?: {
+			logQuery(sql: string, parameters?: unknown[], duration?: number): void;
+		},
 	): Promise<void> {
 		// Log the find query SQL
 		const findQuery = this.requestLogRepo
@@ -1250,15 +1265,7 @@ export class ApiMetricsService {
 		const findSql = findQuery.getQuery();
 		const findParams = findQuery.getParameters();
 		
-		this.logger.info('SQL Query: Find logs for aggregation', {
-			sql: findSql,
-			parameters: findParams,
-			route,
-			method,
-			bucketStart: bucketStart.toISOString(),
-			bucketEnd: bucketEnd.toISOString(),
-		});
-		
+		const findQueryStart = Date.now();
 		const logs = await this.requestLogRepo.find({
 			where: {
 				route,
@@ -1266,6 +1273,23 @@ export class ApiMetricsService {
 				timestamp: Between(bucketStart, bucketEnd),
 			},
 		});
+		const findQueryDuration = Date.now() - findQueryStart;
+
+		// Log SQL query using logQuery() if logCapture is available, otherwise use logger
+		// TypeORM parameters are an object, convert to array for logQuery
+		const findParamsArray = Object.values(findParams);
+		if (logCapture) {
+			logCapture.logQuery(findSql, findParamsArray, findQueryDuration);
+		} else {
+			this.logger.info('SQL Query: Find logs for aggregation', {
+				sql: findSql,
+				parameters: findParams,
+				route,
+				method,
+				bucketStart: bucketStart.toISOString(),
+				bucketEnd: bucketEnd.toISOString(),
+			});
+		}
 
 		if (logs.length === 0) {
 			return;
@@ -1279,6 +1303,7 @@ export class ApiMetricsService {
 			method,
 			bucketStart,
 			bucketEnd,
+			logCapture,
 		);
 
 		// Calculate status code counts
@@ -1305,21 +1330,47 @@ export class ApiMetricsService {
 		};
 		
 		// Log the upsert operation (TypeORM upsert generates INSERT ... ON CONFLICT ... DO UPDATE)
-		this.logger.info('SQL Query: Upsert route stats', {
-			operation: 'UPSERT',
-			table: 'core.api_route_stats',
-			data: upsertData,
-			conflictColumns: ['route', 'method', 'timeBucket', 'bucketStart'],
-			route,
-			method,
-			timeBucket,
-			bucketStart: bucketStart.toISOString(),
-		});
-		
+		// For upsert, we need to construct the SQL manually since TypeORM doesn't expose it easily
+		// We'll log it as a generic upsert operation
+		const upsertQueryStart = Date.now();
 		await this.routeStatsRepo.upsert(
 			upsertData,
 			['route', 'method', 'timeBucket', 'bucketStart'],
 		);
+		const upsertQueryDuration = Date.now() - upsertQueryStart;
+
+		// Construct approximate SQL for logging (TypeORM generates this internally)
+		const upsertSql = `INSERT INTO "core"."api_route_stats" (route, method, time_bucket, bucket_start, request_count, error_count, latency_p50, latency_p95, latency_p99, latency_min, latency_max, status_code_counts) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) ON CONFLICT (route, method, time_bucket, bucket_start) DO UPDATE SET request_count = EXCLUDED.request_count, error_count = EXCLUDED.error_count, latency_p50 = EXCLUDED.latency_p50, latency_p95 = EXCLUDED.latency_p95, latency_p99 = EXCLUDED.latency_p99, latency_min = EXCLUDED.latency_min, latency_max = EXCLUDED.latency_max, status_code_counts = EXCLUDED.status_code_counts`;
+		const upsertParams = [
+			upsertData.route,
+			upsertData.method,
+			upsertData.timeBucket,
+			upsertData.bucketStart,
+			upsertData.requestCount,
+			upsertData.errorCount,
+			upsertData.latencyP50,
+			upsertData.latencyP95,
+			upsertData.latencyP99,
+			upsertData.latencyMin,
+			upsertData.latencyMax,
+			JSON.stringify(upsertData.statusCodeCounts),
+		];
+
+		// Log SQL query using logQuery() if logCapture is available, otherwise use logger
+		if (logCapture) {
+			logCapture.logQuery(upsertSql, upsertParams, upsertQueryDuration);
+		} else {
+			this.logger.info('SQL Query: Upsert route stats', {
+				operation: 'UPSERT',
+				table: 'core.api_route_stats',
+				data: upsertData,
+				conflictColumns: ['route', 'method', 'timeBucket', 'bucketStart'],
+				route,
+				method,
+				timeBucket,
+				bucketStart: bucketStart.toISOString(),
+			});
+		}
 	}
 
 	/**
@@ -1337,6 +1388,9 @@ export class ApiMetricsService {
 		startTime: Date,
 		endTime: Date,
 		timeBucket: TimeBucket = TimeBucket.HOUR,
+		logCapture?: {
+			logQuery(sql: string, parameters?: unknown[], duration?: number): void;
+		},
 	): Promise<number> {
 		try {
 			this.logger.info('Starting route stats aggregation', {
@@ -1360,12 +1414,21 @@ export class ApiMetricsService {
 			const uniqueRoutesSql = uniqueRoutesQuery.getQuery();
 			const uniqueRoutesParams = uniqueRoutesQuery.getParameters();
 			
-			this.logger.info('SQL Query: Get unique routes/methods', {
-				sql: uniqueRoutesSql,
-				parameters: uniqueRoutesParams,
-			});
-			
+			const uniqueRoutesQueryStart = Date.now();
 			const uniqueRoutesResult = await uniqueRoutesQuery.getRawMany();
+			const uniqueRoutesQueryDuration = Date.now() - uniqueRoutesQueryStart;
+
+			// Log SQL query using logQuery() if logCapture is available, otherwise use logger
+			// TypeORM parameters are an object, convert to array for logQuery
+			const uniqueRoutesParamsArray = Object.values(uniqueRoutesParams);
+			if (logCapture) {
+				logCapture.logQuery(uniqueRoutesSql, uniqueRoutesParamsArray, uniqueRoutesQueryDuration);
+			} else {
+				this.logger.info('SQL Query: Get unique routes/methods', {
+					sql: uniqueRoutesSql,
+					parameters: uniqueRoutesParams,
+				});
+			}
 
 			if (uniqueRoutesResult.length === 0) {
 				this.logger.info('No logs found for aggregation', {
@@ -1397,7 +1460,7 @@ export class ApiMetricsService {
 				while (currentStart < endTime) {
 					const bucketEnd = new Date(Math.min(currentStart.getTime() + bucketSizeMs, endTime.getTime()));
 					
-					await this.aggregateRouteStats(route, method, timeBucket, currentStart, bucketEnd);
+					await this.aggregateRouteStats(route, method, timeBucket, currentStart, bucketEnd, logCapture);
 					aggregatedCount++;
 					
 					currentStart = bucketEnd;

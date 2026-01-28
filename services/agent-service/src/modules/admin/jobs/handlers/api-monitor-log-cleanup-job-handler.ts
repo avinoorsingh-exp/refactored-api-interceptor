@@ -91,12 +91,12 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 			`;
 			const requestLogParams = [requestLogCutoff.toISOString()];
 
-			this.logCapture?.log('info', 'SQL Query: Delete old request logs', {
-				sql: requestLogCleanupSql,
-				parameters: requestLogParams,
-			});
-
+			const queryStart1 = Date.now();
 			const requestLogResult = await this.dataSource.query(requestLogCleanupSql, requestLogParams);
+			const queryDuration1 = Date.now() - queryStart1;
+
+			// Log SQL query using logQuery() to match Kafka cleanup format (type: 'query')
+			this.logCapture?.logQuery(requestLogCleanupSql, requestLogParams, queryDuration1);
 			// PostgreSQL query result format: { command: 'DELETE', rowCount: number, ... }
 			results.step1_requestLogCleanup.deletedCount = typeof requestLogResult === 'object' && 'rowCount' in requestLogResult
 				? (requestLogResult.rowCount as number) || 0
@@ -128,12 +128,12 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 			`;
 			const anonymousActorParams = [anonymousActorCutoff.toISOString()];
 
-			this.logCapture?.log('info', 'SQL Query: Delete orphaned anonymous actors', {
-				sql: anonymousActorCleanupSql,
-				parameters: anonymousActorParams,
-			});
-
+			const queryStart2 = Date.now();
 			const anonymousActorResult = await this.dataSource.query(anonymousActorCleanupSql, anonymousActorParams);
+			const queryDuration2 = Date.now() - queryStart2;
+
+			// Log SQL query using logQuery() to match Kafka cleanup format (type: 'query')
+			this.logCapture?.logQuery(anonymousActorCleanupSql, anonymousActorParams, queryDuration2);
 			// PostgreSQL query result format: { command: 'DELETE', rowCount: number, ... }
 			results.step2_anonymousActorCleanup.deletedCount = typeof anonymousActorResult === 'object' && 'rowCount' in anonymousActorResult
 				? (anonymousActorResult.rowCount as number) || 0

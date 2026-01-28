@@ -82,6 +82,7 @@ export class ApiRouteStatsAggregationJobHandler implements AdminJobHandler, OnMo
 				startTimeDate,
 				endTime,
 				TimeBucket.HOUR,
+				this.logCapture,
 			);
 
 			this.logCapture?.log('info', 'Hourly bucket aggregation completed', {
@@ -114,6 +115,7 @@ export class ApiRouteStatsAggregationJobHandler implements AdminJobHandler, OnMo
 					dayStart,
 					dayEnd,
 					TimeBucket.DAY,
+					this.logCapture,
 				);
 
 				this.logCapture?.log('info', 'Daily bucket aggregation completed', {
