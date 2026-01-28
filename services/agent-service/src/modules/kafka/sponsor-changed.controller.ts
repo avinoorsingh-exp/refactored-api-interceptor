@@ -7,6 +7,7 @@ import {
 	Req,
 	Logger,
 	Param,
+	Body,
 } from '@nestjs/common';
 import { Request } from 'express';
 import {
@@ -14,6 +15,7 @@ import {
 	ApiOperation,
 	ApiResponse,
 	ApiParam,
+	ApiBody,
 } from '@nestjs/swagger';
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js';
 import { SponsorChangedService } from './sponsor-changed.service.js';
@@ -21,6 +23,10 @@ import {
 	SponsorAssignedParamsDto,
 	SponsorAssignedParamsSchema,
 } from './dto/sponsor-assigned-params.dto.js';
+import {
+	SponsorWriteInRequestDto,
+	SponsorWriteInRequestSchema,
+} from './dto/sponsor-write-in-request.dto.js';
 
 /**
  * Controller for sponsor changed Kafka events.
@@ -115,6 +121,99 @@ export class SponsorChangedController {
 			} else {
 				this.logger.error(
 					`[${correlationId}] POST /v1/kafka/sponsor-assigned/${params.applicantUuid}/${params.sponsorUuid} - 500 Internal Server Error (${duration}ms)`,
+					error instanceof Error ? error.stack : 'Unknown error',
+				);
+			}
+
+			throw error;
+		}
+	}
+
+	/**
+	 * Creates a sponsor write-in Kafka message.
+	 * POST /v1/kafka/sponsor-assigned/:applicantUuid/write-in
+	 *
+	 * @param applicantUuid - UUID of the applicant agent (path parameter)
+	 * @param body - Request body containing sponsor name (write-in text value)
+	 * @param req - Express request object for correlation ID
+	 * @returns Success response with 200 status
+	 */
+	@Post('sponsor-assigned/:applicantUuid/write-in')
+	@HttpCode(HttpStatus.OK)
+	@ApiOperation({
+		summary: 'Send sponsor write-in event to Kafka',
+		description: 'Builds a payload with applicant UUID and sponsor write-in name, and sends it to Global_SMS_SponsorChanged_V2 topic.',
+	})
+	@ApiParam({
+		name: 'applicantUuid',
+		description: 'UUID of the applicant agent',
+		type: String,
+		format: 'uuid',
+	})
+	@ApiBody({
+		description: 'Sponsor write-in request body',
+		type: SponsorWriteInRequestDto,
+	})
+	@ApiResponse({
+		status: 200,
+		description: 'Sponsor write-in message sent successfully',
+	})
+	@ApiResponse({
+		status: 400,
+		description: 'Validation error - malformed or invalid data',
+	})
+	async sponsorWriteIn(
+		@Param('applicantUuid') applicantUuid: string,
+		@Body(
+			new ZodValidationPipe(
+				SponsorWriteInRequestSchema,
+				'kafka.sponsor_write_in.validation',
+			),
+		)
+		body: SponsorWriteInRequestDto,
+		@Req() req: Request,
+	): Promise<{ message: string }> {
+		const startTime = Date.now();
+		const correlationId = this.getCorrelationId(req);
+
+		this.logger.log(
+			`[${correlationId}] POST /v1/kafka/sponsor-assigned/${applicantUuid}/write-in - Processing sponsor write-in event for applicant ${applicantUuid} with sponsor name "${body.name}"`,
+		);
+
+		try {
+			// Validate applicant UUID format
+			const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+			if (!uuidRegex.test(applicantUuid)) {
+				throw new HttpException(
+					{
+						message: `Invalid ApplicantUuid format: ${applicantUuid}`,
+						i18nType: 'kafka.sponsor_write_in.invalid_uuid',
+					},
+					HttpStatus.BAD_REQUEST,
+				);
+			}
+
+			await this.sponsorChangedService.processSponsorWriteIn(applicantUuid, body.name);
+
+			const duration = Date.now() - startTime;
+			this.logger.log(
+				`[${correlationId}] POST /v1/kafka/sponsor-assigned/${applicantUuid}/write-in - 200 OK (${duration}ms)`,
+			);
+
+			return {
+				message: 'Sponsor write-in message sent successfully',
+			};
+		} catch (error) {
+			const duration = Date.now() - startTime;
+
+			if (error instanceof HttpException) {
+				const status = error.getStatus();
+				this.logger.warn(
+					`[${correlationId}] POST /v1/kafka/sponsor-assigned/${applicantUuid}/write-in - ${status} ${error.message} (${duration}ms)`,
+				);
+			} else {
+				this.logger.error(
+					`[${correlationId}] POST /v1/kafka/sponsor-assigned/${applicantUuid}/write-in - 500 Internal Server Error (${duration}ms)`,
 					error instanceof Error ? error.stack : 'Unknown error',
 				);
 			}
