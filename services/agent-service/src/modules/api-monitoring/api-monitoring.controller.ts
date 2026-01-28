@@ -6,6 +6,7 @@ import {
 	HttpCode,
 	HttpStatus,
 	UseGuards,
+	Res,
 } from '@nestjs/common';
 import {
 	ApiTags,
@@ -13,11 +14,12 @@ import {
 	ApiResponse,
 	ApiBearerAuth,
 } from '@nestjs/swagger';
+import { Response } from 'express';
 import { ApiMetricsService } from './services/api-metrics.service.js';
 import { TimeSeriesQueryDto } from './dto/time-series-query.dto.js';
 import { ActorActivityQueryDto } from './dto/actor-activity-query.dto.js';
 import { ErrorSampleQueryDto } from './dto/error-sample-query.dto.js';
-import { TimeBucket } from '@exprealty/shared-domain';
+import { TimeBucket, Problems } from '@exprealty/shared-domain';
 import { LoggerService } from '../../core/logger.service.js';
 
 /**
@@ -201,6 +203,40 @@ export class ApiMonitoringController {
 		});
 
 		return this.metricsService.getErrorSamples(query);
+	}
+
+	/**
+	 * Test endpoint to trigger rate limit violations without blocking.
+	 * 
+	 * This endpoint processes the request normally but returns a 429 status code,
+	 * which will be logged as a rate limit violation in the API monitoring system.
+	 * Useful for testing rate limit tracking and UI display.
+	 */
+	@Get('test/rate-limit-violation')
+	@HttpCode(HttpStatus.TOO_MANY_REQUESTS)
+	@ApiOperation({
+		summary: 'Trigger rate limit violation (test endpoint)',
+		description: 'Returns 429 status code to test rate limit violation tracking. Request is processed normally.',
+	})
+	@ApiResponse({
+		status: HttpStatus.TOO_MANY_REQUESTS,
+		description: 'Rate limit violation response for testing',
+	})
+	async triggerRateLimitViolation(@Res() res: Response) {
+		// Process the request normally (you can add any logic here)
+		const responseData = {
+			message: 'This is a test rate limit violation',
+			timestamp: new Date().toISOString(),
+			note: 'Request was processed, but 429 status is returned for testing',
+		};
+
+		// Return 429 status with Problem Details format
+		const problem = Problems.rateLimited(
+			'Rate limit exceeded (test endpoint)',
+			'/v1/api-monitoring/test/rate-limit-violation',
+		);
+
+		return res.status(HttpStatus.TOO_MANY_REQUESTS).json(problem);
 	}
 }
 
