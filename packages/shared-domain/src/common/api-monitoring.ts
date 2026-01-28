@@ -124,10 +124,11 @@ export type ApiRouteStats = z.infer<typeof ApiRouteStatsSchema>
 export const TimeSeriesQuerySchema = z.object({
 	startTime: z.date(),
 	endTime: z.date(),
-	route: z.string().optional(),
-	method: z.nativeEnum(HttpMethod).optional(),
-	timeBucket: z.nativeEnum(TimeBucket).default(TimeBucket.HOUR),
+	route: z.union([z.string(), z.array(z.string())]).optional(),
+	method: z.union([z.nativeEnum(HttpMethod), z.array(z.nativeEnum(HttpMethod))]).optional(),
+	timeBucket: z.nativeEnum(TimeBucket).optional(), // Optional: auto-selected based on time range if not provided
 	actorId: z.string().uuid().optional(),
+	statusCode: z.union([z.number(), z.array(z.number())]).optional(),
 })
 
 export type TimeSeriesQuery = z.infer<typeof TimeSeriesQuerySchema>

@@ -31,6 +31,7 @@ export { ApiMonitoringController } from './api-monitoring.controller.js';
 
 // DTOs (for services that want to extend the controller)
 export { TimeSeriesQueryDto } from './dto/time-series-query.dto.js';
+export { toArray, hasValues } from './utils/filter.util.js';
 export { ActorActivityQueryDto } from './dto/actor-activity-query.dto.js';
 export { ErrorSampleQueryDto } from './dto/error-sample-query.dto.js';
 export { TopCallersQueryDto } from './dto/top-callers-query.dto.js';
@@ -55,4 +56,5 @@ export {
 	type PageInfo,
 	type PaginatedResponse,
 } from './utils/pagination.util.js';
+export { shouldLogApiRequest } from './utils/should-log-api-request.util.js';
 

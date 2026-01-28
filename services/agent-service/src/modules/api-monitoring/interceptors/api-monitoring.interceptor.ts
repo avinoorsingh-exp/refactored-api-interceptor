@@ -9,6 +9,7 @@ import { tap, catchError } from 'rxjs/operators';
 import { throwError } from 'rxjs';
 import { Request, Response } from 'express';
 import { HttpMethod } from '@exprealty/shared-domain';
+import { shouldLogApiRequest } from '@exprealty/api-monitoring';
 import { ApiMonitoringService } from '../services/api-monitoring.service.js';
 import { ApiRequestContextService } from '../services/api-request-context.service.js';
 
@@ -35,8 +36,17 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 		const request = context.switchToHttp().getRequest<Request>();
 		const response = context.switchToHttp().getResponse<Response>();
 
-		// Skip monitoring for localhost/internal requests
-		if (this.shouldSkipMonitoring(request)) {
+		// Policy: Skip monitoring if request should not be logged
+		// This prevents development and internal UI traffic from polluting production API monitoring data
+		if (!shouldLogApiRequest(request)) {
+			return next.handle();
+		}
+
+		// CRITICAL: Skip logging if no actor is present
+		// If there is no actor, there should be NO route requests logged
+		// @ts-expect-error - apiActor is attached by middleware
+		if (!request.apiActor || !request.apiActor.id) {
+			// No actor = no logging. Silently skip this request.
 			return next.handle();
 		}
 
@@ -116,44 +126,6 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 			: HttpMethod.GET;
 	}
 
-	/**
-	 * Check if monitoring should be skipped for this request.
-	 * Skips localhost/internal requests.
-	 */
-	private shouldSkipMonitoring(request: Request): boolean {
-		const ipAddress = this.extractIpAddress(request);
-		if (ipAddress && this.isLocalhostOrInternal(ipAddress)) {
-			return true;
-		}
-		return false;
-	}
-
-	/**
-	 * Check if an IP address is localhost or internal/private.
-	 */
-	private isLocalhostOrInternal(ip: string): boolean {
-		// Remove IPv6 brackets if present
-		const cleanIp = ip.replace(/^\[|\]$/g, '');
-		
-		// Check for localhost
-		if (cleanIp === 'localhost' || cleanIp === '127.0.0.1' || cleanIp === '::1') {
-			return true;
-		}
-
-		// Check for private/internal IP ranges
-		// IPv4 private ranges: 10.x.x.x, 172.16-31.x.x, 192.168.x.x
-		const ipv4PrivateRegex = /^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.)/;
-		if (ipv4PrivateRegex.test(cleanIp)) {
-			return true;
-		}
-
-		// IPv6 private ranges: fc00::/7, fe80::/10
-		if (cleanIp.startsWith('fc00:') || cleanIp.startsWith('fe80:')) {
-			return true;
-		}
-
-		return false;
-	}
 
 	/**
 	 * Extract client IP address from request.

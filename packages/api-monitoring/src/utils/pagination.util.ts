@@ -43,6 +43,18 @@ export interface PageInfo {
 	 * Whether there are more results available.
 	 */
 	hasMore: boolean;
+
+	/**
+	 * Total number of items matching the query (across all pages).
+	 * Optional - may not be available for all endpoints.
+	 */
+	total?: number | null;
+
+	/**
+	 * Total number of requests (for top-callers endpoint).
+	 * Optional - helps explain why sum of requestCounts may not equal this value.
+	 */
+	totalRequests?: number | null;
 }
 
 /**
@@ -110,15 +122,20 @@ export function encodeCursor(timestamp: string, id: string): string {
  * @param limit - Requested limit
  * @param defaultLimit - Default limit if not provided
  * @param maxLimit - Maximum allowed limit
- * @returns Normalized limit value
+ * @returns Normalized limit value, or null if limit is -1 or 0 (fetch all)
  */
 export function normalizeLimit(
 	limit?: number,
 	defaultLimit = 50,
 	maxLimit = 200,
-): number {
+): number | null {
 	if (limit === undefined || limit === null) {
 		return defaultLimit;
+	}
+	
+	// Special case: -1 or 0 means fetch all (no limit)
+	if (limit === -1 || limit === 0) {
+		return null; // null indicates no limit
 	}
 	
 	// Ensure limit is a positive integer

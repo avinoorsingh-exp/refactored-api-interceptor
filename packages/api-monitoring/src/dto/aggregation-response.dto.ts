@@ -31,3 +31,4 @@ export class AggregationResponseDto {
 	timeBucket!: string;
 }
 
+

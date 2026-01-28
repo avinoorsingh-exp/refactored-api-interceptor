@@ -25,7 +25,7 @@ import { PaginatedTopCallersResponseDto } from './dto/paginated-top-callers-resp
 import { TopCallersQueryDto } from './dto/top-callers-query.dto.js';
 import { SummaryResponseDto } from './dto/summary-response.dto.js';
 import { AggregationResponseDto } from './dto/aggregation-response.dto.js';
-import { TimeBucket, HttpMethod } from '@exprealty/shared-domain';
+import { TimeBucket, HttpMethod, ApiErrorClassification, type TimeSeriesQuery } from '@exprealty/shared-domain';
 import type { IApiMonitoringLogger } from './interfaces/logger.interface.js';
 import { API_MONITORING_LOGGER_TOKEN } from './interfaces/logger.interface.js';
 
@@ -77,21 +77,38 @@ export class ApiMonitoringController {
 		description: 'Time-series metrics',
 	})
 	async getTimeSeriesMetrics(@Query() query: TimeSeriesQueryDto) {
+		// Convert string dates to Date objects if needed (query params come as strings)
+		const startTime = query.startTime instanceof Date 
+			? query.startTime 
+			: new Date(query.startTime as string);
+		const endTime = query.endTime instanceof Date 
+			? query.endTime 
+			: new Date(query.endTime as string);
+
+		// Validate dates are valid
+		if (isNaN(startTime.getTime())) {
+			throw new Error(`Invalid startTime: ${query.startTime}`);
+		}
+		if (isNaN(endTime.getTime())) {
+			throw new Error(`Invalid endTime: ${query.endTime}`);
+		}
+
 		this.logger.debug('Fetching time-series metrics', {
-			startTime: query.startTime,
-			endTime: query.endTime,
+			startTime: startTime.toISOString(),
+			endTime: endTime.toISOString(),
 			route: query.route,
 			method: query.method,
 		});
 
 		return this.metricsService.getTimeSeriesMetrics({
-			startTime: query.startTime,
-			endTime: query.endTime,
+			startTime,
+			endTime,
 			route: query.route,
 			method: query.method,
-			timeBucket: query.timeBucket || TimeBucket.HOUR,
+			timeBucket: query.timeBucket,
 			actorId: query.actorId,
-		});
+			statusCode: query.statusCode,
+		} as TimeSeriesQuery);
 	}
 
 	/**
@@ -117,18 +134,27 @@ export class ApiMonitoringController {
 			? (query.startTime instanceof Date ? query.startTime : new Date(query.startTime))
 			: new Date(endTime.getTime() - 15 * 60 * 1000);
 
+		// Parse debug mode (optional, non-breaking)
+		const debug = query.debug === true;
+
 		this.logger.debug('Fetching route breakdown', {
 			startTime: startTime.toISOString(),
 			endTime: endTime.toISOString(),
 			limit: query.limit,
-			startTimeType: typeof startTime,
-			endTimeType: typeof endTime,
+			debug,
 		});
 
+		// Default limit is 50 (ranking mode), but service will auto-detect inspection mode
+		const limit = query.limit || 50;
+		
 		return this.metricsService.getRouteBreakdown(
 			startTime,
 			endTime,
-			query.limit || 50,
+			limit,
+			query.route,
+			query.method,
+			query.statusCode,
+			debug,
 		);
 	}
 
@@ -150,20 +176,36 @@ export class ApiMonitoringController {
 		type: PaginatedTopCallersResponseDto,
 	})
 	async getTopCallers(@Query() query: TopCallersQueryDto) {
-		console.log('=== TOP CALLERS CONTROLLER CALLED ===');
-		console.log('Query:', JSON.stringify(query, null, 2));
+		// Convert string dates to Date objects if provided
+		// Note: startTime and endTime are optional in DTO but required by service
+		// If not provided, we'll use defaults (last 24 hours)
+		const now = new Date();
+		const defaultStartTime = new Date(now.getTime() - 24 * 60 * 60 * 1000); // 24 hours ago
 		
-		// Convert string dates to Date objects
-		const startTime = new Date(query.startTime);
-		const endTime = new Date(query.endTime);
-		
-		console.log('Parsed dates:', { startTime: startTime.toISOString(), endTime: endTime.toISOString() });
+		const startTime = query.startTime 
+			? (typeof query.startTime === 'string' ? new Date(query.startTime) : query.startTime as Date)
+			: defaultStartTime;
+		const endTime = query.endTime 
+			? (typeof query.endTime === 'string' ? new Date(query.endTime) : query.endTime as Date)
+			: now;
+
+		// Validate dates
+		if (isNaN(startTime.getTime())) {
+			throw new Error(`Invalid startTime: ${query.startTime}`);
+		}
+		if (isNaN(endTime.getTime())) {
+			throw new Error(`Invalid endTime: ${query.endTime}`);
+		}
+
+		// Parse debug mode (optional, non-breaking)
+		const debug = query.debug === true;
 
 		this.logger.info('Fetching top callers', {
 			startTime: startTime.toISOString(),
 			endTime: endTime.toISOString(),
 			limit: query.limit,
 			cursor: query.cursor ? 'present' : 'none',
+			debug,
 		});
 
 		try {
@@ -172,11 +214,16 @@ export class ApiMonitoringController {
 				endTime,
 				query.limit,
 				query.cursor,
+				query.actorId,
+				query.route,
+				query.statusCode,
+				debug,
 			);
-			console.log('Service returned:', JSON.stringify(result, null, 2));
 			return result;
 		} catch (error) {
-			console.error('Controller error:', error);
+			this.logger.error('Failed to fetch top callers', {
+				error: error instanceof Error ? error.message : String(error),
+			});
 			throw error;
 		}
 	}
@@ -202,12 +249,16 @@ export class ApiMonitoringController {
 		@Param('actorId') actorId: string,
 		@Query() query: ActorActivityQueryDto,
 	) {
+		// Parse debug mode (optional, non-breaking)
+		const debug = query.debug === true;
+
 		this.logger.debug('Fetching actor activity', {
 			actorId,
 			startTime: query.startTime,
 			endTime: query.endTime,
-			limit: query.limit,
+			limit: query.limit || query.legacyLimit,
 			cursor: query.cursor ? 'present' : 'none',
+			debug,
 		});
 
 		return this.metricsService.getActorActivity({
@@ -216,6 +267,9 @@ export class ApiMonitoringController {
 			endTime: query.endTime,
 			limit: query.limit || query.legacyLimit,
 			cursor: query.cursor,
+			route: query.route,
+			statusCode: query.statusCode,
+			debug,
 		});
 	}
 
@@ -241,6 +295,9 @@ export class ApiMonitoringController {
 		type: PaginatedErrorSampleResponseDto,
 	})
 	async getErrorSamples(@Query() query: ErrorSampleQueryDto) {
+		// Parse debug mode (optional, non-breaking)
+		const debug = query.debug === true;
+
 		this.logger.debug('Fetching error samples', {
 			startTime: query.startTime,
 			endTime: query.endTime,
@@ -249,17 +306,19 @@ export class ApiMonitoringController {
 			statusCode: query.statusCode,
 			limit: query.limit || query.legacyLimit,
 			cursor: query.cursor ? 'present' : 'none',
+			debug,
 		});
 
 		return this.metricsService.getErrorSamples({
 			startTime: query.startTime,
 			endTime: query.endTime,
-			classification: query.classification,
-			route: query.route,
-			limit: query.limit || query.legacyLimit || 50, // Use limit from ErrorSampleQuery
+			classification: query.classification as ApiErrorClassification | ApiErrorClassification[] | undefined,
+			route: query.route as string | string[] | undefined,
+			limit: query.limit || query.legacyLimit || 50,
 			cursor: query.cursor,
 			statusCode: query.statusCode,
 			legacyLimit: query.legacyLimit,
+			debug,
 		});
 	}
 
@@ -287,15 +346,19 @@ export class ApiMonitoringController {
 		type: SummaryResponseDto,
 	})
 	async getSummary(
-		@Query('from') from?: Date,
-		@Query('to') to?: Date,
+		@Query('from') from?: string,
+		@Query('to') to?: string,
 	) {
+		// Convert string dates to Date objects
+		const fromDate = from ? new Date(from) : undefined;
+		const toDate = to ? new Date(to) : undefined;
+
 		this.logger.debug('Fetching summary metrics', {
-			from,
-			to,
+			from: fromDate?.toISOString(),
+			to: toDate?.toISOString(),
 		});
 
-		return this.metricsService.getSummary(from, to);
+		return this.metricsService.getSummary(fromDate, toDate);
 	}
 
 	/**

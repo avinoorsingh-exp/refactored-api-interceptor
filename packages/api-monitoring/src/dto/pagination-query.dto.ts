@@ -14,19 +14,20 @@ export class PaginationQueryDto {
 	/**
 	 * Maximum number of results to return.
 	 * Default varies by endpoint (see endpoint documentation).
-	 * Maximum: 200
+	 * Use -1 or 0 to fetch all results (no limit).
+	 * Maximum: 100000 for safety.
 	 */
 	@ApiPropertyOptional({
-		description: 'Maximum number of results to return',
+		description: 'Maximum number of results to return. Use -1 or 0 to fetch all results (no limit).',
 		example: 50,
-		minimum: 1,
-		maximum: 200,
+		minimum: -1,
+		maximum: 100000,
 		default: 50,
 	})
 	@IsOptional()
 	@IsInt()
-	@Min(1)
-	@Max(200)
+	@Min(-1)
+	@Max(100000)
 	@Type(() => Number)
 	limit?: number;
 

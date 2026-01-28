@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDate, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsDate, IsInt, IsOptional, IsUUID, IsString, IsArray, Max, Min } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 import { PaginationQueryDto } from './pagination-query.dto.js';
 
 /**
@@ -45,16 +45,53 @@ export class ActorActivityQueryDto extends PaginationQueryDto {
 	 */
 	@ApiPropertyOptional({
 		description: 'Maximum number of results (deprecated, use limit)',
-		default: 100,
+		default: 50,
 		minimum: 1,
-		maximum: 1000,
+		maximum: 100,
 		deprecated: true,
 	})
 	@IsOptional()
 	@IsInt()
 	@Min(1)
-	@Max(1000)
+	@Max(100)
 	@Type(() => Number)
 	legacyLimit?: number;
+
+	@ApiPropertyOptional({
+		description: 'Filter by route(s). Supports single value or array for multi-select.',
+		example: '/v1/agents',
+		type: [String],
+		isArray: true,
+	})
+	@IsOptional()
+	@Transform(({ value }) => Array.isArray(value) ? value : value ? [value] : undefined)
+	@IsArray()
+	@IsString({ each: true })
+	route?: string | string[];
+
+	@ApiPropertyOptional({
+		description: 'Filter by HTTP status code(s). Supports single value or array for multi-select.',
+		example: 500,
+		type: [Number],
+		isArray: true,
+	})
+	@IsOptional()
+	@Transform(({ value }) => {
+		if (!value) return undefined;
+		const arr = Array.isArray(value) ? value : [value];
+		return arr.map((v) => parseInt(v, 10));
+	})
+	@IsArray()
+	@IsInt({ each: true })
+	statusCode?: number | number[];
+
+	@ApiPropertyOptional({
+		description: 'Enable debug mode to log filters, row counts, and cap application (non-breaking, DEBUG level only)',
+		example: false,
+		default: false,
+	})
+	@IsOptional()
+	@Transform(({ value }) => value === 'true' || value === true)
+	debug?: boolean;
 }
 

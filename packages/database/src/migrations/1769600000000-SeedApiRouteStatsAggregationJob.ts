@@ -5,7 +5,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *
  * Purpose:
  * - Insert admin job definition for API route stats aggregation
- * - Runs every hour at :05 to aggregate previous hour's request logs
+ * - Runs every hour at :05 to aggregate previous hour's request logs (hourly buckets)
+ * - Also aggregates daily buckets once per day at midnight (for > 24 hour queries)
  * - Enables fast dashboard queries without scanning raw logs
  *
  * Note: This migration is idempotent - it uses ON CONFLICT DO NOTHING.
@@ -23,7 +24,7 @@ export class SeedApiRouteStatsAggregationJob1769600000000 implements MigrationIn
 		`,
 			[
 				'api-route-stats-aggregation',
-				'Aggregates API request logs into route statistics for fast dashboard queries (hourly buckets)',
+				'Aggregates API request logs into route statistics for fast dashboard queries (hourly and daily buckets)',
 				'0 5 * * * *', // Every hour at :05 (5 minutes past the hour)
 			],
 		);
@@ -39,4 +40,5 @@ export class SeedApiRouteStatsAggregationJob1769600000000 implements MigrationIn
 		);
 	}
 }
+
 

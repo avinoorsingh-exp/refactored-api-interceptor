@@ -6,6 +6,8 @@ import { AdminJobService } from './admin-job.service.js';
 import { AdminJobsController } from './admin-jobs.controller.js';
 import { KafkaMessageCleanupJobHandler } from './handlers/kafka-message-cleanup-job-handler.js';
 import { ApiRouteStatsAggregationJobHandler } from './handlers/api-route-stats-aggregation-job-handler.js';
+import { ApiMonitorLogCleanupJobHandler } from './handlers/api-monitor-log-cleanup-job-handler.js';
+import { ScheduledJobsLogCleanupJobHandler } from './handlers/scheduled-jobs-log-cleanup-job-handler.js';
 import { JobLogCaptureService } from './job-log-capture.service.js';
 import { KafkaModule } from '../../kafka/kafka.module.js';
 
@@ -27,6 +29,8 @@ import { KafkaModule } from '../../kafka/kafka.module.js';
 		JobLogCaptureService,
 		KafkaMessageCleanupJobHandler,
 		ApiRouteStatsAggregationJobHandler,
+		ApiMonitorLogCleanupJobHandler,
+		ScheduledJobsLogCleanupJobHandler,
 	],
 	controllers: [AdminJobsController],
 	exports: [AdminJobService],

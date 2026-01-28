@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDate, IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsDate, IsEnum, IsInt, IsOptional, IsString, IsArray, Max, Min } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 import { ApiErrorClassification } from '@exprealty/shared-domain';
 import { PaginationQueryDto } from './pagination-query.dto.js';
 
@@ -30,33 +30,49 @@ export class ErrorSampleQueryDto extends PaginationQueryDto {
 	endTime!: Date;
 
 	@ApiPropertyOptional({
-		description: 'Filter by error classification',
+		description: 'Filter by error classification(s). Supports single value or array for multi-select.',
 		enum: ApiErrorClassification,
+		type: [String],
+		isArray: true,
 	})
 	@IsOptional()
-	@IsEnum(ApiErrorClassification)
-	classification?: ApiErrorClassification;
+	@Transform(({ value }) => Array.isArray(value) ? value : value ? [value] : undefined)
+	@IsArray()
+	@IsEnum(ApiErrorClassification, { each: true })
+	classification?: ApiErrorClassification | ApiErrorClassification[];
 
 	@ApiPropertyOptional({
-		description: 'Filter by route',
+		description: 'Filter by route(s). Supports single value or array for multi-select.',
 		example: '/v1/agents',
+		type: [String],
+		isArray: true,
 	})
 	@IsOptional()
-	@IsString()
-	route?: string;
+	@Transform(({ value }) => Array.isArray(value) ? value : value ? [value] : undefined)
+	@IsArray()
+	@IsString({ each: true })
+	route?: string | string[];
 
 	/**
-	 * Filter by HTTP status code.
+	 * Filter by HTTP status code(s).
 	 * Used for filtering by severity (4xx vs 5xx).
+	 * Supports single value or array for multi-select.
 	 */
 	@ApiPropertyOptional({
-		description: 'Filter by HTTP status code (e.g., 404, 500)',
+		description: 'Filter by HTTP status code(s) (e.g., 404, 500). Supports single value or array for multi-select.',
 		example: 500,
+		type: [Number],
+		isArray: true,
 	})
 	@IsOptional()
-	@IsInt()
-	@Type(() => Number)
-	statusCode?: number;
+	@Transform(({ value }) => {
+		if (!value) return undefined;
+		const arr = Array.isArray(value) ? value : [value];
+		return arr.map((v) => parseInt(v, 10));
+	})
+	@IsArray()
+	@IsInt({ each: true })
+	statusCode?: number | number[];
 
 	/**
 	 * Legacy limit field (deprecated, use limit from PaginationQueryDto).
@@ -77,5 +93,14 @@ export class ErrorSampleQueryDto extends PaginationQueryDto {
 	@Max(100)
 	@Type(() => Number)
 	legacyLimit?: number;
+
+	@ApiPropertyOptional({
+		description: 'Enable debug mode to log filters, row counts, and cap application (non-breaking, DEBUG level only)',
+		example: false,
+		default: false,
+	})
+	@IsOptional()
+	@Transform(({ value }) => value === 'true' || value === true)
+	debug?: boolean;
 }
 

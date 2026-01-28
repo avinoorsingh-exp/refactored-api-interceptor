@@ -59,6 +59,13 @@ export class ApiMonitoringService {
 			return;
 		}
 
+		// CRITICAL: Do not log requests without an actor
+		// If there is no actor, there should be NO route requests logged
+		if (!metadata.actorId) {
+			// Silently skip - no actor means no logging
+			return;
+		}
+
 		// Sampling: skip some requests if sample rate < 1.0
 		if (this.sampleRate < 1.0 && Math.random() > this.sampleRate) {
 			return;
@@ -171,6 +178,10 @@ export class ApiMonitoringService {
 
 	/**
 	 * Get request metadata from context and Express request/response.
+	 * 
+	 * CRITICAL: This is a PASSIVE consumer of actor context.
+	 * Actor identity MUST be resolved by ApiActorMiddleware BEFORE logging.
+	 * This method NEVER generates actor IDs - it only reads from context.
 	 */
 	buildRequestMetadata(
 		route: string,
@@ -198,6 +209,12 @@ export class ApiMonitoringService {
 
 		const stackTrace = this.extractStackTrace(error, statusCode);
 
+		// Actor ID and type are resolved by ApiActorMiddleware and stored in context
+		// This service is a passive consumer - it never generates actor IDs
+		// If actorId is missing, return undefined - the caller will skip logging
+		const actorId = context?.actorId;
+		const actorType = context?.actorType;
+
 		return {
 			route,
 			method,
@@ -209,8 +226,8 @@ export class ApiMonitoringService {
 			userAgent,
 			correlationId,
 			timestamp,
-			actorId: context?.actorId,
-			actorType: context?.actorType,
+			actorId, // May be undefined - this is acceptable, logger never creates actors
+			actorType, // May be undefined - this is acceptable, logger never creates actors
 			errorClassification,
 			hasError,
 			errorMessage,
@@ -218,4 +235,5 @@ export class ApiMonitoringService {
 		};
 	}
 }
+
 

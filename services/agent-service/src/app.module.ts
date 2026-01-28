@@ -67,16 +67,16 @@ import { LoggerService } from './core/logger.service.js'
 })
 export class AppModule implements NestModule {
 	configure(consumer: MiddlewareConsumer) {
-		// Apply correlation ID middleware to all routes (must be first)
-		consumer
-			.apply(CorrelationIdMiddleware)
-			.forRoutes('*')
-
-		// Apply API actor middleware after correlation ID (needs correlation context)
-		// This runs after authentication middleware to attribute requests to actors
-		// Note: ApiActorMiddleware is injected via NestJS DI when applied
+		// CRITICAL: API actor middleware MUST be FIRST
+		// Actor identity must be resolved BEFORE logging, metrics, or any other middleware
+		// This ensures req.apiActor is always available to downstream code
 		consumer
 			.apply(ApiActorMiddleware)
+			.forRoutes('*')
+
+		// Apply correlation ID middleware after actor resolution
+		consumer
+			.apply(CorrelationIdMiddleware)
 			.forRoutes('*')
 	}
 }

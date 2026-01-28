@@ -42,6 +42,21 @@ export class ApiActorEntity {
 	identifier?: string;
 
 	/**
+	 * Human-readable display name for UI presentation.
+	 * This is a PRESENTATION field only - does NOT replace identifier.
+	 * Format depends on actor type:
+	 * - USER → email or username
+	 * - API_KEY → "API Key: <name>"
+	 * - SERVICE_ACCOUNT → "Service: <id>"
+	 * - SYSTEM → "System"
+	 * - ANONYMOUS → "Anonymous (<ip>)"
+	 * 
+	 * @public
+	 */
+	@Column({ name: 'display_name', type: 'text' })
+	displayName!: string;
+
+	/**
 	 * Additional metadata as JSON.
 	 * @public
 	 */

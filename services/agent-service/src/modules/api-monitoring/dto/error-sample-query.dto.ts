@@ -52,3 +52,4 @@ export class ErrorSampleQueryDto {
 	limit: number = 50;
 }
 
+

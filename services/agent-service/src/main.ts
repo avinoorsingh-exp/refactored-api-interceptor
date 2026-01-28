@@ -271,16 +271,101 @@ async function bootstrap() {
 			throw swaggerError
 		}
 
-		console.error('[BOOTSTRAP] Step 9: Starting HTTP server...')
+		console.error('[BOOTSTRAP] Step 9: Asserting local development actor cardinality...')
+		try {
+			// HARD STOP: In local development (NODE_ENV === 'local'), assert that exactly ONE actor exists
+			// If count > 1, CRASH THE APP - this is a correctness violation
+			// CRITICAL: Only runs when NODE_ENV === 'local' - NEVER in AWS dev/test/prod
+			// Use DataSource directly to avoid DI context issues
+			const isLocal = process.env.NODE_ENV === 'local'
+			if (isLocal) {
+				const { ApiActorEntity } = await import('@exprealty/database')
+				const actorRepo = dataSource.getRepository(ApiActorEntity)
+				
+				// Step 1: Cleanup - deactivate all actors except LOCAL_DOCKER_ACTOR
+				const allActors = await actorRepo.find({
+					where: { active: true },
+				})
+				
+				const localDockerActor = allActors.find(
+					(a) => a.identifier === 'LOCAL_DOCKER_ACTOR' && a.type === 'system',
+				)
+				
+				if (localDockerActor) {
+					// Deactivate all other actors
+					const otherActors = allActors.filter((a) => a.id !== localDockerActor.id)
+					if (otherActors.length > 0) {
+						const otherActorIds = otherActors.map((a) => a.id)
+						await actorRepo
+							.createQueryBuilder()
+							.update(ApiActorEntity)
+							.set({ active: false })
+							.where('id IN (:...ids)', { ids: otherActorIds })
+							.execute()
+						logger.info('Deactivated old actors in local development', {
+							deactivatedCount: otherActors.length,
+							keptActorId: localDockerActor.id,
+						})
+					}
+				} else {
+					// No LOCAL_DOCKER_ACTOR exists - deactivate all and one will be created on first request
+					if (allActors.length > 0) {
+						const allActorIds = allActors.map((a) => a.id)
+						await actorRepo
+							.createQueryBuilder()
+							.update(ApiActorEntity)
+							.set({ active: false })
+							.where('id IN (:...ids)', { ids: allActorIds })
+							.execute()
+						logger.info('Deactivated all existing actors in local development - LOCAL_DOCKER_ACTOR will be created on first request', {
+							deactivatedCount: allActors.length,
+						})
+					}
+				}
+				
+				// Step 2: Assert that exactly ONE active actor exists (or zero, which is fine - will be created)
+				const activeActors = await actorRepo.find({
+					where: { active: true },
+				})
+
+				if (activeActors.length > 1) {
+					const actorIds = activeActors.map((a) => ({
+						id: a.id,
+						type: a.type,
+						identifier: a.identifier,
+						displayName: a.displayName,
+					}))
+
+					const errorMessage = `ACTOR CARDINALITY VIOLATION IN LOCAL DEVELOPMENT: After cleanup, found ${activeActors.length} active actors, but only 1 is allowed. Actor IDs: ${JSON.stringify(actorIds, null, 2)}`
+					logger.error(errorMessage, { actorCount: activeActors.length, actors: actorIds })
+					throw new Error(errorMessage)
+				}
+
+				logger.info('Local development actor cardinality check passed', {
+					actorCount: activeActors.length,
+				})
+			}
+			console.error('[BOOTSTRAP] Step 9: Actor cardinality check passed')
+		} catch (assertionError) {
+			console.error('[BOOTSTRAP] Step 9: Actor cardinality assertion FAILED:', assertionError)
+			if (assertionError instanceof Error) {
+				console.error('[BOOTSTRAP] Assertion error message:', assertionError.message)
+				console.error('[BOOTSTRAP] Assertion error stack:', assertionError.stack)
+			}
+			// CRASH THE APP - this is intentional
+			throw assertionError
+		}
+
+		console.error('[BOOTSTRAP] Step 10: Starting HTTP server...')
 		try {
 			await app.listen(config.PORT)
-			console.error(`[BOOTSTRAP] Step 9: HTTP server started successfully on port ${config.PORT}`)
+			console.error(`[BOOTSTRAP] Step 10: HTTP server started successfully on port ${config.PORT}`)
 			logger.info(`Agent service listening on port ${config.PORT}`, {
 				port: config.PORT,
 				environment: config.NODE_ENV,
 			})
 		} catch (listenError) {
-			console.error('[BOOTSTRAP] Step 9: HTTP server startup FAILED:', listenError)
+			console.error('[BOOTSTRAP] Step 10: HTTP server startup FAILED:', listenError)
 			if (listenError instanceof Error) {
 				console.error('[BOOTSTRAP] Listen error message:', listenError.message)
 				console.error('[BOOTSTRAP] Listen error stack:', listenError.stack)
@@ -288,12 +373,12 @@ async function bootstrap() {
 			throw listenError
 		}
 
-		console.error('[BOOTSTRAP] Step 10: Enabling shutdown hooks...')
+		console.error('[BOOTSTRAP] Step 11: Enabling shutdown hooks...')
 		try {
 			app.enableShutdownHooks()
-			console.error('[BOOTSTRAP] Step 10: Shutdown hooks enabled successfully')
+			console.error('[BOOTSTRAP] Step 11: Shutdown hooks enabled successfully')
 		} catch (shutdownError) {
-			console.error('[BOOTSTRAP] Step 10: Shutdown hooks FAILED:', shutdownError)
+			console.error('[BOOTSTRAP] Step 11: Shutdown hooks FAILED:', shutdownError)
 			if (shutdownError instanceof Error) {
 				console.error('[BOOTSTRAP] Shutdown error message:', shutdownError.message)
 				console.error('[BOOTSTRAP] Shutdown error stack:', shutdownError.stack)

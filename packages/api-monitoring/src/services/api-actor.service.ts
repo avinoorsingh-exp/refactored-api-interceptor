@@ -30,8 +30,64 @@ export class ApiActorService {
 	}
 
 	/**
+	 * Generate display name for an actor based on type, identifier, and metadata.
+	 * 
+	 * Rules:
+	 * - USER → email or username from identifier
+	 * - API_KEY → "API Key: <apiKeyName || apiKeyId>"
+	 * - SERVICE_ACCOUNT → "Service: <serviceAccountId>"
+	 * - SYSTEM → "System"
+	 * - ANONYMOUS → "Anonymous (<ip>)"
+	 * 
+	 * @param type - Actor type
+	 * @param identifier - Human-readable identifier
+	 * @param metadata - Optional metadata
+	 * @param actorId - Actor ID (for fallback in anonymous case)
+	 * @returns Display name string
+	 */
+	private generateDisplayName(
+		type: ApiActorType,
+		identifier?: string,
+		metadata?: Record<string, unknown>,
+		actorId?: string,
+	): string {
+		switch (type) {
+			case ApiActorType.USER:
+				return identifier || 'User';
+			
+			case ApiActorType.API_KEY: {
+				const apiKeyName = metadata?.apiKeyName as string | undefined;
+				const apiKeyId = metadata?.apiKeyId as string | undefined;
+				const name = apiKeyName || apiKeyId || identifier;
+				return `API Key: ${name || (actorId ? actorId.substring(0, 8) : 'Unknown')}`;
+			}
+			
+			case ApiActorType.SERVICE_ACCOUNT: {
+				const serviceAccountId = metadata?.serviceAccountId as string | undefined;
+				const id = serviceAccountId || identifier || (actorId ? actorId.substring(0, 8) : 'Unknown');
+				return `Service: ${id}`;
+			}
+			
+			case ApiActorType.SYSTEM:
+				return 'System';
+			
+			case ApiActorType.ANONYMOUS: {
+				const ip = metadata?.ip as string | undefined;
+				const shortId = actorId ? actorId.substring(0, 8) : 'unknown';
+				return `Anonymous (${ip || shortId})`;
+			}
+			
+			default:
+				return identifier || 'Unknown';
+		}
+	}
+
+	/**
 	 * Get or create an actor by type and identifier.
 	 * Uses upsert pattern to avoid race conditions.
+	 * 
+	 * Always sets displayName at creation time based on type, identifier, and metadata.
+	 * displayName is never updated per request - only when actor metadata changes.
 	 * 
 	 * @param type - Actor type
 	 * @param identifier - Human-readable identifier (email, API key name, etc.)
@@ -55,19 +111,37 @@ export class ApiActorService {
 				}
 			}
 
+			// Generate display name before creating actor
+			// For anonymous actors without IP, we'll use a placeholder and update after save
+			const tempId = '00000000-0000-0000-0000-000000000000';
+			let displayName = this.generateDisplayName(type, identifier, metadata, tempId);
+
 			// Create new actor
 			const actor = this.actorRepo.create({
 				type,
 				identifier,
 				metadata,
+				displayName,
 				active: true,
 			});
 
 			const saved = await this.actorRepo.save(actor);
+			
+			// For anonymous actors, update displayName with actual ID if needed
+			if (type === ApiActorType.ANONYMOUS && !metadata?.ip) {
+				const updatedDisplayName = this.generateDisplayName(type, identifier, metadata, saved.id);
+				if (updatedDisplayName !== displayName) {
+					await this.actorRepo.update(saved.id, { displayName: updatedDisplayName });
+					// Update the saved entity for return
+					saved.displayName = updatedDisplayName;
+				}
+			}
+
 			this.logger.debug('Created new API actor', {
 				actorId: saved.id,
 				type,
 				identifier,
+				displayName: saved.displayName,
 			});
 
 			return saved;

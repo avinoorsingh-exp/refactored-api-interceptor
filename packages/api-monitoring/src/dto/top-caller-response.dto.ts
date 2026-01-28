@@ -25,6 +25,15 @@ export class TopCallerResponseDto {
 	actorType!: string;
 
 	/**
+	 * Human-readable display name for UI presentation.
+	 */
+	@ApiProperty({
+		description: 'Human-readable display name for UI presentation',
+		example: 'API Key: Zapier',
+	})
+	displayName!: string;
+
+	/**
 	 * Total number of requests.
 	 */
 	@ApiProperty({
