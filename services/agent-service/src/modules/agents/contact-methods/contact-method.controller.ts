@@ -132,8 +132,8 @@ export class ContactMethodController {
 	@ApiParam({
 		name: 'contactMethodId',
 		type: 'string',
-		description: 'Contact method UUID',
-		example: '123e4567-e89b-12d3-a456-426614174000',
+		description: 'Contact method ID',
+		example: '12345',
 	})
 	@ApiResponse({
 		status: 200,
@@ -228,8 +228,8 @@ export class ContactMethodController {
 	@ApiParam({
 		name: 'contactMethodId',
 		type: 'string',
-		description: 'Contact method UUID',
-		example: '123e4567-e89b-12d3-a456-426614174000',
+		description: 'Contact method ID',
+		example: '12345',
 	})
 	@ApiBody({
 		type: UpdateContactMethodDto,
