@@ -630,6 +630,41 @@ export class AgentTypeOrmRepository
 			{ [paramName]: `%${searchQuery.trim()}%` },
 		);
 	}
+	/**
+ * Applies UUID search for agent ID.
+ * Searches on the id field (UUID) with exact matching.
+ * This works alongside existing individual field searches.
+ * 
+ * @param qb - Query builder
+ * @param searchQuery - Optional search query string
+ */
+	private applyUuidSearch<T>(
+		qb: SelectQueryBuilder<T>,
+		searchQuery?: string,
+	): void {
+		if (!searchQuery || !searchQuery.trim()) {
+			return;
+		}
+
+		// Check if search query looks like a UUID (basic validation)
+		// UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+		const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+		const trimmedQuery = searchQuery.trim();
+
+		// Only search UUID if the query matches UUID format
+		if (!uuidPattern.test(trimmedQuery)) {
+			return;
+		}
+
+		const alias = this.getAlias();
+		const paramName = 'uuidSearch';
+
+		// Exact match for UUID (case-insensitive)
+		qb.orWhere(
+			`LOWER(${alias}.id::text) = LOWER(:${paramName})`,
+			{ [paramName]: trimmedQuery },
+		);
+	}
 
 	/**
 	 * Finds agents with pagination, filtering, sorting, and search.
@@ -709,12 +744,16 @@ export class AgentTypeOrmRepository
 
 				// Apply email search if search query is provided
 				this.applyEmailSearch(qb, modifiedQuery.search);
+
+				//Apply UUID search if search query is provided
+				this.applyUuidSearch(qb, modifiedQuery.search);
 			}, { skipDefaultSort: hasRelationalSort });
 		}
 
 		return this.findWithQuery(modifiedQuery, selection,(qb) => {
 			this.applyFullNameSearch(qb, modifiedQuery.search);
 			this.applyEmailSearch(qb, modifiedQuery.search);
+			this.applyUuidSearch(qb, modifiedQuery.search);
 		});
 	}
 }
