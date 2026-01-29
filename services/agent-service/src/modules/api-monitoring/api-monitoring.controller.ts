@@ -19,6 +19,8 @@ import { ApiMetricsService } from './services/api-metrics.service.js';
 import { TimeSeriesQueryDto } from './dto/time-series-query.dto.js';
 import { ActorActivityQueryDto } from './dto/actor-activity-query.dto.js';
 import { ErrorSampleQueryDto } from './dto/error-sample-query.dto.js';
+import { TrendsQueryDto, TrendsRange } from './dto/trends-query.dto.js';
+import { TrendsResponseDto } from './dto/trends-response.dto.js';
 import { TimeBucket, Problems } from '@exprealty/shared-domain';
 import { LoggerService } from '../../core/logger.service.js';
 
@@ -32,6 +34,7 @@ import { LoggerService } from '../../core/logger.service.js';
  * - GET /v1/api-monitoring/metrics/time-series - Time-series metrics
  * - GET /v1/api-monitoring/metrics/routes - Per-route breakdown
  * - GET /v1/api-monitoring/metrics/top-callers - Top external callers
+ * - GET /v1/api-monitoring/trends - Long-term trends (30/60/90 days)
  * - GET /v1/api-monitoring/actors/:actorId/activity - Actor activity
  * - GET /v1/api-monitoring/errors/samples - Error samples
  * 
@@ -203,6 +206,36 @@ export class ApiMonitoringController {
 		});
 
 		return this.metricsService.getErrorSamples(query);
+	}
+
+	/**
+	 * Get trends metrics for long-term analysis.
+	 * 
+	 * Fixed ranges: 30, 60, 90 days.
+	 * Uses daily buckets for ranges ≤14 days, weekly buckets for ranges >14 days.
+	 * Queries only aggregated tables (api_route_stats), never raw request logs.
+	 * 
+	 * Returns time-bucketed metrics and KPI summary with period-over-period deltas.
+	 */
+	@Get('trends')
+	@HttpCode(HttpStatus.OK)
+	@ApiOperation({
+		summary: 'Get trends metrics',
+		description: 'Returns long-term trend metrics for fixed ranges (30, 60, 90 days) with time-bucketed data and KPI summary. Uses daily buckets for ≤14 days, weekly buckets for >14 days.',
+	})
+	@ApiResponse({
+		status: HttpStatus.OK,
+		description: 'Trends metrics with time-bucketed data and KPI summary',
+		type: TrendsResponseDto,
+	})
+	async getTrendsMetrics(@Query() query: TrendsQueryDto): Promise<TrendsResponseDto> {
+		this.logger.debug('Fetching trends metrics', {
+			range: query.range,
+			route: query.route,
+			method: query.method,
+		});
+
+		return this.metricsService.getTrendsMetrics(query.range, query.route, query.method);
 	}
 
 	/**

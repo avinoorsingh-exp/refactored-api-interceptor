@@ -24,6 +24,14 @@ import {
 	type PaginatedResponse,
 } from '../utils/pagination.util.js';
 import { toArray, hasValues } from '../utils/filter.util.js';
+import { resolveTrendBucketType, calculateBucketCount, getWeekStart } from '../utils/bucket-resolution.util.js';
+import type { TrendsRange } from '../dto/trends-query.dto.js';
+import type {
+	TrendBucketMetricsDto,
+	TrendsKpiSummaryDto,
+	PeriodDeltaDto,
+	TrendsResponseDto,
+} from '../dto/trends-response.dto.js';
 
 /**
  * Service for aggregating and querying API metrics.
@@ -1453,18 +1461,48 @@ export class ApiMetricsService {
 			let aggregatedCount = 0;
 
 			// Process each route/method combination
+			// HARDENING: Wrap each route in try-catch to prevent partial failures from stopping entire aggregation
+			const failedRoutes: Array<{ route: string; method: HttpMethod; error: string }> = [];
+			
 			for (const { route, method } of uniqueRoutes) {
-				// Process time range in buckets
-				let currentStart = new Date(startTime);
-				
-				while (currentStart < endTime) {
-					const bucketEnd = new Date(Math.min(currentStart.getTime() + bucketSizeMs, endTime.getTime()));
+				try {
+					// Process time range in buckets
+					let currentStart = new Date(startTime);
 					
-					await this.aggregateRouteStats(route, method, timeBucket, currentStart, bucketEnd, logCapture);
-					aggregatedCount++;
+					while (currentStart < endTime) {
+						const bucketEnd = new Date(Math.min(currentStart.getTime() + bucketSizeMs, endTime.getTime()));
+						
+						await this.aggregateRouteStats(route, method, timeBucket, currentStart, bucketEnd, logCapture);
+						aggregatedCount++;
+						
+						currentStart = bucketEnd;
+					}
+				} catch (error) {
+					// Log failure but continue processing other routes
+					const errorMessage = error instanceof Error ? error.message : String(error);
+					failedRoutes.push({ route, method, error: errorMessage });
 					
-					currentStart = bucketEnd;
+					this.logger.error('Failed to aggregate route stats for specific route/method', {
+						route,
+						method,
+						timeBucket,
+						startTime: startTime.toISOString(),
+						endTime: endTime.toISOString(),
+						error: errorMessage,
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+					
+					// Continue processing other routes - don't let one failure stop everything
 				}
+			}
+			
+			// Log summary of failures if any occurred
+			if (failedRoutes.length > 0) {
+				this.logger.warn('Some routes failed during aggregation (partial failure)', {
+					failedCount: failedRoutes.length,
+					totalRoutes: uniqueRoutes.length,
+					failedRoutes: failedRoutes.map(f => `${f.method} ${f.route}`),
+				});
 			}
 
 			this.logger.info('Route stats aggregation completed', {
@@ -1588,6 +1626,622 @@ export class ApiMetricsService {
 				p95Latency: 0,
 				activeActors: 0,
 				activeRateLimitViolations: 0,
+			};
+		}
+	}
+
+	/**
+	 * Get trends metrics for long-term analysis.
+	 * 
+	 * Queries only aggregated tables (api_route_stats) with DAY buckets,
+	 * then groups into daily or weekly buckets based on range.
+	 * 
+	 * Fixed ranges: 30, 60, 90 days.
+	 * - Daily buckets for ranges ≤14 days
+	 * - Weekly buckets for ranges >14 days
+	 * 
+	 * Performance optimizations:
+	 * - Uses indexed columns (bucket_start, route, method)
+	 * - Limits bucket counts (30 for 30 days, 13 for 90 days)
+	 * - No joins to actor tables or raw request logs
+	 * - KPI calculations done in service layer
+	 * 
+	 * @param range - Time range in days (30, 60, or 90)
+	 * @param route - Optional route filter
+	 * @param method - Optional HTTP method filter
+	 * @returns Trends metrics with time-bucketed data and KPI summary
+	 */
+	async getTrendsMetrics(
+		range: TrendsRange,
+		routes?: string[],
+		method?: HttpMethod,
+		statusCodes?: number[],
+	): Promise<TrendsResponseDto> {
+		// Calculate time range
+		const endTime = new Date();
+		const startTime = new Date(endTime.getTime() - range * 24 * 60 * 60 * 1000);
+		
+		// Resolve bucket type using centralized logic
+		const bucketType = resolveTrendBucketType(range);
+		const expectedBucketCount = calculateBucketCount(range, bucketType);
+
+		// Normalize filters
+		const normalizedRoutes = toArray(routes);
+		const normalizedStatusCodes = toArray(statusCodes);
+
+		this.logger.debug('Fetching trends metrics', {
+			range,
+			startTime: startTime.toISOString(),
+			endTime: endTime.toISOString(),
+			bucketType,
+			expectedBucketCount,
+			routes: normalizedRoutes,
+			method,
+			statusCodes: normalizedStatusCodes,
+		});
+
+		// Query DAY buckets from aggregated table using QueryBuilder for status code filtering
+		const qb = this.routeStatsRepo
+			.createQueryBuilder('stats')
+			.select([
+				'stats.id',
+				'stats.route',
+				'stats.method',
+				'stats.timeBucket',
+				'stats.bucketStart',
+				'stats.requestCount',
+				'stats.errorCount',
+				'stats.latencyP50',
+				'stats.latencyP95',
+				'stats.latencyP99',
+				'stats.statusCodeCounts',
+			])
+			.where('stats.bucket_start >= :startTime', { startTime })
+			.andWhere('stats.bucket_start <= :endTime', { endTime })
+			.andWhere('stats.time_bucket = :timeBucket', { timeBucket: TimeBucket.DAY });
+
+		// Apply route filter (multi-select)
+		if (hasValues(normalizedRoutes)) {
+			qb.andWhere('stats.route IN (:...routes)', { routes: normalizedRoutes });
+		}
+
+		// Apply method filter
+		if (method) {
+			qb.andWhere('stats.method = :method', { method });
+		}
+
+		// Apply statusCode filter (multi-select via JSONB OR conditions)
+		// Each status code is checked against the statusCodeCounts JSONB field
+		if (hasValues(normalizedStatusCodes)) {
+			const statusCodeConditions = normalizedStatusCodes.map((code, index) => {
+				const paramName = `statusCode${index}`;
+				return `stats.status_code_counts ? :${paramName}`;
+			}).join(' OR ');
+
+			const statusCodeParams: Record<string, string> = {};
+			normalizedStatusCodes.forEach((code, index) => {
+				statusCodeParams[`statusCode${index}`] = code.toString();
+			});
+
+			qb.andWhere(`(${statusCodeConditions})`, statusCodeParams);
+		}
+
+		const dayStats = await qb
+			.orderBy('stats.bucket_start', 'ASC')
+			.addOrderBy('stats.route', 'ASC')
+			.getMany();
+
+		// Group and aggregate into target buckets (daily or weekly)
+		const buckets = this.aggregateIntoBuckets(
+			dayStats,
+			bucketType,
+			startTime,
+			endTime,
+			normalizedStatusCodes,
+		);
+
+		// Calculate KPIs in service layer
+		const kpiSummary = this.calculateKpiSummary(buckets, range);
+
+		// Calculate period-over-period deltas if we have previous period data
+		const previousPeriodDeltas = await this.calculatePeriodDeltas(
+			range,
+			startTime,
+			kpiSummary,
+			normalizedRoutes,
+			method,
+			normalizedStatusCodes,
+		);
+		
+		if (previousPeriodDeltas) {
+			kpiSummary.requestsPerDayDelta = previousPeriodDeltas.requestsPerDayDelta;
+			kpiSummary.errorRateDelta = previousPeriodDeltas.errorRateDelta;
+			kpiSummary.p95LatencyDelta = previousPeriodDeltas.p95LatencyDelta;
+			kpiSummary.latencyVariabilityDelta = previousPeriodDeltas.latencyVariabilityDelta;
+		}
+
+		return {
+			buckets,
+			kpiSummary,
+		};
+	}
+
+	/**
+	 * Aggregate DAY buckets into daily or weekly buckets.
+	 * 
+	 * @param dayStats - DAY bucket statistics from api_route_stats
+	 * @param bucketType - 'day' or 'week'
+	 * @param startTime - Start of the time range
+	 * @param endTime - End of the time range
+	 * @returns Aggregated bucket metrics
+	 */
+	private aggregateIntoBuckets(
+		dayStats: ApiRouteStatsEntity[],
+		bucketType: 'day' | 'week',
+		startTime: Date,
+		endTime: Date,
+		statusCodes?: number[],
+	): TrendBucketMetricsDto[] {
+		if (bucketType === 'day') {
+			// For daily buckets, use DAY stats directly
+			const bucketMap = new Map<string, ApiRouteStatsEntity[]>();
+			
+		for (const stat of dayStats) {
+			// Skip invalid dates
+			if (!stat.bucketStart || isNaN(stat.bucketStart.getTime())) {
+				continue;
+			}
+			const bucketKey = stat.bucketStart.toISOString().split('T')[0]; // YYYY-MM-DD
+			if (!bucketMap.has(bucketKey)) {
+				bucketMap.set(bucketKey, []);
+			}
+			bucketMap.get(bucketKey)!.push(stat);
+		}
+
+			// Generate all expected daily buckets (fill gaps with zeros)
+			const buckets: TrendBucketMetricsDto[] = [];
+			const currentDate = new Date(startTime);
+			currentDate.setHours(0, 0, 0, 0);
+
+			while (currentDate <= endTime) {
+				const bucketKey = currentDate.toISOString().split('T')[0];
+				const stats = bucketMap.get(bucketKey) || [];
+
+				buckets.push(this.calculateBucketMetrics(stats, new Date(currentDate), statusCodes));
+				currentDate.setDate(currentDate.getDate() + 1);
+			}
+
+			return buckets;
+		} else {
+			// For weekly buckets, group DAY stats by week
+			const weekMap = new Map<string, ApiRouteStatsEntity[]>();
+
+		for (const stat of dayStats) {
+			// Skip invalid dates
+			if (!stat.bucketStart || isNaN(stat.bucketStart.getTime())) {
+				continue;
+			}
+			const weekStart = getWeekStart(stat.bucketStart);
+			const weekKey = weekStart.toISOString();
+			if (!weekMap.has(weekKey)) {
+				weekMap.set(weekKey, []);
+			}
+			weekMap.get(weekKey)!.push(stat);
+		}
+
+			// Generate all expected weekly buckets (fill gaps with zeros)
+			// Start from the week that contains startTime, end when we pass endTime
+			const buckets: TrendBucketMetricsDto[] = [];
+			let currentWeekStart = getWeekStart(startTime);
+
+			// Continue until we've passed endTime
+			while (currentWeekStart <= endTime) {
+				const weekKey = currentWeekStart.toISOString();
+				const stats = weekMap.get(weekKey) || [];
+
+				buckets.push(this.calculateBucketMetrics(stats, new Date(currentWeekStart), statusCodes));
+				
+				// Move to next week
+				const nextWeek = new Date(currentWeekStart);
+				nextWeek.setDate(nextWeek.getDate() + 7);
+				currentWeekStart = nextWeek;
+			}
+
+			return buckets;
+		}
+	}
+
+	/**
+	 * Calculate metrics for a single bucket from aggregated stats.
+	 * 
+	 * @param stats - Array of ApiRouteStatsEntity for this bucket
+	 * @param bucketStart - Start time of the bucket
+	 * @param statusCodes - Optional status codes to filter by (extracts counts from statusCodeCounts)
+	 * @returns Bucket metrics
+	 */
+	private calculateBucketMetrics(
+		stats: ApiRouteStatsEntity[],
+		bucketStart: Date,
+		statusCodes?: number[],
+	): TrendBucketMetricsDto {
+		if (stats.length === 0) {
+			// Handle missing data gracefully
+			return {
+				bucketStart,
+				requestCount: 0,
+				errorRate: 0,
+				p95Latency: 0,
+				latencyVariability: 0,
+			};
+		}
+
+		// If filtering by status codes, extract counts from statusCodeCounts
+		// Otherwise, use total requestCount
+		let totalRequests: number;
+		let totalErrors: number;
+
+		if (statusCodes && hasValues(statusCodes)) {
+			// Extract counts for the specified status codes from each stat's statusCodeCounts
+			totalRequests = 0;
+			totalErrors = 0;
+
+			for (const stat of stats) {
+				if (stat.statusCodeCounts) {
+					for (const code of statusCodes) {
+						const codeStr = code.toString();
+						const count = stat.statusCodeCounts[codeStr] || 0;
+						totalRequests += count;
+						// Consider 4xx and 5xx as errors
+						if (code >= 400) {
+							totalErrors += count;
+						}
+					}
+				}
+			}
+		} else {
+			// Aggregate across all routes/methods in this bucket
+			totalRequests = stats.reduce((sum, s) => sum + s.requestCount, 0);
+			totalErrors = stats.reduce((sum, s) => sum + s.errorCount, 0);
+		}
+
+		const errorRate = totalRequests > 0 ? totalErrors / totalRequests : 0;
+
+		// Calculate weighted average for p95 latency
+		// Weight by request count (use filtered count if status codes are specified)
+		let weightedP95Sum = 0;
+		let totalWeight = 0;
+		for (const stat of stats) {
+			// Determine the weight for this stat
+			let statWeight: number;
+			if (statusCodes && hasValues(statusCodes) && stat.statusCodeCounts) {
+				// Sum counts for the filtered status codes
+				statWeight = 0;
+				for (const code of statusCodes) {
+					const codeStr = code.toString();
+					statWeight += stat.statusCodeCounts[codeStr] || 0;
+				}
+			} else {
+				statWeight = stat.requestCount;
+			}
+
+			if (stat.latencyP95 !== null && stat.latencyP95 !== undefined && statWeight > 0) {
+				weightedP95Sum += stat.latencyP95 * statWeight;
+				totalWeight += statWeight;
+			}
+		}
+		const p95Latency = totalWeight > 0 ? Math.round(weightedP95Sum / totalWeight) : 0;
+
+		// Calculate weighted average for latency variability (p99 - p50)
+		let weightedVariabilitySum = 0;
+		let variabilityWeight = 0;
+		for (const stat of stats) {
+			// Determine the weight for this stat
+			let statWeight: number;
+			if (statusCodes && hasValues(statusCodes) && stat.statusCodeCounts) {
+				// Sum counts for the filtered status codes
+				statWeight = 0;
+				for (const code of statusCodes) {
+					const codeStr = code.toString();
+					statWeight += stat.statusCodeCounts[codeStr] || 0;
+				}
+			} else {
+				statWeight = stat.requestCount;
+			}
+
+			if (
+				stat.latencyP99 !== null &&
+				stat.latencyP99 !== undefined &&
+				stat.latencyP50 !== null &&
+				stat.latencyP50 !== undefined &&
+				statWeight > 0
+			) {
+				const variability = stat.latencyP99 - stat.latencyP50;
+				weightedVariabilitySum += variability * statWeight;
+				variabilityWeight += statWeight;
+			}
+		}
+		const latencyVariability = variabilityWeight > 0 ? Math.round(weightedVariabilitySum / variabilityWeight) : 0;
+
+		return {
+			bucketStart,
+			requestCount: totalRequests,
+			errorRate,
+			p95Latency,
+			latencyVariability,
+		};
+	}
+
+	/**
+	 * Calculate KPI summary for the trends period.
+	 * 
+	 * @param buckets - Time-bucketed metrics
+	 * @param rangeDays - Number of days in the range
+	 * @returns KPI summary
+	 */
+	private calculateKpiSummary(
+		buckets: TrendBucketMetricsDto[],
+		rangeDays: number,
+	): TrendsKpiSummaryDto {
+		if (buckets.length === 0) {
+			return {
+				avgRequestsPerDay: 0,
+				overallErrorRate: 0,
+				avgP95Latency: 0,
+				avgLatencyVariability: 0,
+			};
+		}
+
+		const totalRequests = buckets.reduce((sum, b) => sum + b.requestCount, 0);
+		const totalErrors = buckets.reduce((sum, b) => sum + b.requestCount * b.errorRate, 0);
+		const avgRequestsPerDay = totalRequests / rangeDays;
+		const overallErrorRate = totalRequests > 0 ? totalErrors / totalRequests : 0;
+
+		// Calculate weighted averages for latency metrics
+		let weightedP95Sum = 0;
+		let weightedVariabilitySum = 0;
+		let totalWeight = 0;
+
+		for (const bucket of buckets) {
+			if (bucket.requestCount > 0) {
+				weightedP95Sum += bucket.p95Latency * bucket.requestCount;
+				weightedVariabilitySum += bucket.latencyVariability * bucket.requestCount;
+				totalWeight += bucket.requestCount;
+			}
+		}
+
+		const avgP95Latency = totalWeight > 0 ? Math.round(weightedP95Sum / totalWeight) : 0;
+		const avgLatencyVariability = totalWeight > 0 ? Math.round(weightedVariabilitySum / totalWeight) : 0;
+
+		return {
+			avgRequestsPerDay: Math.round(avgRequestsPerDay),
+			overallErrorRate,
+			avgP95Latency,
+			avgLatencyVariability,
+		};
+	}
+
+	/**
+	 * Calculate period-over-period deltas by comparing with previous period.
+	 * 
+	 * @param range - Current range in days
+	 * @param currentStartTime - Start time of current period
+	 * @param currentKpis - Current period KPIs (already calculated)
+	 * @param routes - Optional routes filter (array)
+	 * @param method - Optional HTTP method filter
+	 * @param statusCodes - Optional status codes filter (array)
+	 * @returns Period deltas or null if previous period data unavailable
+	 */
+	private async calculatePeriodDeltas(
+		range: TrendsRange,
+		currentStartTime: Date,
+		currentKpis: TrendsKpiSummaryDto,
+		routes?: string[],
+		method?: HttpMethod,
+		statusCodes?: number[],
+	): Promise<{
+		requestsPerDayDelta: PeriodDeltaDto;
+		errorRateDelta: PeriodDeltaDto;
+		p95LatencyDelta: PeriodDeltaDto;
+		latencyVariabilityDelta: PeriodDeltaDto;
+	} | null> {
+		// Calculate previous period time range
+		const previousEndTime = new Date(currentStartTime);
+		const previousStartTime = new Date(previousEndTime.getTime() - range * 24 * 60 * 60 * 1000);
+
+		// Query previous period DAY buckets using QueryBuilder for status code filtering
+		const normalizedRoutes = toArray(routes);
+		const normalizedStatusCodes = toArray(statusCodes);
+
+		const qb = this.routeStatsRepo
+			.createQueryBuilder('stats')
+			.select([
+				'stats.id',
+				'stats.route',
+				'stats.method',
+				'stats.timeBucket',
+				'stats.bucketStart',
+				'stats.requestCount',
+				'stats.errorCount',
+				'stats.latencyP50',
+				'stats.latencyP95',
+				'stats.latencyP99',
+				'stats.statusCodeCounts',
+			])
+			.where('stats.bucket_start >= :startTime', { startTime: previousStartTime })
+			.andWhere('stats.bucket_start <= :endTime', { endTime: previousEndTime })
+			.andWhere('stats.time_bucket = :timeBucket', { timeBucket: TimeBucket.DAY });
+
+		// Apply route filter (multi-select)
+		if (hasValues(normalizedRoutes)) {
+			qb.andWhere('stats.route IN (:...routes)', { routes: normalizedRoutes });
+		}
+
+		// Apply method filter
+		if (method) {
+			qb.andWhere('stats.method = :method', { method });
+		}
+
+		// Apply statusCode filter (multi-select via JSONB OR conditions)
+		if (hasValues(normalizedStatusCodes)) {
+			const statusCodeConditions = normalizedStatusCodes.map((code, index) => {
+				const paramName = `statusCode${index}`;
+				return `stats.status_code_counts ? :${paramName}`;
+			}).join(' OR ');
+
+			const statusCodeParams: Record<string, string> = {};
+			normalizedStatusCodes.forEach((code, index) => {
+				statusCodeParams[`statusCode${index}`] = code.toString();
+			});
+
+			qb.andWhere(`(${statusCodeConditions})`, statusCodeParams);
+		}
+
+		const previousDayStats = await qb
+			.orderBy('stats.bucket_start', 'ASC')
+			.getMany();
+
+		// If no previous period data, return null
+		if (previousDayStats.length === 0) {
+			return null;
+		}
+
+		// Aggregate previous period into buckets
+		const bucketType = resolveTrendBucketType(range);
+		const previousBuckets = this.aggregateIntoBuckets(
+			previousDayStats,
+			bucketType,
+			previousStartTime,
+			previousEndTime,
+			normalizedStatusCodes,
+		);
+
+		// Calculate previous period KPIs
+		const previousKpis = this.calculateKpiSummary(previousBuckets, range);
+
+		// Calculate deltas
+		const calculateDelta = (current: number, previous: number): PeriodDeltaDto => {
+			const absolute = current - previous;
+			const percentage = previous !== 0 ? ((absolute / previous) * 100) : (absolute !== 0 ? 100 : 0);
+			return {
+				absolute: Math.round(absolute * 100) / 100, // Round to 2 decimals
+				percentage: Math.round(percentage * 100) / 100,
+			};
+		};
+
+		return {
+			requestsPerDayDelta: calculateDelta(currentKpis.avgRequestsPerDay, previousKpis.avgRequestsPerDay),
+			errorRateDelta: calculateDelta(currentKpis.overallErrorRate, previousKpis.overallErrorRate),
+			p95LatencyDelta: calculateDelta(currentKpis.avgP95Latency, previousKpis.avgP95Latency),
+			latencyVariabilityDelta: calculateDelta(
+				currentKpis.avgLatencyVariability,
+				previousKpis.avgLatencyVariability,
+			),
+		};
+	}
+
+	/**
+	 * Get all available distinct routes and error codes from api_route_stats.
+	 * 
+	 * Queries the aggregated table to return:
+	 * - Distinct routes available in the time window
+	 * - Distinct status codes (extracted from status_code_counts JSONB field)
+	 * 
+	 * Uses efficient queries with indexes on bucket_start, route, and status_code_counts.
+	 * Defaults to last 30 days if no time window is provided.
+	 * 
+	 * @param startDate - Optional start date (defaults to 30 days ago)
+	 * @param endDate - Optional end date (defaults to now)
+	 * @returns Object containing arrays of distinct routes and error codes
+	 */
+	async getAvailableRoutesAndErrorCodes(
+		startDate?: string | Date,
+		endDate?: string | Date,
+	): Promise<{ routes: string[]; errorCodes: string[] }> {
+		try {
+			// Default to last 30 days if no dates provided
+			const endTime = endDate
+				? (endDate instanceof Date ? endDate : new Date(endDate))
+				: new Date();
+			const startTime = startDate
+				? (startDate instanceof Date ? startDate : new Date(startDate))
+				: new Date(endTime.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+			// Validate dates
+			if (isNaN(startTime.getTime())) {
+				throw new Error(`Invalid startDate: ${startDate}`);
+			}
+			if (isNaN(endTime.getTime())) {
+				throw new Error(`Invalid endDate: ${endDate}`);
+			}
+
+			this.logger.debug('Fetching available routes and error codes', {
+				startTime: startTime.toISOString(),
+				endTime: endTime.toISOString(),
+			});
+
+			// Query distinct routes using TypeORM QueryBuilder
+			// Uses index on bucket_start for efficient filtering
+			const routesQuery = this.routeStatsRepo
+				.createQueryBuilder('stats')
+				.select('DISTINCT stats.route', 'route')
+				.where('stats.bucket_start >= :startTime', { startTime })
+				.andWhere('stats.bucket_start <= :endTime', { endTime })
+				.orderBy('stats.route', 'ASC');
+
+			const routesResult = await routesQuery.getRawMany();
+			const routes = routesResult.map((row) => row.route).filter((route) => route != null);
+
+			// Query distinct status codes from JSONB field
+			// Uses jsonb_object_keys() with LATERAL join to extract all keys
+			// Then uses DISTINCT to get unique values
+			// Only includes rows where status_code_counts is not null
+			// Note: TypeORM QueryBuilder doesn't support LATERAL joins well, so we use raw SQL
+			// jsonb_object_keys() is a set-returning function that requires LATERAL join
+			const statusCodesSql = `
+				SELECT DISTINCT status_code
+				FROM core.api_route_stats stats
+				CROSS JOIN LATERAL jsonb_object_keys(stats.status_code_counts) AS status_code
+				WHERE stats.bucket_start >= $1::timestamptz
+					AND stats.bucket_start <= $2::timestamptz
+					AND stats.status_code_counts IS NOT NULL
+				ORDER BY status_code ASC
+			`;
+			const statusCodesResult = await this.routeStatsRepo.query(statusCodesSql, [
+				startTime.toISOString(),
+				endTime.toISOString(),
+			]);
+			const errorCodes = statusCodesResult
+				.map((row: { status_code: string }) => row.status_code)
+				.filter((code: string | null | undefined): code is string => code != null)
+				.sort((a: string, b: string) => {
+					// Sort numerically if possible, otherwise alphabetically
+					const numA = parseInt(a, 10);
+					const numB = parseInt(b, 10);
+					if (!isNaN(numA) && !isNaN(numB)) {
+						return numA - numB;
+					}
+					return a.localeCompare(b);
+				});
+
+			this.logger.debug('Available routes and error codes fetched', {
+				routeCount: routes.length,
+				errorCodeCount: errorCodes.length,
+			});
+
+			return {
+				routes,
+				errorCodes,
+			};
+		} catch (error) {
+			this.logger.error('Failed to fetch available routes and error codes', {
+				error: error instanceof Error ? error.message : String(error),
+				startDate,
+				endDate,
+			});
+			// Return empty arrays on error to avoid breaking frontend
+			return {
+				routes: [],
+				errorCodes: [],
 			};
 		}
 	}

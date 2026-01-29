@@ -8,6 +8,7 @@ import { ErrorSampleQueryDto } from '../src/dto/error-sample-query.dto.js';
 import { ActorActivityQueryDto } from '../src/dto/actor-activity-query.dto.js';
 import { TimeSeriesQueryDto } from '../src/dto/time-series-query.dto.js';
 import { TopCallersQueryDto } from '../src/dto/top-callers-query.dto.js';
+import { AvailableRoutesQueryDto } from '../src/dto/available-routes-query.dto.js';
 import { TimeBucket } from '@exprealty/shared-domain';
 
 describe('ApiMonitoringController - Pagination', () => {
@@ -30,6 +31,7 @@ describe('ApiMonitoringController - Pagination', () => {
 			getTopCallers: jest.fn(),
 			getSummary: jest.fn(),
 			getTimeSeriesMetrics: jest.fn(),
+			getAvailableRoutesAndErrorCodes: jest.fn(),
 		} as any;
 
 		const module = await Test.createTestingModule({
@@ -324,6 +326,71 @@ describe('ApiMonitoringController - Pagination', () => {
 					route: ['/v1/agents'],
 					method: ['GET'],
 				}),
+			);
+		});
+	});
+
+	describe('getAvailableRoutesAndErrorCodes', () => {
+		it('should call service with query parameters', async () => {
+			const query = {
+				startDate: '2024-01-01T00:00:00Z',
+				endDate: '2024-01-31T23:59:59Z',
+			};
+
+			const expectedResult = {
+				routes: ['/v1/agents', '/v1/companies', '/v1/users'],
+				errorCodes: ['200', '400', '404', '500'],
+			};
+
+			metricsService.getAvailableRoutesAndErrorCodes = jest.fn().mockResolvedValue(expectedResult);
+
+			const result = await controller.getAvailableRoutesAndErrorCodes(query);
+
+			expect(metricsService.getAvailableRoutesAndErrorCodes).toHaveBeenCalledWith(
+				'2024-01-01T00:00:00Z',
+				'2024-01-31T23:59:59Z',
+			);
+			expect(result).toEqual(expectedResult);
+		});
+
+		it('should call service with undefined when dates are not provided', async () => {
+			const query = {};
+
+			const expectedResult = {
+				routes: ['/v1/agents'],
+				errorCodes: ['200', '404'],
+			};
+
+			metricsService.getAvailableRoutesAndErrorCodes = jest.fn().mockResolvedValue(expectedResult);
+
+			const result = await controller.getAvailableRoutesAndErrorCodes(query);
+
+			expect(metricsService.getAvailableRoutesAndErrorCodes).toHaveBeenCalledWith(
+				undefined,
+				undefined,
+			);
+			expect(result).toEqual(expectedResult);
+		});
+
+		it('should log debug information', async () => {
+			const query = {
+				startDate: '2024-01-01T00:00:00Z',
+				endDate: '2024-01-31T23:59:59Z',
+			};
+
+			metricsService.getAvailableRoutesAndErrorCodes = jest.fn().mockResolvedValue({
+				routes: [],
+				errorCodes: [],
+			});
+
+			await controller.getAvailableRoutesAndErrorCodes(query);
+
+			expect(logger.debug).toHaveBeenCalledWith(
+				'Fetching available routes and error codes',
+				{
+					startDate: '2024-01-01T00:00:00Z',
+					endDate: '2024-01-31T23:59:59Z',
+				},
 			);
 		});
 	});

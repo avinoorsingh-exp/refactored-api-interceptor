@@ -13,6 +13,18 @@ import {
 	type ErrorSampleQuery,
 } from '@exprealty/shared-domain';
 import { LoggerService } from '../../../core/logger.service.js';
+import {
+	resolveTrendBucketType,
+	calculateBucketCount,
+	getWeekStart,
+} from '../utils/bucket-resolution.util.js';
+import type {
+	TrendsResponseDto,
+	TrendBucketMetricsDto,
+	TrendsKpiSummaryDto,
+	PeriodDeltaDto,
+} from '../dto/trends-response.dto.js';
+import { TrendsRange } from '../dto/trends-query.dto.js';
 
 /**
  * Service for aggregating and querying API metrics.
@@ -351,6 +363,376 @@ export class ApiMetricsService {
 			},
 			['route', 'method', 'timeBucket', 'bucketStart'],
 		);
+	}
+
+	/**
+	 * Get trends metrics for long-term analysis.
+	 * 
+	 * Queries only aggregated tables (api_route_stats) with DAY buckets,
+	 * then groups into daily or weekly buckets based on range.
+	 * 
+	 * Fixed ranges: 30, 60, 90 days.
+	 * - Daily buckets for ranges ≤14 days
+	 * - Weekly buckets for ranges >14 days
+	 * 
+	 * Performance optimizations:
+	 * - Uses indexed columns (bucket_start, route, method)
+	 * - Limits bucket counts (30 for 30 days, 13 for 90 days)
+	 * - No joins to actor tables or raw request logs
+	 * - KPI calculations done in service layer
+	 * 
+	 * @param range - Time range in days (30, 60, or 90)
+	 * @param route - Optional route filter
+	 * @param method - Optional HTTP method filter
+	 * @returns Trends metrics with time-bucketed data and KPI summary
+	 */
+	async getTrendsMetrics(
+		range: TrendsRange,
+		route?: string,
+		method?: HttpMethod,
+	): Promise<TrendsResponseDto> {
+		// Calculate time range
+		const endTime = new Date();
+		const startTime = new Date(endTime.getTime() - range * 24 * 60 * 60 * 1000);
+		
+		// Resolve bucket type using centralized logic
+		const bucketType = resolveTrendBucketType(range);
+		const expectedBucketCount = calculateBucketCount(range, bucketType);
+
+		this.logger.debug('Fetching trends metrics', {
+			range,
+			startTime: startTime.toISOString(),
+			endTime: endTime.toISOString(),
+			bucketType,
+			expectedBucketCount,
+			route,
+			method,
+		});
+
+		// Query DAY buckets from aggregated table only
+		const where: Record<string, unknown> = {
+			bucketStart: Between(startTime, endTime),
+			timeBucket: TimeBucket.DAY,
+		};
+
+		if (route) {
+			where.route = route;
+		}
+
+		if (method) {
+			where.method = method;
+		}
+
+		const dayStats = await this.routeStatsRepo.find({
+			where,
+			order: {
+				bucketStart: 'ASC',
+				route: 'ASC',
+			},
+		});
+
+		// Group and aggregate into target buckets (daily or weekly)
+		const buckets = this.aggregateIntoBuckets(dayStats, bucketType, startTime, endTime);
+
+		// Calculate KPIs in service layer
+		const kpiSummary = this.calculateKpiSummary(buckets, range);
+
+		// Calculate period-over-period deltas if we have previous period data
+		const previousPeriodDeltas = await this.calculatePeriodDeltas(
+			range,
+			startTime,
+			kpiSummary,
+			route,
+			method,
+		);
+		
+		if (previousPeriodDeltas) {
+			kpiSummary.requestsPerDayDelta = previousPeriodDeltas.requestsPerDayDelta;
+			kpiSummary.errorRateDelta = previousPeriodDeltas.errorRateDelta;
+			kpiSummary.p95LatencyDelta = previousPeriodDeltas.p95LatencyDelta;
+			kpiSummary.latencyVariabilityDelta = previousPeriodDeltas.latencyVariabilityDelta;
+		}
+
+		return {
+			buckets,
+			kpiSummary,
+		};
+	}
+
+	/**
+	 * Aggregate DAY buckets into daily or weekly buckets.
+	 * 
+	 * @param dayStats - DAY bucket statistics from api_route_stats
+	 * @param bucketType - 'day' or 'week'
+	 * @param startTime - Start of the time range
+	 * @param endTime - End of the time range
+	 * @returns Aggregated bucket metrics
+	 */
+	private aggregateIntoBuckets(
+		dayStats: ApiRouteStatsEntity[],
+		bucketType: 'day' | 'week',
+		startTime: Date,
+		endTime: Date,
+	): TrendBucketMetricsDto[] {
+		if (bucketType === 'day') {
+			// For daily buckets, use DAY stats directly
+			const bucketMap = new Map<string, ApiRouteStatsEntity[]>();
+			
+			for (const stat of dayStats) {
+				const bucketKey = stat.bucketStart.toISOString().split('T')[0]; // YYYY-MM-DD
+				if (!bucketMap.has(bucketKey)) {
+					bucketMap.set(bucketKey, []);
+				}
+				bucketMap.get(bucketKey)!.push(stat);
+			}
+
+			// Generate all expected daily buckets (fill gaps with zeros)
+			const buckets: TrendBucketMetricsDto[] = [];
+			const currentDate = new Date(startTime);
+			currentDate.setHours(0, 0, 0, 0);
+
+			while (currentDate <= endTime) {
+				const bucketKey = currentDate.toISOString().split('T')[0];
+				const stats = bucketMap.get(bucketKey) || [];
+
+				buckets.push(this.calculateBucketMetrics(stats, new Date(currentDate)));
+				currentDate.setDate(currentDate.getDate() + 1);
+			}
+
+			return buckets;
+		} else {
+			// For weekly buckets, group DAY stats by week
+			const weekMap = new Map<string, ApiRouteStatsEntity[]>();
+
+			for (const stat of dayStats) {
+				const weekStart = getWeekStart(stat.bucketStart);
+				const weekKey = weekStart.toISOString();
+				if (!weekMap.has(weekKey)) {
+					weekMap.set(weekKey, []);
+				}
+				weekMap.get(weekKey)!.push(stat);
+			}
+
+			// Generate all expected weekly buckets (fill gaps with zeros)
+			// Start from the week that contains startTime, end when we pass endTime
+			const buckets: TrendBucketMetricsDto[] = [];
+			let currentWeekStart = getWeekStart(startTime);
+
+			// Continue until we've passed endTime
+			while (currentWeekStart <= endTime) {
+				const weekKey = currentWeekStart.toISOString();
+				const stats = weekMap.get(weekKey) || [];
+
+				buckets.push(this.calculateBucketMetrics(stats, new Date(currentWeekStart)));
+				
+				// Move to next week
+				const nextWeek = new Date(currentWeekStart);
+				nextWeek.setDate(nextWeek.getDate() + 7);
+				currentWeekStart = nextWeek;
+			}
+
+			return buckets;
+		}
+	}
+
+	/**
+	 * Calculate metrics for a single bucket from aggregated stats.
+	 * 
+	 * @param stats - Array of ApiRouteStatsEntity for this bucket
+	 * @param bucketStart - Start time of the bucket
+	 * @returns Bucket metrics
+	 */
+	private calculateBucketMetrics(
+		stats: ApiRouteStatsEntity[],
+		bucketStart: Date,
+	): TrendBucketMetricsDto {
+		if (stats.length === 0) {
+			// Handle missing data gracefully
+			return {
+				bucketStart,
+				requestCount: 0,
+				errorRate: 0,
+				p95Latency: 0,
+				latencyVariability: 0,
+			};
+		}
+
+		// Aggregate across all routes/methods in this bucket
+		const totalRequests = stats.reduce((sum, s) => sum + s.requestCount, 0);
+		const totalErrors = stats.reduce((sum, s) => sum + s.errorCount, 0);
+		const errorRate = totalRequests > 0 ? totalErrors / totalRequests : 0;
+
+		// Calculate weighted average for p95 latency
+		// Weight by request count
+		let weightedP95Sum = 0;
+		let totalWeight = 0;
+		for (const stat of stats) {
+			if (stat.latencyP95 !== null && stat.latencyP95 !== undefined && stat.requestCount > 0) {
+				weightedP95Sum += stat.latencyP95 * stat.requestCount;
+				totalWeight += stat.requestCount;
+			}
+		}
+		const p95Latency = totalWeight > 0 ? Math.round(weightedP95Sum / totalWeight) : 0;
+
+		// Calculate weighted average for latency variability (p99 - p50)
+		let weightedVariabilitySum = 0;
+		let variabilityWeight = 0;
+		for (const stat of stats) {
+			if (
+				stat.latencyP99 !== null &&
+				stat.latencyP99 !== undefined &&
+				stat.latencyP50 !== null &&
+				stat.latencyP50 !== undefined &&
+				stat.requestCount > 0
+			) {
+				const variability = stat.latencyP99 - stat.latencyP50;
+				weightedVariabilitySum += variability * stat.requestCount;
+				variabilityWeight += stat.requestCount;
+			}
+		}
+		const latencyVariability = variabilityWeight > 0 ? Math.round(weightedVariabilitySum / variabilityWeight) : 0;
+
+		return {
+			bucketStart,
+			requestCount: totalRequests,
+			errorRate,
+			p95Latency,
+			latencyVariability,
+		};
+	}
+
+	/**
+	 * Calculate KPI summary for the trends period.
+	 * 
+	 * @param buckets - Time-bucketed metrics
+	 * @param rangeDays - Number of days in the range
+	 * @returns KPI summary
+	 */
+	private calculateKpiSummary(
+		buckets: TrendBucketMetricsDto[],
+		rangeDays: number,
+	): TrendsKpiSummaryDto {
+		if (buckets.length === 0) {
+			return {
+				avgRequestsPerDay: 0,
+				overallErrorRate: 0,
+				avgP95Latency: 0,
+				avgLatencyVariability: 0,
+			};
+		}
+
+		const totalRequests = buckets.reduce((sum, b) => sum + b.requestCount, 0);
+		const totalErrors = buckets.reduce((sum, b) => sum + b.requestCount * b.errorRate, 0);
+		const avgRequestsPerDay = totalRequests / rangeDays;
+		const overallErrorRate = totalRequests > 0 ? totalErrors / totalRequests : 0;
+
+		// Calculate weighted averages for latency metrics
+		let weightedP95Sum = 0;
+		let weightedVariabilitySum = 0;
+		let totalWeight = 0;
+
+		for (const bucket of buckets) {
+			if (bucket.requestCount > 0) {
+				weightedP95Sum += bucket.p95Latency * bucket.requestCount;
+				weightedVariabilitySum += bucket.latencyVariability * bucket.requestCount;
+				totalWeight += bucket.requestCount;
+			}
+		}
+
+		const avgP95Latency = totalWeight > 0 ? Math.round(weightedP95Sum / totalWeight) : 0;
+		const avgLatencyVariability = totalWeight > 0 ? Math.round(weightedVariabilitySum / totalWeight) : 0;
+
+		return {
+			avgRequestsPerDay: Math.round(avgRequestsPerDay),
+			overallErrorRate,
+			avgP95Latency,
+			avgLatencyVariability,
+		};
+	}
+
+	/**
+	 * Calculate period-over-period deltas by comparing with previous period.
+	 * 
+	 * @param range - Current range in days
+	 * @param currentStartTime - Start time of current period
+	 * @param currentKpis - Current period KPIs (already calculated)
+	 * @param route - Optional route filter
+	 * @param method - Optional HTTP method filter
+	 * @returns Period deltas or null if previous period data unavailable
+	 */
+	private async calculatePeriodDeltas(
+		range: TrendsRange,
+		currentStartTime: Date,
+		currentKpis: TrendsKpiSummaryDto,
+		route?: string,
+		method?: HttpMethod,
+	): Promise<{
+		requestsPerDayDelta: PeriodDeltaDto;
+		errorRateDelta: PeriodDeltaDto;
+		p95LatencyDelta: PeriodDeltaDto;
+		latencyVariabilityDelta: PeriodDeltaDto;
+	} | null> {
+		// Calculate previous period time range
+		const previousEndTime = new Date(currentStartTime);
+		const previousStartTime = new Date(previousEndTime.getTime() - range * 24 * 60 * 60 * 1000);
+
+		// Query previous period DAY buckets
+		const where: Record<string, unknown> = {
+			bucketStart: Between(previousStartTime, previousEndTime),
+			timeBucket: TimeBucket.DAY,
+		};
+
+		if (route) {
+			where.route = route;
+		}
+
+		if (method) {
+			where.method = method;
+		}
+
+		const previousDayStats = await this.routeStatsRepo.find({
+			where,
+			order: {
+				bucketStart: 'ASC',
+			},
+		});
+
+		// If no previous period data, return null
+		if (previousDayStats.length === 0) {
+			return null;
+		}
+
+		// Aggregate previous period into buckets
+		const bucketType = resolveTrendBucketType(range);
+		const previousBuckets = this.aggregateIntoBuckets(
+			previousDayStats,
+			bucketType,
+			previousStartTime,
+			previousEndTime,
+		);
+
+		// Calculate previous period KPIs
+		const previousKpis = this.calculateKpiSummary(previousBuckets, range);
+
+		// Calculate deltas
+		const calculateDelta = (current: number, previous: number): PeriodDeltaDto => {
+			const absolute = current - previous;
+			const percentage = previous !== 0 ? ((absolute / previous) * 100) : (absolute !== 0 ? 100 : 0);
+			return {
+				absolute: Math.round(absolute * 100) / 100, // Round to 2 decimals
+				percentage: Math.round(percentage * 100) / 100,
+			};
+		};
+
+		return {
+			requestsPerDayDelta: calculateDelta(currentKpis.avgRequestsPerDay, previousKpis.avgRequestsPerDay),
+			errorRateDelta: calculateDelta(currentKpis.overallErrorRate, previousKpis.overallErrorRate),
+			p95LatencyDelta: calculateDelta(currentKpis.avgP95Latency, previousKpis.avgP95Latency),
+			latencyVariabilityDelta: calculateDelta(
+				currentKpis.avgLatencyVariability,
+				previousKpis.avgLatencyVariability,
+			),
+		};
 	}
 }
 

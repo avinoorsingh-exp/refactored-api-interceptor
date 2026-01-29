@@ -13,7 +13,9 @@ module.exports = {
     '^@exprealty/database$': path.resolve(__dirname, '../database/src/index.ts'),
     '^@exprealty/shared-domain$': path.resolve(__dirname, '../shared-domain/src/index.ts'),
     '^@exprealty/logger$': path.resolve(__dirname, '../logger/src/index.ts'),
+    '^@exprealty/cache$': path.resolve(__dirname, '../cache/src/index.ts'),
   },
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   collectCoverageFrom: [
     'src/utils/pagination.util.ts',
     'src/services/api-metrics.service.ts',

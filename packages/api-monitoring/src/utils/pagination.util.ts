@@ -122,7 +122,7 @@ export function encodeCursor(timestamp: string, id: string): string {
  * @param limit - Requested limit
  * @param defaultLimit - Default limit if not provided
  * @param maxLimit - Maximum allowed limit
- * @returns Normalized limit value, or null if limit is -1 or 0 (fetch all)
+ * @returns Normalized limit value, or null if limit is -1 (fetch all)
  */
 export function normalizeLimit(
 	limit?: number,
@@ -133,12 +133,12 @@ export function normalizeLimit(
 		return defaultLimit;
 	}
 	
-	// Special case: -1 or 0 means fetch all (no limit)
-	if (limit === -1 || limit === 0) {
+	// Special case: -1 means fetch all (no limit)
+	if (limit === -1) {
 		return null; // null indicates no limit
 	}
 	
-	// Ensure limit is a positive integer
+	// Ensure limit is a positive integer (0 becomes 1)
 	const normalized = Math.max(1, Math.floor(limit));
 	
 	// Enforce maximum

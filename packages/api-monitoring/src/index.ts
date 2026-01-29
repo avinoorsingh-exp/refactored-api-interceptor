@@ -36,6 +36,15 @@ export { ActorActivityQueryDto } from './dto/actor-activity-query.dto.js';
 export { ErrorSampleQueryDto } from './dto/error-sample-query.dto.js';
 export { TopCallersQueryDto } from './dto/top-callers-query.dto.js';
 export { PaginationQueryDto } from './dto/pagination-query.dto.js';
+export { TrendsQueryDto, TrendsRange } from './dto/trends-query.dto.js';
+export {
+	TrendsResponseDto,
+	TrendBucketMetricsDto,
+	TrendsKpiSummaryDto,
+	PeriodDeltaDto,
+} from './dto/trends-response.dto.js';
+export { AvailableRoutesQueryDto } from './dto/available-routes-query.dto.js';
+export { AvailableRoutesResponseDto } from './dto/available-routes-response.dto.js';
 
 // Response DTOs
 export { PageInfoDto } from './dto/page-info.dto.js';
@@ -57,4 +66,10 @@ export {
 	type PaginatedResponse,
 } from './utils/pagination.util.js';
 export { shouldLogApiRequest } from './utils/should-log-api-request.util.js';
+export {
+	resolveTrendBucketType,
+	calculateBucketCount,
+	getWeekStart,
+	getWeekEnd,
+} from './utils/bucket-resolution.util.js';
 

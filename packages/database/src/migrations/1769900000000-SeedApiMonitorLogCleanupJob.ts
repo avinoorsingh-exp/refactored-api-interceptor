@@ -9,10 +9,14 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * - Maintains storage efficiency while preserving attribution
  *
  * Retention Policy:
- * - api_request_log: 14 days (hard max 30 days)
+ * - api_request_log: 30 days (matches aggregation job's daily bucket backfill window)
+ * - api_route_stats: 6 months (180 days) - aggregated stats retained for historical analysis
  * - Anonymous actors: 30 days (only if no references)
- * - api_route_stats: NOT cleaned (retain 6-12 months)
  * - Non-anonymous actors: NEVER deleted automatically
+ * 
+ * IMPORTANT: 30-day retention ensures logs are available for the full 30-day
+ * daily bucket backfill period, preventing data loss if aggregation job fails.
+ * Stats are retained longer (6 months) for trend analysis and reporting.
  *
  * Note: This migration is idempotent - it uses ON CONFLICT DO NOTHING.
  */
@@ -29,7 +33,7 @@ export class SeedApiMonitorLogCleanupJob1769900000000 implements MigrationInterf
 		`,
 			[
 				'api-monitor-log-cleanup',
-				'Cleans up old API monitoring logs and anonymous actors (runs daily at 3 AM UTC). Retains 14 days of request logs, 30 days for anonymous actors.',
+				'Cleans up old API monitoring logs, stats, and anonymous actors (runs daily at 3 AM UTC). Retains 30 days of request logs, 6 months of aggregated stats, 30 days for anonymous actors.',
 				'0 3 * * *', // Daily at 3 AM UTC
 			],
 		);

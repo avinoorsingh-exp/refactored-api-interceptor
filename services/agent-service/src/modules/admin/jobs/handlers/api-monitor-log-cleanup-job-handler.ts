@@ -8,22 +8,31 @@ import { DataSource } from 'typeorm';
  * Job handler for cleaning up old API monitoring data.
  * 
  * Runs daily at 3 AM UTC to:
- * 1. Delete api_request_log entries older than retention period (14 days, max 30 days)
- * 2. Delete anonymous actors that have no references and are older than 30 days
- * 3. Optionally mark actors inactive if they have no recent activity
+ * 1. Delete api_request_log entries older than retention period (30 days)
+ *    - Matches the daily bucket backfill window to prevent data loss
+ *    - Ensures aggregation job has full 30-day window to backfill daily buckets
+ * 2. Delete api_route_stats entries older than retention period (6 months)
+ *    - Aggregated stats are kept longer than raw logs for historical analysis
+ *    - Supports long-term trend analysis and reporting
+ * 3. Delete anonymous actors that have no references and are older than 30 days
+ * 4. Optionally mark actors inactive if they have no recent activity
  * 
  * This job maintains storage efficiency while preserving attribution and aggregates.
+ * Retention period aligns with aggregation job's 30-day daily bucket backfill window.
  */
 @Injectable()
 export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModuleInit {
 	readonly name = 'api-monitor-log-cleanup';
-	readonly description = 'Cleans up old API monitoring logs and anonymous actors (runs daily at 3 AM UTC)';
+	readonly description = 'Cleans up old API monitoring logs, stats, and anonymous actors (runs daily at 3 AM UTC). Retains 30 days of request logs, 6 months of aggregated stats, 30 days for anonymous actors.';
 	readonly cron = '0 3 * * *'; // Daily at 3 AM UTC
 	private logCapture?: JobLogCapture;
 
 	// Retention policy constants
-	private readonly REQUEST_LOG_RETENTION_DAYS = 14;
+	// IMPORTANT: 30 days matches the aggregation job's daily bucket backfill window
+	// This ensures logs are available for the full 30-day backfill period
+	private readonly REQUEST_LOG_RETENTION_DAYS = 30;
 	private readonly REQUEST_LOG_MAX_RETENTION_DAYS = 30;
+	private readonly ROUTE_STATS_RETENTION_DAYS = 180; // 6 months (30 days * 6)
 	private readonly ANONYMOUS_ACTOR_RETENTION_DAYS = 30;
 
 	constructor(
@@ -53,8 +62,9 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 	 * 
 	 * Runs in this order:
 	 * 1. Clean up api_request_log (older than retention period)
-	 * 2. Clean up anonymous actors (no references, older than retention)
-	 * 3. Optionally update actor activity status
+	 * 2. Clean up api_route_stats (older than retention period)
+	 * 3. Clean up anonymous actors (no references, older than retention)
+	 * 4. Optionally update actor activity status
 	 */
 	async run(): Promise<JobExecutionResult> {
 		const startTime = Date.now();
@@ -63,20 +73,24 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 		// Calculate cutoff dates
 		const requestLogCutoff = new Date(now.getTime() - this.REQUEST_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000);
 		const requestLogMaxCutoff = new Date(now.getTime() - this.REQUEST_LOG_MAX_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+		const routeStatsCutoff = new Date(now.getTime() - this.ROUTE_STATS_RETENTION_DAYS * 24 * 60 * 60 * 1000);
 		const anonymousActorCutoff = new Date(now.getTime() - this.ANONYMOUS_ACTOR_RETENTION_DAYS * 24 * 60 * 60 * 1000);
 
 		this.logCapture?.log('info', 'Starting API monitor log cleanup', {
 			requestLogRetentionDays: this.REQUEST_LOG_RETENTION_DAYS,
 			requestLogMaxRetentionDays: this.REQUEST_LOG_MAX_RETENTION_DAYS,
+			routeStatsRetentionDays: this.ROUTE_STATS_RETENTION_DAYS,
 			anonymousActorRetentionDays: this.ANONYMOUS_ACTOR_RETENTION_DAYS,
 			requestLogCutoff: requestLogCutoff.toISOString(),
 			requestLogMaxCutoff: requestLogMaxCutoff.toISOString(),
+			routeStatsCutoff: routeStatsCutoff.toISOString(),
 			anonymousActorCutoff: anonymousActorCutoff.toISOString(),
 		});
 
 		const results = {
 			step1_requestLogCleanup: { deletedCount: 0 },
-			step2_anonymousActorCleanup: { deletedCount: 0 },
+			step2_routeStatsCleanup: { deletedCount: 0 },
+			step3_anonymousActorCleanup: { deletedCount: 0 },
 		};
 
 		try {
@@ -106,12 +120,38 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 				deletedCount: results.step1_requestLogCleanup.deletedCount,
 			});
 
-			// STEP 2: Clean up anonymous actors (only after logs are cleaned)
+			// STEP 2: Clean up api_route_stats (older than retention period)
+			this.logCapture?.log('info', 'STEP 2: Cleaning up api_route_stats', {
+				cutoffDate: routeStatsCutoff.toISOString(),
+			});
+
+			const routeStatsCleanupSql = `
+				DELETE FROM "core"."api_route_stats"
+				WHERE "bucket_start" < $1::timestamptz
+			`;
+			const routeStatsParams = [routeStatsCutoff.toISOString()];
+
+			const queryStart2 = Date.now();
+			const routeStatsResult = await this.dataSource.query(routeStatsCleanupSql, routeStatsParams);
+			const queryDuration2 = Date.now() - queryStart2;
+
+			// Log SQL query using logQuery() to match Kafka cleanup format (type: 'query')
+			this.logCapture?.logQuery(routeStatsCleanupSql, routeStatsParams, queryDuration2);
+			// PostgreSQL query result format: { command: 'DELETE', rowCount: number, ... }
+			results.step2_routeStatsCleanup.deletedCount = typeof routeStatsResult === 'object' && 'rowCount' in routeStatsResult
+				? (routeStatsResult.rowCount as number) || 0
+				: 0;
+
+			this.logCapture?.log('info', 'STEP 2 completed: Route stats cleanup', {
+				deletedCount: results.step2_routeStatsCleanup.deletedCount,
+			});
+
+			// STEP 3: Clean up anonymous actors (only after logs are cleaned)
 			// Delete anonymous actors that:
 			// - Have type = 'anonymous'
 			// - Have no references in api_request_log
 			// - Have last activity (updated_at) older than retention period
-			this.logCapture?.log('info', 'STEP 2: Cleaning up anonymous actors', {
+			this.logCapture?.log('info', 'STEP 3: Cleaning up anonymous actors', {
 				cutoffDate: anonymousActorCutoff.toISOString(),
 			});
 
@@ -128,27 +168,29 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 			`;
 			const anonymousActorParams = [anonymousActorCutoff.toISOString()];
 
-			const queryStart2 = Date.now();
+			const queryStart3 = Date.now();
 			const anonymousActorResult = await this.dataSource.query(anonymousActorCleanupSql, anonymousActorParams);
-			const queryDuration2 = Date.now() - queryStart2;
+			const queryDuration3 = Date.now() - queryStart3;
 
 			// Log SQL query using logQuery() to match Kafka cleanup format (type: 'query')
-			this.logCapture?.logQuery(anonymousActorCleanupSql, anonymousActorParams, queryDuration2);
+			this.logCapture?.logQuery(anonymousActorCleanupSql, anonymousActorParams, queryDuration3);
 			// PostgreSQL query result format: { command: 'DELETE', rowCount: number, ... }
-			results.step2_anonymousActorCleanup.deletedCount = typeof anonymousActorResult === 'object' && 'rowCount' in anonymousActorResult
+			results.step3_anonymousActorCleanup.deletedCount = typeof anonymousActorResult === 'object' && 'rowCount' in anonymousActorResult
 				? (anonymousActorResult.rowCount as number) || 0
 				: 0;
 
-			this.logCapture?.log('info', 'STEP 2 completed: Anonymous actor cleanup', {
-				deletedCount: results.step2_anonymousActorCleanup.deletedCount,
+			this.logCapture?.log('info', 'STEP 3 completed: Anonymous actor cleanup', {
+				deletedCount: results.step3_anonymousActorCleanup.deletedCount,
 			});
 
-			// STEP 3: Optional - Mark actors inactive if no recent activity
+			// STEP 4: Optional - Mark actors inactive if no recent activity
 			// This is a soft delete - we don't delete, just mark inactive
 			// For now, we'll skip this step as it's optional
 
 			const executionTime = Date.now() - startTime;
-			const totalDeleted = results.step1_requestLogCleanup.deletedCount + results.step2_anonymousActorCleanup.deletedCount;
+			const totalDeleted = results.step1_requestLogCleanup.deletedCount + 
+			                     results.step2_routeStatsCleanup.deletedCount + 
+			                     results.step3_anonymousActorCleanup.deletedCount;
 
 			this.logCapture?.log('info', 'API monitor log cleanup completed', {
 				totalDeleted,
@@ -159,9 +201,11 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 				log: JSON.stringify({
 					summary: {
 						requestLogDeleted: results.step1_requestLogCleanup.deletedCount,
-						anonymousActorsDeleted: results.step2_anonymousActorCleanup.deletedCount,
+						routeStatsDeleted: results.step2_routeStatsCleanup.deletedCount,
+						anonymousActorsDeleted: results.step3_anonymousActorCleanup.deletedCount,
 						totalDeleted,
 						requestLogCutoff: requestLogCutoff.toISOString(),
+						routeStatsCutoff: routeStatsCutoff.toISOString(),
 						anonymousActorCutoff: anonymousActorCutoff.toISOString(),
 						executionTimeMs: executionTime,
 					},
@@ -173,12 +217,18 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 			
 			this.logCapture?.log('error', 'API monitor log cleanup failed', {
 				error: errorMessage,
+				requestLogDeleted: results.step1_requestLogCleanup.deletedCount,
+				routeStatsDeleted: results.step2_routeStatsCleanup.deletedCount,
+				anonymousActorsDeleted: results.step3_anonymousActorCleanup.deletedCount,
 				executionTimeMs: executionTime,
 			});
 
 			this.logger.error('API monitor log cleanup job failed', {
 				error: errorMessage,
 				stack: error instanceof Error ? error.stack : undefined,
+				requestLogDeleted: results.step1_requestLogCleanup.deletedCount,
+				routeStatsDeleted: results.step2_routeStatsCleanup.deletedCount,
+				anonymousActorsDeleted: results.step3_anonymousActorCleanup.deletedCount,
 				executionTimeMs: executionTime,
 			});
 

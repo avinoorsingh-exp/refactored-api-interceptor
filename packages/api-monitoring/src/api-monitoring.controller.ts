@@ -25,6 +25,10 @@ import { PaginatedTopCallersResponseDto } from './dto/paginated-top-callers-resp
 import { TopCallersQueryDto } from './dto/top-callers-query.dto.js';
 import { SummaryResponseDto } from './dto/summary-response.dto.js';
 import { AggregationResponseDto } from './dto/aggregation-response.dto.js';
+import { TrendsQueryDto, TrendsRange } from './dto/trends-query.dto.js';
+import { TrendsResponseDto } from './dto/trends-response.dto.js';
+import { AvailableRoutesQueryDto } from './dto/available-routes-query.dto.js';
+import { AvailableRoutesResponseDto } from './dto/available-routes-response.dto.js';
 import { TimeBucket, HttpMethod, ApiErrorClassification, type TimeSeriesQuery } from '@exprealty/shared-domain';
 import type { IApiMonitoringLogger } from './interfaces/logger.interface.js';
 import { API_MONITORING_LOGGER_TOKEN } from './interfaces/logger.interface.js';
@@ -39,6 +43,7 @@ import { API_MONITORING_LOGGER_TOKEN } from './interfaces/logger.interface.js';
  * - GET /v1/api-monitoring/metrics/time-series - Time-series metrics
  * - GET /v1/api-monitoring/metrics/routes - Per-route breakdown
  * - GET /v1/api-monitoring/metrics/top-callers - Top external callers
+ * - GET /v1/api-monitoring/trends - Long-term trends (30/60/90 days)
  * - GET /v1/api-monitoring/actors/:actorId/activity - Actor activity
  * - GET /v1/api-monitoring/errors/samples - Error samples
  * 
@@ -385,13 +390,26 @@ export class ApiMonitoringController {
 		type: AggregationResponseDto,
 	})
 	async triggerAggregation(
-		@Query('startTime') startTime?: Date,
-		@Query('endTime') endTime?: Date,
+		@Query('startTime') startTime?: string | Date,
+		@Query('endTime') endTime?: string | Date,
 		@Query('timeBucket') timeBucket?: string,
 	) {
-		// Default to last 24 hours if not provided
-		const endTimeDate = endTime || new Date();
-		const startTimeDate = startTime || new Date(endTimeDate.getTime() - 24 * 60 * 60 * 1000);
+		// Parse date strings to Date objects if needed (query params come as strings)
+		const endTimeDate = endTime 
+			? (endTime instanceof Date ? endTime : new Date(endTime))
+			: new Date();
+		const startTimeDate = startTime
+			? (startTime instanceof Date ? startTime : new Date(startTime))
+			: new Date(endTimeDate.getTime() - 24 * 60 * 60 * 1000);
+
+		// Validate dates are valid
+		if (isNaN(startTimeDate.getTime())) {
+			throw new Error(`Invalid startTime: ${startTime}`);
+		}
+		if (isNaN(endTimeDate.getTime())) {
+			throw new Error(`Invalid endTime: ${endTime}`);
+		}
+
 		// Convert string to TimeBucket enum, defaulting to HOUR
 		const bucket = (timeBucket && Object.values(TimeBucket).includes(timeBucket as TimeBucket))
 			? (timeBucket as TimeBucket)
@@ -415,6 +433,95 @@ export class ApiMonitoringController {
 			endTime: endTimeDate.toISOString(),
 			timeBucket: bucket,
 		};
+	}
+
+	/**
+	 * Get trends metrics for long-term analysis.
+	 * 
+	 * Fixed ranges: 30, 60, 90 days.
+	 * Uses daily buckets for ranges ≤14 days, weekly buckets for ranges >14 days.
+	 * Queries only aggregated tables (api_route_stats), never raw request logs.
+	 * 
+	 * Returns time-bucketed metrics and KPI summary with period-over-period deltas.
+	 */
+	@Get('trends')
+	@HttpCode(HttpStatus.OK)
+	@ApiOperation({
+		summary: 'Get trends metrics',
+		description: 'Returns long-term trend metrics for fixed ranges (30, 60, 90 days) with time-bucketed data and KPI summary. Uses daily buckets for ≤14 days, weekly buckets for >14 days.',
+	})
+	@ApiResponse({
+		status: HttpStatus.OK,
+		description: 'Trends metrics with time-bucketed data and KPI summary',
+		type: TrendsResponseDto,
+	})
+	async getTrendsMetrics(@Query() query: TrendsQueryDto): Promise<TrendsResponseDto> {
+		// Ensure range is properly transformed (handle case where Transform decorator might not run)
+		let range: TrendsRange;
+		const rangeValue = query.range as unknown;
+		if (typeof rangeValue === 'string') {
+			const num = parseInt(rangeValue.replace('d', ''), 10);
+			if (num === 30 || num === 60 || num === 90) {
+				range = num as TrendsRange;
+			} else {
+				throw new Error(`Invalid range: ${rangeValue}. Must be 30d, 60d, 90d, 30, 60, or 90`);
+			}
+		} else if (typeof rangeValue === 'number') {
+			range = rangeValue as TrendsRange;
+		} else {
+			throw new Error(`Invalid range type: ${typeof rangeValue}`);
+		}
+
+		this.logger.debug('Fetching trends metrics', {
+			range,
+			routes: query.route,
+			method: query.method,
+			statusCodes: query.statusCode,
+		});
+
+		return this.metricsService.getTrendsMetrics(
+			range,
+			query.route,
+			query.method,
+			query.statusCode,
+		);
+	}
+
+	/**
+	 * Get all available distinct routes and error codes for a given time window.
+	 * 
+	 * Queries the aggregated api_route_stats table to return:
+	 * - All distinct route paths available in the time window
+	 * - All distinct status codes (extracted from status_code_counts JSONB field)
+	 * 
+	 * This endpoint is designed to populate frontend filter dropdowns consistently.
+	 * Defaults to last 30 days if no time window is provided.
+	 * 
+	 * Uses efficient queries with indexes on bucket_start for performance.
+	 */
+	@Get('routes/available')
+	@HttpCode(HttpStatus.OK)
+	@ApiOperation({
+		summary: 'Get available routes and error codes',
+		description: 'Returns all distinct routes and status codes available in api_route_stats for the given time window. Defaults to last 30 days if no dates provided.',
+	})
+	@ApiResponse({
+		status: HttpStatus.OK,
+		description: 'Available routes and error codes',
+		type: AvailableRoutesResponseDto,
+	})
+	async getAvailableRoutesAndErrorCodes(
+		@Query() query: AvailableRoutesQueryDto,
+	): Promise<AvailableRoutesResponseDto> {
+		this.logger.debug('Fetching available routes and error codes', {
+			startDate: query.startDate,
+			endDate: query.endDate,
+		});
+
+		return this.metricsService.getAvailableRoutesAndErrorCodes(
+			query.startDate,
+			query.endDate,
+		);
 	}
 }
 
