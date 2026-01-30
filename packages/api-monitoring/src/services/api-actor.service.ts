@@ -100,13 +100,33 @@ export class ApiActorService {
 		metadata?: Record<string, unknown>,
 	): Promise<ApiActorEntity> {
 		try {
-			// Try to find existing actor
+			// Try to find existing actor (active or inactive)
+			// This ensures stable identity: same identifier → same actor
 			if (identifier) {
 				const existing = await this.actorRepo.findOne({
-					where: { type, identifier, active: true },
+					where: { type, identifier },
 				});
 
 				if (existing) {
+					// If actor exists but is inactive, reactivate it
+					if (!existing.active) {
+						await this.actorRepo.update(existing.id, {
+							active: true,
+							updatedAt: new Date(),
+						});
+						// Reload to get updated entity
+						const reactivated = await this.actorRepo.findOne({
+							where: { id: existing.id },
+						});
+						if (reactivated) {
+							this.logger.debug('Reactivated previously deactivated actor', {
+								actorId: reactivated.id,
+								type,
+								identifier,
+							});
+							return reactivated;
+						}
+					}
 					return existing;
 				}
 			}
@@ -147,12 +167,27 @@ export class ApiActorService {
 			return saved;
 		} catch (error) {
 			// Handle race condition: actor created between find and save
+			// Check for any actor (active or inactive) with this type and identifier
 			if (identifier) {
 				const existing = await this.actorRepo.findOne({
-					where: { type, identifier, active: true },
+					where: { type, identifier },
 				});
 
 				if (existing) {
+					// If actor exists but is inactive, reactivate it
+					if (!existing.active) {
+						await this.actorRepo.update(existing.id, {
+							active: true,
+							updatedAt: new Date(),
+						});
+						// Reload to get updated entity
+						const reactivated = await this.actorRepo.findOne({
+							where: { id: existing.id },
+						});
+						if (reactivated) {
+							return reactivated;
+						}
+					}
 					return existing;
 				}
 			}

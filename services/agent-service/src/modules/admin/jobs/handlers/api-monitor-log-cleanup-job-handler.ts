@@ -15,7 +15,10 @@ import { DataSource } from 'typeorm';
  *    - Aggregated stats are kept longer than raw logs for historical analysis
  *    - Supports long-term trend analysis and reporting
  * 3. Delete anonymous actors that have no references and are older than 30 days
- * 4. Optionally mark actors inactive if they have no recent activity
+ * 4. Deactivate actors with no recent activity (90+ days)
+ *    - Soft delete (sets active = false) to preserve historical attribution
+ *    - Excludes SYSTEM actors (keeps system actors active)
+ *    - Only deactivates if no recent request logs exist
  * 
  * This job maintains storage efficiency while preserving attribution and aggregates.
  * Retention period aligns with aggregation job's 30-day daily bucket backfill window.
@@ -23,7 +26,7 @@ import { DataSource } from 'typeorm';
 @Injectable()
 export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModuleInit {
 	readonly name = 'api-monitor-log-cleanup';
-	readonly description = 'Cleans up old API monitoring logs, stats, and anonymous actors (runs daily at 3 AM UTC). Retains 30 days of request logs, 6 months of aggregated stats, 30 days for anonymous actors.';
+	readonly description = 'Cleans up old API monitoring logs, stats, and actors (runs daily at 3 AM UTC). Retains 30 days of request logs, 6 months of aggregated stats, 30 days for anonymous actors. Deactivates actors with no activity for 90+ days.';
 	readonly cron = '0 3 * * *'; // Daily at 3 AM UTC
 	private logCapture?: JobLogCapture;
 
@@ -34,6 +37,7 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 	private readonly REQUEST_LOG_MAX_RETENTION_DAYS = 30;
 	private readonly ROUTE_STATS_RETENTION_DAYS = 180; // 6 months (30 days * 6)
 	private readonly ANONYMOUS_ACTOR_RETENTION_DAYS = 30;
+	private readonly INACTIVE_ACTOR_RETENTION_DAYS = 90; // Deactivate actors with no activity for 90+ days
 
 	constructor(
 		private readonly adminJobService: AdminJobService,
@@ -64,7 +68,7 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 	 * 1. Clean up api_request_log (older than retention period)
 	 * 2. Clean up api_route_stats (older than retention period)
 	 * 3. Clean up anonymous actors (no references, older than retention)
-	 * 4. Optionally update actor activity status
+	 * 4. Deactivate actors with no recent activity (90+ days)
 	 */
 	async run(): Promise<JobExecutionResult> {
 		const startTime = Date.now();
@@ -75,22 +79,26 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 		const requestLogMaxCutoff = new Date(now.getTime() - this.REQUEST_LOG_MAX_RETENTION_DAYS * 24 * 60 * 60 * 1000);
 		const routeStatsCutoff = new Date(now.getTime() - this.ROUTE_STATS_RETENTION_DAYS * 24 * 60 * 60 * 1000);
 		const anonymousActorCutoff = new Date(now.getTime() - this.ANONYMOUS_ACTOR_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+		const inactiveActorCutoff = new Date(now.getTime() - this.INACTIVE_ACTOR_RETENTION_DAYS * 24 * 60 * 60 * 1000);
 
 		this.logCapture?.log('info', 'Starting API monitor log cleanup', {
 			requestLogRetentionDays: this.REQUEST_LOG_RETENTION_DAYS,
 			requestLogMaxRetentionDays: this.REQUEST_LOG_MAX_RETENTION_DAYS,
 			routeStatsRetentionDays: this.ROUTE_STATS_RETENTION_DAYS,
 			anonymousActorRetentionDays: this.ANONYMOUS_ACTOR_RETENTION_DAYS,
+			inactiveActorRetentionDays: this.INACTIVE_ACTOR_RETENTION_DAYS,
 			requestLogCutoff: requestLogCutoff.toISOString(),
 			requestLogMaxCutoff: requestLogMaxCutoff.toISOString(),
 			routeStatsCutoff: routeStatsCutoff.toISOString(),
 			anonymousActorCutoff: anonymousActorCutoff.toISOString(),
+			inactiveActorCutoff: inactiveActorCutoff.toISOString(),
 		});
 
 		const results = {
 			step1_requestLogCleanup: { deletedCount: 0 },
 			step2_routeStatsCleanup: { deletedCount: 0 },
 			step3_anonymousActorCleanup: { deletedCount: 0 },
+			step4_inactiveActorDeactivation: { deactivatedCount: 0 },
 		};
 
 		try {
@@ -183,17 +191,56 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 				deletedCount: results.step3_anonymousActorCleanup.deletedCount,
 			});
 
-			// STEP 4: Optional - Mark actors inactive if no recent activity
+			// STEP 4: Deactivate actors with no recent activity
 			// This is a soft delete - we don't delete, just mark inactive
-			// For now, we'll skip this step as it's optional
+			// Deactivates actors that:
+			// - Are currently active
+			// - Are not SYSTEM actors (keep system actors active)
+			// - Have not been updated in the last 90 days
+			// - Have no recent request logs (last 90 days)
+			this.logCapture?.log('info', 'STEP 4: Deactivating inactive actors', {
+				cutoffDate: inactiveActorCutoff.toISOString(),
+			});
+
+			const deactivateInactiveActorsSql = `
+				UPDATE "core"."api_actor" AS "actor"
+				SET "active" = false
+				WHERE "actor"."active" = true
+					AND "actor"."type" != 'system'
+					AND "actor"."updated_at" < $1::timestamptz
+					AND NOT EXISTS (
+						SELECT 1
+						FROM "core"."api_request_log" AS "log"
+						WHERE "log"."actor_id" = "actor"."id"
+							AND "log"."timestamp" >= $1::timestamptz
+					)
+			`;
+			const inactiveActorParams = [inactiveActorCutoff.toISOString()];
+
+			const queryStart4 = Date.now();
+			const inactiveActorResult = await this.dataSource.query(deactivateInactiveActorsSql, inactiveActorParams);
+			const queryDuration4 = Date.now() - queryStart4;
+
+			// Log SQL query using logQuery() to match Kafka cleanup format (type: 'query')
+			this.logCapture?.logQuery(deactivateInactiveActorsSql, inactiveActorParams, queryDuration4);
+			// PostgreSQL query result format: { command: 'UPDATE', rowCount: number, ... }
+			results.step4_inactiveActorDeactivation.deactivatedCount = typeof inactiveActorResult === 'object' && 'rowCount' in inactiveActorResult
+				? (inactiveActorResult.rowCount as number) || 0
+				: 0;
+
+			this.logCapture?.log('info', 'STEP 4 completed: Inactive actor deactivation', {
+				deactivatedCount: results.step4_inactiveActorDeactivation.deactivatedCount,
+			});
 
 			const executionTime = Date.now() - startTime;
 			const totalDeleted = results.step1_requestLogCleanup.deletedCount + 
 			                     results.step2_routeStatsCleanup.deletedCount + 
 			                     results.step3_anonymousActorCleanup.deletedCount;
+			const totalDeactivated = results.step4_inactiveActorDeactivation.deactivatedCount;
 
 			this.logCapture?.log('info', 'API monitor log cleanup completed', {
 				totalDeleted,
+				totalDeactivated,
 				executionTimeMs: executionTime,
 			});
 
@@ -203,10 +250,13 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 						requestLogDeleted: results.step1_requestLogCleanup.deletedCount,
 						routeStatsDeleted: results.step2_routeStatsCleanup.deletedCount,
 						anonymousActorsDeleted: results.step3_anonymousActorCleanup.deletedCount,
+						inactiveActorsDeactivated: results.step4_inactiveActorDeactivation.deactivatedCount,
 						totalDeleted,
+						totalDeactivated,
 						requestLogCutoff: requestLogCutoff.toISOString(),
 						routeStatsCutoff: routeStatsCutoff.toISOString(),
 						anonymousActorCutoff: anonymousActorCutoff.toISOString(),
+						inactiveActorCutoff: inactiveActorCutoff.toISOString(),
 						executionTimeMs: executionTime,
 					},
 				}, null, 2),
@@ -220,6 +270,7 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 				requestLogDeleted: results.step1_requestLogCleanup.deletedCount,
 				routeStatsDeleted: results.step2_routeStatsCleanup.deletedCount,
 				anonymousActorsDeleted: results.step3_anonymousActorCleanup.deletedCount,
+				inactiveActorsDeactivated: results.step4_inactiveActorDeactivation.deactivatedCount,
 				executionTimeMs: executionTime,
 			});
 
@@ -229,6 +280,7 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 				requestLogDeleted: results.step1_requestLogCleanup.deletedCount,
 				routeStatsDeleted: results.step2_routeStatsCleanup.deletedCount,
 				anonymousActorsDeleted: results.step3_anonymousActorCleanup.deletedCount,
+				inactiveActorsDeactivated: results.step4_inactiveActorDeactivation.deactivatedCount,
 				executionTimeMs: executionTime,
 			});
 
