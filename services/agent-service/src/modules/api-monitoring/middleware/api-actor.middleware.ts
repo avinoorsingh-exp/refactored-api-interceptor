@@ -72,6 +72,13 @@ export class ApiActorMiddleware implements NestMiddleware {
 			return;
 		}
 
+		// Policy: Skip actor creation for excluded origins (frontend UI, etc.)
+		// This prevents creating actors for requests from excluded origins
+		if (this.isExcludedOrigin(req)) {
+			next();
+			return;
+		}
+
 		// CENTRALIZED ACTOR RESOLUTION - THE ONLY PLACE WHERE ACTORS ARE CREATED
 		// This MUST throw errors - we want the app to crash if actor creation fails
 		const resolvedActor = await this.createOrResolveActor(req);
@@ -177,7 +184,41 @@ export class ApiActorMiddleware implements NestMiddleware {
 			return { id: actor.id, type: actor.type };
 		}
 
-		// Priority 2: API key
+		// Priority 2: Extract user from JWT token or API Gateway headers
+		// API Gateway validates API key, then passes user info via JWT or headers
+		// We need to identify the actual user, not the shared API key
+		
+		// TEMPORARY DEBUG: Log all headers to see what API Gateway is sending
+		if (process.env.NODE_ENV !== 'production') {
+			const allHeaders: Record<string, string | undefined> = {};
+			Object.keys(req.headers).forEach((key) => {
+				allHeaders[key] = req.get(key) || undefined;
+			});
+			this.logger.debug('API Gateway request headers (for debugging)', {
+				path: req.path,
+				method: req.method,
+				headers: allHeaders,
+				hasAuthorization: !!req.get('authorization'),
+				authorizationPrefix: req.get('authorization')?.substring(0, 20) || 'none',
+			});
+		}
+		
+		const userFromToken = this.extractUserFromToken(req);
+		if (userFromToken?.id) {
+			const actor = await this.actorService.getOrCreateActor(
+				ApiActorType.USER,
+				userFromToken.id, // Use user.id as identifier for stable resolution
+				{
+					userId: userFromToken.id,
+					email: userFromToken.email,
+					username: userFromToken.username,
+					source: 'jwt_token_or_headers',
+				},
+			);
+			return { id: actor.id, type: actor.type };
+		}
+
+		// Priority 3: API key (only if set by auth middleware/guard with user context)
 		// @ts-expect-error - apiKey may be set by auth middleware
 		const apiKey = req.apiKey;
 		if (apiKey?.id) {
@@ -261,6 +302,209 @@ export class ApiActorMiddleware implements NestMiddleware {
 		}
 
 		return undefined;
+	}
+
+	/**
+	 * Extract user information from JWT token or API Gateway headers.
+	 * 
+	 * API Gateway validates API key, then passes user info via:
+	 * - JWT token in Authorization header (Bearer token)
+	 * - Custom headers (X-User-Id, X-User-Email, etc.)
+	 * 
+	 * @param req - Express request object
+	 * @returns User info if found, undefined otherwise
+	 */
+	private extractUserFromToken(req: Request): {
+		id: string;
+		email?: string;
+		username?: string;
+	} | undefined {
+		// Check for user info in custom headers (API Gateway may set these)
+		// Try multiple common header name variations
+		const userIdFromHeader =
+			req.get('x-user-id') ||
+			req.get('x-userid') ||
+			req.get('user-id') ||
+			req.get('x-cognito-username') ||
+			req.get('x-cognito-user-id') ||
+			req.get('x-aws-user-id');
+
+		if (userIdFromHeader) {
+			const userInfo = {
+				id: userIdFromHeader,
+				email: req.get('x-user-email') || req.get('user-email') || req.get('x-cognito-email') || undefined,
+				username: req.get('x-username') || req.get('username') || req.get('x-cognito-username') || undefined,
+			};
+
+			if (process.env.NODE_ENV !== 'production') {
+				this.logger.debug('Extracted user from headers', {
+					userId: userInfo.id,
+					hasEmail: !!userInfo.email,
+					hasUsername: !!userInfo.username,
+				});
+			}
+
+			return userInfo;
+		}
+
+		// Try to extract user info from JWT token in Authorization header
+		const authHeader = req.get('authorization');
+		if (!authHeader || !authHeader.startsWith('Bearer ')) {
+			return undefined;
+		}
+
+		const token = authHeader.substring(7).trim();
+		if (!token) {
+			return undefined;
+		}
+
+		// Decode JWT token (without verification - API Gateway already validated it)
+		// JWT format: header.payload.signature
+		// We only need the payload to extract user info
+		try {
+			const parts = token.split('.');
+			if (parts.length !== 3) {
+				return undefined;
+			}
+
+			// Decode base64url payload (JWT uses base64url, not base64)
+			const payload = parts[1];
+			// Add padding if needed for base64 decoding
+			const paddedPayload = payload + '='.repeat((4 - (payload.length % 4)) % 4);
+			const decoded = Buffer.from(paddedPayload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8');
+			const claims = JSON.parse(decoded) as Record<string, unknown>;
+
+			// Extract user ID from common JWT claim fields
+			// Common fields: sub, userId, id, user_id, email, username (for email-based IDs)
+			// Also check Cognito-specific claims: 'cognito:username', 'cognito:sub'
+			const userId =
+				(claims.sub as string) ||
+				(claims['cognito:username'] as string) ||
+				(claims['cognito:sub'] as string) ||
+				(claims.userId as string) ||
+				(claims.id as string) ||
+				(claims.user_id as string) ||
+				(claims.username as string) ||
+				(claims.email as string); // Fallback to email if no ID field
+
+			if (!userId) {
+				if (process.env.NODE_ENV !== 'production') {
+					this.logger.debug('JWT token found but no user ID in claims', {
+						availableClaims: Object.keys(claims),
+					});
+				}
+				return undefined;
+			}
+
+			const userInfo = {
+				id: userId,
+				email: (claims.email as string) || undefined,
+				username:
+					(claims.username as string) ||
+					(claims['cognito:username'] as string) ||
+					(claims.preferred_username as string) ||
+					undefined,
+			};
+
+			if (process.env.NODE_ENV !== 'production') {
+				this.logger.debug('Extracted user from JWT token', {
+					userId: userInfo.id,
+					hasEmail: !!userInfo.email,
+					hasUsername: !!userInfo.username,
+				});
+			}
+
+			return userInfo;
+		} catch (error) {
+			// If JWT decoding fails, log and return undefined
+			// This is expected if the token is not a JWT or is malformed
+			if (process.env.NODE_ENV !== 'production') {
+				this.logger.debug('Failed to decode JWT token for user extraction', {
+					error: error instanceof Error ? error.message : String(error),
+					authHeaderPrefix: authHeader?.substring(0, 20),
+				});
+			}
+			return undefined;
+		}
+	}
+
+	/**
+	 * Check if request is from an excluded origin (frontend UI, etc.).
+	 * Uses API_MONITORING_EXCLUDE_ORIGINS environment variable.
+	 * 
+	 * @param req - Express request object
+	 * @returns true if request should be excluded from actor creation
+	 */
+	private isExcludedOrigin(req: Request): boolean {
+		const excludedOrigins = this.getExcludedOrigins();
+		if (excludedOrigins.length === 0) {
+			return false;
+		}
+
+		const origin = req.get('origin');
+		const referer = req.get('referer');
+
+		// Check Origin header
+		if (origin) {
+			const originUrl = this.parseUrl(origin);
+			if (originUrl && this.isExcludedOriginMatch(originUrl, excludedOrigins)) {
+				return true;
+			}
+		}
+
+		// Check Referer header
+		if (referer) {
+			const refererUrl = this.parseUrl(referer);
+			if (refererUrl && this.isExcludedOriginMatch(refererUrl, excludedOrigins)) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Get list of excluded origins from environment variable.
+	 * Format: comma-separated list of domains (e.g., "nexus.example.com,app.example.com")
+	 */
+	private getExcludedOrigins(): string[] {
+		const excluded = process.env.API_MONITORING_EXCLUDE_ORIGINS;
+		if (!excluded) {
+			return [];
+		}
+		return excluded.split(',').map((domain) => domain.trim().toLowerCase());
+	}
+
+	/**
+	 * Check if a URL matches any excluded origin.
+	 */
+	private isExcludedOriginMatch(url: URL, excludedOrigins: string[]): boolean {
+		const hostname = url.hostname.toLowerCase();
+
+		for (const excluded of excludedOrigins) {
+			// Support exact match or subdomain match (e.g., "nexus" matches "nexus.example.com")
+			if (hostname === excluded || hostname.endsWith(`.${excluded}`) || hostname.includes(excluded)) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Parse a URL string, handling both full URLs and hostnames.
+	 */
+	private parseUrl(urlString: string): URL | null {
+		try {
+			// If it's already a full URL, parse directly
+			if (urlString.startsWith('http://') || urlString.startsWith('https://')) {
+				return new URL(urlString);
+			}
+			// If it's just a hostname, construct a URL
+			return new URL(`https://${urlString}`);
+		} catch {
+			return null;
+		}
 	}
 }
 
