@@ -30,6 +30,7 @@
 		"migration:show": "npm run typeorm -- migration:show"
 	},
 	"dependencies": {
+		"@exprealty/api-monitoring": "workspace:*",
 		"@exprealty/cache": "workspace:*",
 		"@exprealty/config": "workspace:*",
 		"@exprealty/database": "workspace:*",

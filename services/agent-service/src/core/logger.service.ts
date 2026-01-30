@@ -1,7 +1,7 @@
-// services/orchestrator/src/core/logger.service.ts
-import { Injectable } from '@nestjs/common'
+// services/agent-service/src/core/logger.service.ts
+import { Injectable, OnModuleInit } from '@nestjs/common'
 import { createLogger, type Logger as WinstonLogger } from '@exprealty/logger'
-import { MetricsService } from '@exprealty/logger/metrics'
+import { MetricsService, type ExporterProtocol } from '@exprealty/logger/metrics'
 import { z } from 'zod'
 
 import {
@@ -10,109 +10,219 @@ import {
   EnvEnum,
 } from '@exprealty/shared-domain'
 
-import { ConfigService } from './config.service.js'
-
+/**
+ * Bootstrap-safe logger service.
+ * 
+ * Architecture:
+ * - Constructor: Minimal setup, console-only, no dependencies
+ * - Post-bootstrap: Initializes Winston logger and metrics via OnModuleInit
+ * - All operations wrapped in try/catch to never throw
+ * 
+ * Dependencies:
+ * - NO ConfigService dependency (uses process.env directly)
+ * - NO file system writes in constructor
+ * - NO network calls in constructor
+ * - All heavy operations deferred to onModuleInit
+ */
 @Injectable()
-export class LoggerService {
-  private readonly logger: WinstonLogger
-  private readonly metrics: MetricsService
-  // NOTE: this was incorrectly copied from the orchestrator service.
-  // Ensure the logger reports the correct service name for containerized logs.
+export class LoggerService implements OnModuleInit {
+  private logger: WinstonLogger | null = null
+  private metrics: MetricsService | null = null
   private readonly service = 'agent-service'
   private readonly env: z.infer<typeof EnvEnum>
   private context?: string
+  private initialized = false
 
-  constructor(private readonly configService: ConfigService) {
-    this.env = this.configService.get('NODE_ENV') || 'dev'
+  /**
+   * Bootstrap-safe constructor.
+   * Uses only process.env and console logging.
+   * No dependencies, no file I/O, no network calls.
+   */
+  constructor() {
+    // Use process.env directly - no ConfigService dependency
+    this.env = (process.env.NODE_ENV as z.infer<typeof EnvEnum>) || 'dev'
+    
+    // Console fallback for bootstrap phase
+    // All methods will use console if logger not initialized
+  }
 
-    this.logger = createLogger({
-      service: this.service,
-      level: this.configService.get('LOG_LEVEL') || 'info',
-      logDir: this.configService.get('LOG_DIR'),
-      env: this.env,
-    })
+  /**
+   * Initialize Winston logger and metrics after module bootstrap.
+   * This runs after all modules are initialized, so dependencies are safe.
+   */
+  async onModuleInit(): Promise<void> {
+    try {
+      // Initialize Winston logger (may perform file I/O)
+      const logLevel = process.env.LOG_LEVEL || 'info'
+      const logDir = process.env.LOG_DIR
+      
+      this.logger = createLogger({
+        service: this.service,
+        level: logLevel,
+        logDir: logDir,
+        env: this.env,
+      })
 
-    const headersJson = this.configService.get('METRICS_EXPORTER_HEADERS')
-    let exporterHeaders: Record<string, string> = {}
-    if (headersJson) {
-      try {
-        exporterHeaders = JSON.parse(headersJson)
-      } catch (err) {
-        this.logger.warn('Failed to parse METRICS_EXPORTER_HEADERS', { error: err })
+      // Initialize metrics (may perform network calls)
+      const headersJson = process.env.METRICS_EXPORTER_HEADERS
+      let exporterHeaders: Record<string, string> = {}
+      if (headersJson) {
+        try {
+          exporterHeaders = JSON.parse(headersJson)
+        } catch (err) {
+          // Fail silently - metrics headers are optional
+        }
       }
-    }
 
-    // Initialize OTEL metrics
-    this.metrics = new MetricsService({
-      service: this.service,
-      version: '0.1.0',
-      env: this.env,
-      exporterEndpoint: this.configService.get('METRICS_EXPORTER_ENDPOINT'),
-      exporterProtocol: this.configService.get('METRICS_EXPORTER_PROTOCOL'),
-      exportIntervalMillis: this.configService.get('METRICS_EXPORT_INTERVAL_MS'),
-      exporterHeaders,
-      enableDiagnostics: this.configService.get('METRICS_ENABLE_DIAGNOSTICS'),
-      diagnosticsVerbose: this.configService.get('METRICS_DIAGNOSTICS_VERBOSE'),
-    })
+      this.metrics = new MetricsService({
+        service: this.service,
+        version: '0.1.0',
+        env: this.env,
+        exporterEndpoint: process.env.METRICS_EXPORTER_ENDPOINT,
+        exporterProtocol: process.env.METRICS_EXPORTER_PROTOCOL as ExporterProtocol | undefined,
+        exportIntervalMillis: process.env.METRICS_EXPORT_INTERVAL_MS
+          ? parseInt(process.env.METRICS_EXPORT_INTERVAL_MS, 10)
+          : undefined,
+        exporterHeaders,
+        enableDiagnostics: process.env.METRICS_ENABLE_DIAGNOSTICS === 'true',
+        diagnosticsVerbose: process.env.METRICS_DIAGNOSTICS_VERBOSE === 'true',
+      })
+
+      this.initialized = true
+    } catch (err) {
+      // CRITICAL: Never throw during initialization
+      // Log to console as fallback
+      console.error('[LoggerService] Failed to initialize Winston logger or metrics:', err)
+      // Continue with console-only logging
+    }
   }
 
   /**
    * Set the context (e.g., class name) for subsequent log messages.
    */
   setContext(context: string): void {
-    this.context = context
+    try {
+      this.context = context
+    } catch {
+      // Fail silently
+    }
   }
 
   private withContext(meta?: Record<string, unknown>): Record<string, unknown> {
-    return this.context ? { context: this.context, ...meta } : { ...meta }
+    try {
+      return this.context ? { context: this.context, ...meta } : { ...meta }
+    } catch {
+      return meta || {}
+    }
   }
 
-  info(message: string, meta?: Record<string, unknown>) {
-    this.logger.info(message, this.withContext(meta))
+  /**
+   * Log info message. Never throws.
+   */
+  info(message: string, meta?: Record<string, unknown>): void {
+    try {
+      if (this.logger && this.initialized) {
+        this.logger.info(message, this.withContext(meta))
+      } else {
+        // Console fallback during bootstrap
+        console.log(`[INFO] ${message}`, meta || '')
+      }
+    } catch {
+      // Fail silently - logging should never break the app
+    }
   }
 
-  error(message: string, meta?: Record<string, unknown>) {
-    this.logger.error(message, this.withContext(meta))
+  /**
+   * Log error message. Never throws.
+   */
+  error(message: string, meta?: Record<string, unknown>): void {
+    try {
+      if (this.logger && this.initialized) {
+        this.logger.error(message, this.withContext(meta))
+      } else {
+        // Console fallback during bootstrap
+        console.error(`[ERROR] ${message}`, meta || '')
+      }
+    } catch {
+      // Fail silently - logging should never break the app
+    }
   }
 
-  warn(message: string, meta?: Record<string, unknown>) {
-    this.logger.warn(message, this.withContext(meta))
+  /**
+   * Log warning message. Never throws.
+   */
+  warn(message: string, meta?: Record<string, unknown>): void {
+    try {
+      if (this.logger && this.initialized) {
+        this.logger.warn(message, this.withContext(meta))
+      } else {
+        // Console fallback during bootstrap
+        console.warn(`[WARN] ${message}`, meta || '')
+      }
+    } catch {
+      // Fail silently - logging should never break the app
+    }
   }
 
-  debug(message: string, meta?: Record<string, unknown>) {
-    this.logger.debug(message, this.withContext(meta))
+  /**
+   * Log debug message. Never throws.
+   */
+  debug(message: string, meta?: Record<string, unknown>): void {
+    try {
+      if (this.logger && this.initialized) {
+        this.logger.debug(message, this.withContext(meta))
+      } else {
+        // Console fallback during bootstrap (only in dev/local)
+        if (this.env === 'dev' || this.env === 'local') {
+          console.debug(`[DEBUG] ${message}`, meta || '')
+        }
+      }
+    } catch {
+      // Fail silently - logging should never break the app
+    }
   }
 
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
   // Metrics Access
   // -------------------------------------------------------------------------
 
   /**
-   * Get the metrics service instance
-   * Used by HTTP clients and interceptors to record metrics
+   * Get the metrics service instance.
+   * Returns null if not initialized (bootstrap-safe).
    */
-  getMetrics(): MetricsService {
-    return this.metrics
+  getMetrics(): MetricsService | null {
+    try {
+      return this.metrics
+    } catch {
+      return null
+    }
   }
 
-  serviceCall(input: Omit<ServiceCallEvent, 'event' | 'service' | 'env'>) {
-    const parsed = ServiceCallEventSchema.safeParse({
-      event: 'service_call',
-      service: this.service,
-      env: this.env,
-      ...input,
-    })
-
-    if (!parsed.success) {
-      // Emit a warning so bad payloads don’t break prod dashboards
-      this.logger.warn('provider_call_invalid', {
-        issues: parsed.error.format(),
-        raw: input,
+  /**
+   * Log service call event. Never throws.
+   */
+  serviceCall(input: Omit<ServiceCallEvent, 'event' | 'service' | 'env'>): void {
+    try {
+      const parsed = ServiceCallEventSchema.safeParse({
+        event: 'service_call',
+        service: this.service,
+        env: this.env,
+        ...input,
       })
-      return
-    }
 
-    // Single consistent JSON for Loki
-    this.logger.info('provider_call', parsed.data)
+      if (!parsed.success) {
+        // Emit a warning so bad payloads don't break prod dashboards
+        this.warn('provider_call_invalid', {
+          issues: parsed.error.format(),
+          raw: input,
+        })
+        return
+      }
+
+      // Single consistent JSON for Loki
+      this.info('provider_call', parsed.data)
+    } catch {
+      // Fail silently - service call logging should never break the app
+    }
   }
 }

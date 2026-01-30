@@ -55,6 +55,9 @@ import { KafkaMessageProcessingEntity } from './entities/core/kafka-message-proc
 import { KafkaServiceEntity } from './entities/core/kafka-service.entity.js'
 import { AdminJobEntity } from './entities/core/admin-job.entity.js'
 import { AdminJobExecutionEntity } from './entities/core/admin-job-execution.entity.js'
+import { ApiActorEntity } from './entities/core/api-actor.entity.js'
+import { ApiRequestLogEntity } from './entities/core/api-request-log.entity.js'
+import { ApiRouteStatsEntity } from './entities/core/api-route-stats.entity.js'
 
 /**
  * Get SSL configuration for RDS connections
@@ -201,6 +204,9 @@ export const AppDataSource = new DataSource({
 		KafkaServiceEntity,
 		AdminJobEntity,
 		AdminJobExecutionEntity,
+		ApiActorEntity,
+		ApiRequestLogEntity,
+		ApiRouteStatsEntity,
 	],
 
 	// Migrations

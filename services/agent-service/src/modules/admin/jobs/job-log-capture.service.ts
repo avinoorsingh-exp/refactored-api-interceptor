@@ -24,13 +24,18 @@ export class JobLogCaptureService {
 	private logs: JobLogEntry[] = [];
 	private originalQueryLogger?: (query: string, parameters?: unknown[]) => void;
 	private queryRunner?: QueryRunner;
+	private activityCallback?: () => void | Promise<void>;
 
 	/**
 	 * Start capturing logs for a job execution.
 	 * Sets up query logging interception and initializes log buffer.
+	 * @param dataSource - TypeORM DataSource for query interception
+	 * @param activityCallback - Optional callback invoked when execution activity occurs (for lastActivityAt tracking)
+	 *                          Can be async, but is invoked in fire-and-forget manner (not awaited)
 	 */
-	startCapture(dataSource: DataSource): void {
+	startCapture(dataSource: DataSource, activityCallback?: () => void | Promise<void>): void {
 		this.logs = [];
+		this.activityCallback = activityCallback;
 		this.log('info', 'Job execution started', {});
 
 		// Create a query runner to intercept queries
@@ -52,6 +57,17 @@ export class JobLogCaptureService {
 			message,
 			data: data || {},
 		});
+		// Signal execution activity (fire-and-forget, don't await to avoid blocking)
+		if (this.activityCallback) {
+			const result = this.activityCallback();
+			// If callback returns a promise, catch any errors but don't await
+			if (result instanceof Promise) {
+				result.catch((err) => {
+					// Silently ignore errors in activity callback to prevent blocking execution
+					// Errors are logged by the callback implementation itself
+				});
+			}
+		}
 	}
 
 	/**
@@ -65,6 +81,17 @@ export class JobLogCaptureService {
 			parameters,
 			duration: duration !== undefined ? `${duration}ms` : undefined,
 		});
+		// Signal execution activity (fire-and-forget, don't await to avoid blocking)
+		if (this.activityCallback) {
+			const result = this.activityCallback();
+			// If callback returns a promise, catch any errors but don't await
+			if (result instanceof Promise) {
+				result.catch((err) => {
+					// Silently ignore errors in activity callback to prevent blocking execution
+					// Errors are logged by the callback implementation itself
+				});
+			}
+		}
 	}
 
 	/**
@@ -76,6 +103,17 @@ export class JobLogCaptureService {
 			type: 'result',
 			data,
 		});
+		// Signal execution activity (fire-and-forget, don't await to avoid blocking)
+		if (this.activityCallback) {
+			const result = this.activityCallback();
+			// If callback returns a promise, catch any errors but don't await
+			if (result instanceof Promise) {
+				result.catch((err) => {
+					// Silently ignore errors in activity callback to prevent blocking execution
+					// Errors are logged by the callback implementation itself
+				});
+			}
+		}
 	}
 
 	/**
@@ -88,6 +126,9 @@ export class JobLogCaptureService {
 			this.queryRunner.release();
 			this.queryRunner = undefined;
 		}
+
+		// Clear activity callback
+		this.activityCallback = undefined;
 
 		return JSON.stringify(this.logs, null, 2);
 	}

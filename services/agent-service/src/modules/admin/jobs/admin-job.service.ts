@@ -52,6 +52,11 @@ export class AdminJobService implements OnApplicationBootstrap {
 			handlerNames: Array.from(this.handlers.keys()),
 		});
 
+		// STEP 1: Reconcile orphaned RUNNING executions from previous server instance
+		// This must run BEFORE jobs are scheduled to prevent new executions from starting
+		// while orphaned executions are being cleaned up
+		await this.reconcileOrphanedExecutions();
+
 		if (this.handlers.size === 0) {
 			this.logger.warn('No job handlers registered - jobs will not be initialized automatically');
 			return;
@@ -181,13 +186,19 @@ export class AdminJobService implements OnApplicationBootstrap {
 			jobName: name,
 			status: AdminJobExecutionStatus.RUNNING,
 			startedAt: new Date(),
+			lastActivityAt: new Date(), // Initialize activity timestamp
 		});
 		await this.executionRepo.save(execution);
 
 		const startTime = Date.now();
 		
-		// Start capturing logs for this execution
-		this.logCaptureService.startCapture(this.dataSource);
+		// Start capturing logs for this execution with activity callback
+		// The callback updates lastActivityAt whenever execution activity occurs
+		this.logCaptureService.startCapture(this.dataSource, async () => {
+			// Update lastActivityAt whenever activity occurs (log, query, result)
+			execution.lastActivityAt = new Date();
+			await this.executionRepo.save(execution);
+		});
 
 		try {
 			let executionResult: JobExecutionResult | void;
@@ -398,6 +409,131 @@ export class AdminJobService implements OnApplicationBootstrap {
 	 */
 	async getExecution(id: string): Promise<AdminJobExecutionEntity | null> {
 		return this.executionRepo.findOne({ where: { id } });
+	}
+
+	/**
+	 * Reconcile orphaned RUNNING executions from previous server instance.
+	 * 
+	 * On server restart, any RUNNING executions are orphaned because:
+	 * - In-memory execution processes are terminated
+	 * - No further logs will be produced
+	 * - Frontend continues polling indefinitely
+	 * 
+	 * This method:
+	 * - Finds all RUNNING executions (orphaned due to restart)
+	 * - Fails them using the existing system-managed failure mechanism
+	 * - Sets error message to "System Restart"
+	 * - Ensures frontend polling resolves naturally
+	 * 
+	 * Must be called during application bootstrap BEFORE jobs are scheduled.
+	 */
+	private async reconcileOrphanedExecutions(): Promise<void> {
+		this.logger.info('Starting reconciliation of orphaned executions');
+
+		try {
+			// Find all RUNNING executions (all are orphaned after restart)
+			const orphanedExecutions = await this.executionRepo.find({
+				where: { status: AdminJobExecutionStatus.RUNNING },
+			});
+
+			if (orphanedExecutions.length === 0) {
+				this.logger.info('No orphaned executions found');
+				return;
+			}
+
+			this.logger.info('Found orphaned executions', {
+				count: orphanedExecutions.length,
+				executionIds: orphanedExecutions.map(e => e.id),
+			});
+
+			// Process each orphaned execution individually
+			// Errors in one execution must not block others
+			for (const execution of orphanedExecutions) {
+				try {
+					await this.failOrphanedExecution(execution);
+				} catch (error) {
+					// Log error but continue processing other executions
+					this.logger.error('Failed to reconcile orphaned execution', {
+						executionId: execution.id,
+						jobName: execution.jobName,
+						error: error instanceof Error ? error.message : String(error),
+					});
+				}
+			}
+
+			this.logger.info('Orphaned execution reconciliation completed', {
+				processedCount: orphanedExecutions.length,
+			});
+		} catch (error) {
+			// Log error but do not block application startup
+			this.logger.error('Error during orphaned execution reconciliation', {
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+		}
+	}
+
+	/**
+	 * Fail an orphaned execution using the existing system-managed failure mechanism.
+	 * 
+	 * This method mimics the failure handling in executeJob's catch block to ensure
+	 * consistent behavior and use the same system-controlled status transition.
+	 * 
+	 * @param execution - The orphaned execution to fail
+	 */
+	private async failOrphanedExecution(execution: AdminJobExecutionEntity): Promise<void> {
+		const now = new Date();
+		// Calculate duration from start to reconciliation time
+		const durationMs = now.getTime() - execution.startedAt.getTime();
+
+		// Use the same failure mechanism as executeJob catch block
+		// This ensures system-managed status transition (not manual mutation)
+		execution.status = AdminJobExecutionStatus.FAILED;
+		execution.finishedAt = now;
+		execution.durationMs = durationMs;
+		execution.error = 'System Restart'; // Exact error message as required
+
+		// Update log to indicate this was failed due to system restart
+		const existingLog = execution.log || '[]';
+		let logArray: any[] = [];
+		try {
+			logArray = JSON.parse(existingLog);
+		} catch {
+			// If log is not JSON, wrap it
+			logArray = [{ timestamp: execution.startedAt.toISOString(), type: 'log', message: existingLog }];
+		}
+
+		// Add reconciliation log entry
+		logArray.push({
+			timestamp: now.toISOString(),
+			type: 'log',
+			level: 'error',
+			message: 'Execution failed due to system restart',
+			data: {
+				reason: 'System Restart',
+				reconciledAt: now.toISOString(),
+				originalStartedAt: execution.startedAt.toISOString(),
+			},
+		});
+
+		execution.log = JSON.stringify(logArray, null, 2);
+		await this.executionRepo.save(execution);
+
+		// Update job metadata (increment failure count)
+		const job = await this.jobRepo.findOne({ where: { name: execution.jobName } });
+		if (job) {
+			job.failureCount += 1;
+			job.runCount += 1; // Count as a run attempt
+			job.lastRunAt = execution.startedAt; // Keep original start time
+			await this.jobRepo.save(job);
+		}
+
+		this.logger.info('Orphaned execution failed', {
+			executionId: execution.id,
+			jobName: execution.jobName,
+			startedAt: execution.startedAt.toISOString(),
+			durationMs,
+		});
 	}
 }
 

@@ -156,4 +156,60 @@ Generate code, corrections, and refactorings that comply with the basic principl
 
   - Each module follows this structure:
 
-    
+## API Monitoring & Observability
+
+### Automatic Instrumentation
+
+- All HTTP routes are automatically monitored via global interceptor and middleware.
+- No additional code is required in controllers - monitoring is transparent.
+- Request metadata (route, method, latency, status, actor) is automatically captured.
+- Errors are automatically classified and logged with PII sanitization.
+
+### Route Development Guidelines
+
+- Use descriptive route paths (e.g., `/v1/agents/:id` not `/v1/a/:id`) for better metrics visibility.
+- Follow RESTful conventions for consistent route patterns in dashboards.
+- Actor attribution is automatic - ensure authentication middleware sets `req.user`, `req.apiKey`, or `req.serviceAccount` for proper tracking.
+- Customize `ApiActorMiddleware.extractActorFromRequest()` if using non-standard authentication patterns.
+
+### Excluding Routes from Monitoring
+
+- If a route must be excluded from monitoring (rare), use `@UseInterceptors()` to override the global interceptor.
+- Health check endpoints are typically monitored (this is intentional for availability tracking).
+- Only exclude routes if they cause performance issues or contain sensitive data that shouldn't be logged.
+
+### Error Handling
+
+- Throw appropriate HTTP exceptions (BadRequestException, NotFoundException, etc.) - they are automatically classified.
+- Server errors (5xx) automatically capture stack traces for debugging.
+- Client errors (4xx) do not capture stack traces (PII-safe).
+- Error messages are automatically sanitized (emails, phones, SSNs removed).
+
+### Performance Considerations
+
+- Monitoring is non-blocking and asynchronous - it does not impact request latency.
+- High-throughput routes can use sampling via `API_MONITORING_SAMPLE_RATE` environment variable.
+- Monitoring failures never break requests - errors are logged but not propagated.
+
+### Querying Metrics
+
+- Use admin endpoints (`/v1/api-monitoring/*`) for dashboard data.
+- Protect monitoring endpoints with role-based access control.
+- Pre-aggregated route stats are available for fast queries without scanning raw logs.
+
+## TypeORM QueryBuilder Guidelines
+
+### GROUP BY and Aggregate Functions
+
+When writing TypeORM QueryBuilder code that uses GROUP BY or aggregate functions:
+
+- Always use raw SQL column references (`"alias"."column_name"`).
+- Never use entity property paths (e.g., `log.actorId`, `log.actorType`).
+- Always return results via `getRawMany()` or `getRawOne()`.
+- Ensure no implicit entity selection occurs.
+- Do not allow TypeORM to auto-select primary keys.
+- Prefer `.from(Entity, alias)` instead of `repository.createQueryBuilder()` when aggregating.
+- Ensure SELECT expressions and GROUP BY expressions are byte-for-byte identical.
+- Use quoted SQL column references consistently: `"log"."actor_id"`, `"log"."actor_type"`, etc.
+- GROUP BY must use the exact same raw column expressions as SELECT, not aliases.
+- ORDER BY can use aggregate aliases (e.g., `'requestCount'`) or the same raw column expressions.
