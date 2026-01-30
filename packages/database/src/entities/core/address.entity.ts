@@ -6,7 +6,8 @@ import {
 	JoinColumn,
 } from 'typeorm'
 import { AuditableEntity } from './auditable.entity.js'
-import { StateEntity } from './state.entity.js'
+import { CountryEntity } from './country.entity.js'
+import type { StateEntity } from './state.entity.js'
 
 /**
  * TypeORM entity for Address table.
@@ -88,18 +89,36 @@ export class AddressEntity extends AuditableEntity {
 	label?: string
 
 	/**
-	 * Foreign key to State entity.
-	 * Optional - addresses may not have a state (e.g., international addresses).
+	 * Foreign key to Country entity.
+	 * Required - all addresses must have a country.
 	 * @public
 	 */
-	@Column({ name: 'state_id', type: 'uuid', nullable: true })
-	stateId?: string
+	@Column({ name: 'country_id', type: 'integer' })
+	countryId!: number
 
 	/**
-	 * Many-to-One relationship with State.
+	 * State/province code (e.g., "CA", "TX").
+	 * Optional - international addresses may not have a state.
+	 * Used with countryId for virtual state relation.
 	 * @public
 	 */
-	@ManyToOne(() => StateEntity)
-	@JoinColumn({ name: 'state_id' })
+	@Column({ name: 'state_code', type: 'varchar', length: 2, nullable: true })
+	stateCode?: string
+
+	/**
+	 * Many-to-One relationship with Country.
+	 * @public
+	 */
+	@ManyToOne(() => CountryEntity)
+	@JoinColumn({ name: 'country_id' })
+	country!: CountryEntity
+
+	/**
+	 * Virtual relationship with State.
+	 * Populated via composite JOIN on countryId + stateCode.
+	 * Not mapped to database column - loaded by repository.
+	 * @see AddressRepository.loadStateRelation()
+	 * @public
+	 */
 	state?: StateEntity
 }

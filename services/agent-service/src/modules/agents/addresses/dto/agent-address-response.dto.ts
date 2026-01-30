@@ -38,8 +38,17 @@ export class AddressResponseDto {
 	@ApiPropertyOptional({ description: 'Address label for display', example: 'Home Address' })
 	label?: string | null;
 
-	@ApiPropertyOptional({ description: 'Foreign key to State entity (UUID)' })
-	stateId?: string | null;
+	@ApiProperty({ description: 'Foreign key to Country entity', example: 1 })
+	countryId!: number;
+
+	@ApiPropertyOptional({ description: 'State/province code (e.g., "CA", "TX")', example: 'TX' })
+	stateCode?: string | null;
+
+	@ApiPropertyOptional({ description: 'Country entity (when included)' })
+	country?: any;
+
+	@ApiPropertyOptional({ description: 'State entity (virtual, when included)' })
+	state?: any;
 
 	@ApiProperty({ description: 'Creation timestamp' })
 	created!: Date;

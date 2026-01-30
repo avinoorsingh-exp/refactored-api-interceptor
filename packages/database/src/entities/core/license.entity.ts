@@ -8,6 +8,7 @@ import {
 } from 'typeorm'
 import { AuditableEntity } from './auditable.entity.js'
 import { LineOfBusinessEntity } from './line-of-business.entity.js'
+import { CountryEntity } from './country.entity.js'
 import { Searchable, Filterable, Sortable, SearchValidators } from '../../decorators/searchable-decorators.js'
 
 // Forward declaration for circular dependency
@@ -127,14 +128,27 @@ export class LicenseEntity extends AuditableEntity {
 	lineOfBusinessId!: string
 
 	/**
-	 * Foreign key to State (UUID).
+	 * Foreign key to Country entity.
+	 * Required - all licenses must have a country.
 	 * @public
 	 */
-	@Column({ name: 'state_id', type: 'uuid' })
-	@Searchable({ weight: 3, behavior: 'exact', description: 'State ID reference (UUID)' })
+	@Column({ name: 'country_id', type: 'integer' })
+	@Searchable({ type: 'integer', weight: 3, behavior: 'exact', description: 'Country ID reference', validate: SearchValidators.integer })
 	@Filterable()
 	@Sortable()
-	stateId!: string
+	countryId!: number
+
+	/**
+	 * State/province code (e.g., "CA", "TX").
+	 * Optional - international licenses may not have a state.
+	 * Used with countryId for virtual state relation.
+	 * @public
+	 */
+	@Column({ name: 'state_code', type: 'varchar', length: 2, nullable: true })
+	@Searchable({ weight: 5, behavior: 'exact', description: 'Two-letter state code' })
+	@Filterable()
+	@Sortable()
+	stateCode?: string
 
 	// ==========================================
 	// RELATIONSHIPS
@@ -149,11 +163,20 @@ export class LicenseEntity extends AuditableEntity {
 	lineOfBusiness?: LineOfBusinessEntity
 
 	/**
-	 * Many-to-One relationship with State.
+	 * Many-to-One relationship with Country.
 	 * @public
 	 */
-	@ManyToOne('StateEntity')
-	@JoinColumn({ name: 'state_id' })
+	@ManyToOne(() => CountryEntity)
+	@JoinColumn({ name: 'country_id' })
+	country!: CountryEntity
+
+	/**
+	 * Virtual relationship with State.
+	 * Populated via composite JOIN on countryId + stateCode.
+	 * Not mapped to database column - loaded by repository.
+	 * @see LicenseRepository.loadStateRelation()
+	 * @public
+	 */
 	state?: StateEntity
 
 	/**

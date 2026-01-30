@@ -1,10 +1,10 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm'
 import { AuditableEntity } from './auditable.entity.js'
-import type { StateProgramEntity } from './state-program.entity.js'
+import type { CountryProgramEntity } from './country-program.entity.js'
 
 /**
  * TypeORM entity for Program table.
- * Programs represent features/capabilities that can be enabled per state.
+ * Programs represent features/capabilities that can be enabled per country.
  * @public
  */
 @Entity({ name: 'program', schema: 'core' })
@@ -22,9 +22,9 @@ export class ProgramEntity extends AuditableEntity {
 	description?: string
 
 	/**
-	 * One-to-many relationship with StateProgram.
+	 * One-to-many relationship with CountryProgram.
 	 * Uses string name to avoid circular dependency at module load time.
 	 */
-	@OneToMany('StateProgramEntity', 'program')
-	statePrograms?: StateProgramEntity[]
+	@OneToMany('CountryProgramEntity', 'program')
+	countryPrograms?: CountryProgramEntity[]
 }

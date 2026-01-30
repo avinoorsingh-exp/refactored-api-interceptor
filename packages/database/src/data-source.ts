@@ -41,7 +41,7 @@ import { CountryEntity } from './entities/core/country.entity.js'
 import { RegionEntity } from './entities/core/region.entity.js'
 import { StateEntity } from './entities/core/state.entity.js'
 import { ProgramEntity } from './entities/core/program.entity.js'
-import { StateProgramEntity } from './entities/core/state-program.entity.js'
+import { CountryProgramEntity } from './entities/core/country-program.entity.js'
 import { OrganizationContactEntity } from './entities/core/organization-contact.entity.js'
 import { W9Entity } from './entities/core/w9.entity.js'
 import { W9AddressEntity } from './entities/core/w9-address.entity.js'
@@ -190,7 +190,7 @@ export const AppDataSource = new DataSource({
 		RegionEntity,
 		StateEntity,
 		ProgramEntity,
-		StateProgramEntity,
+		CountryProgramEntity,
 		OrganizationContactEntity,
 		W9Entity,
 		W9AddressEntity,

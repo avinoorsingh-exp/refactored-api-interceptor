@@ -59,7 +59,8 @@ export class AgentAddressService {
 			postalCode: data.postalCode,
 			county: data.county,
 			label: data.label,
-			stateId: data.stateId,
+			countryId: data.countryId,
+			stateCode: data.stateCode,
 		});
 
 		const duration = Date.now() - startTime;

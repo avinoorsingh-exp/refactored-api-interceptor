@@ -145,7 +145,10 @@ export class AgentTypeOrmRepository
 		if (entity.office) result.office = entity.office;
 		if (entity.mls) result.mls = entity.mls;
 		if (entity.addresses) result.address = entity.addresses;
-		if (entity.agentAddresses) result.agentAddress = entity.agentAddresses;
+		// Only include agentAddress junction if explicitly requested
+		if (requestedIncludes.includes('agentAddress') && entity.agentAddresses) {
+			result.agentAddress = entity.agentAddresses;
+		}
 		if (entity.externalReferences) result.externalReference = entity.externalReferences;
 		if (entity.languages) result.language = entity.languages;
 		if (entity.contactMethods) result.contactMethod = entity.contactMethods;
@@ -305,10 +308,10 @@ export class AgentTypeOrmRepository
 	): void {
 		const junctionAlias = 'primaryAddrJunction';
 		const addressAlias = 'primaryAddrAddress';
-		const stateAlias = 'primaryAddrState';
 		const countryAlias = 'primaryAddrCountry';
+		const stateAlias = 'primaryAddrState';
 
-		// Load agentAddresses where isPrimary = true, with nested address->state->country
+		// Load agentAddresses where isPrimary = true, with nested address->country->state
 		// The primary address will be extracted in mapToDomain
 		qb.leftJoinAndSelect(
 			`${alias}.agentAddresses`,
@@ -319,17 +322,64 @@ export class AgentTypeOrmRepository
 		// Join and select the address from the junction
 		qb.leftJoinAndSelect(`${junctionAlias}.address`, addressAlias);
 
-		// Join and select state from address
-		qb.leftJoinAndSelect(`${addressAlias}.state`, stateAlias);
+		// Join and select country from address (now a direct relationship)
+		qb.leftJoinAndSelect(`${addressAlias}.country`, countryAlias);
 
-		// Join and select country from state
-		qb.leftJoinAndSelect(`${stateAlias}.country`, countryAlias);
+		// Virtual join for state using composite key (countryId + stateCode)
+		// This populates the address.state property virtually
+		qb.leftJoinAndMapOne(
+			`${addressAlias}.state`,
+			'StateEntity',
+			stateAlias,
+			`${stateAlias}.countryId = ${addressAlias}.countryId AND ${stateAlias}.code = ${addressAlias}.stateCode`,
+		);
+	}
+
+	/**
+	 * Load addresses with virtual state relations.
+	 * Used when include=address is specified.
+	 * Adds virtual state mapping to addresses already joined by ProjectionService.
+	 *
+	 * @param qb - Query builder
+	 * @param alias - Base entity alias (usually 'agent')
+	 */
+	protected loadAddressesWithVirtualState<T>(
+		qb: SelectQueryBuilder<T>,
+		alias: string,
+	): void {
+		// Use the same alias pattern as ProjectionService
+		const addressAlias = `${alias}_address`;
+		const stateAlias = `${addressAlias}_state`;
+
+		// The ProjectionService has already joined:
+		// - agent.addresses as agent_address
+		// - agent_address.country as agent_address_country
+		// We only need to add the virtual state mapping
+
+		// Check if addresses relation is already joined by projection service
+		const existingJoins = qb.expressionMap.joinAttributes;
+		const addressJoined = existingJoins.some(j => j.alias.name === addressAlias);
+
+		if (!addressJoined) {
+			// This shouldn't happen when include=address is used, but handle it just in case
+			this.logger.warn('Address not joined by ProjectionService, skipping virtual state mapping');
+			return;
+		}
+
+		// Only add the virtual state join - country is already joined by ProjectionService
+		// Virtual join for state using composite key (countryId + stateCode)
+		qb.leftJoinAndMapOne(
+			`${addressAlias}.state`,
+			'StateEntity',
+			stateAlias,
+			`${stateAlias}.countryId = ${addressAlias}.countryId AND ${stateAlias}.code = ${addressAlias}.stateCode`,
+		);
 	}
 
 	/**
 	 * Extract primary contact types from includes.
 	 * Detects primaryEmail, primaryPhone, etc. in the includes array.
-	 * 
+	 *
 	 * @returns Array of contact types (e.g., ['email', 'phone'])
 	 */
 	private extractPrimaryContactTypes(include?: string[]): string[] {
@@ -459,7 +509,7 @@ export class AgentTypeOrmRepository
 
 	/**
 	 * Apply country filter conditions to the query builder.
-	 * Joins agentAddresses → address → state → country.
+	 * Joins agentAddresses → address → country (state is now optional via countryId + stateCode).
 	 */
 	private applyCountryFilters<T>(
 		qb: SelectQueryBuilder<T>,
@@ -470,14 +520,12 @@ export class AgentTypeOrmRepository
 
 		const junctionAlias = 'countryFilterJunction';
 		const addressAlias = 'countryFilterAddress';
-		const stateAlias = 'countryFilterState';
 		const countryAlias = 'countryFilter';
 
 		// Join through the relation chain
 		qb.leftJoin(`${alias}.agentAddresses`, junctionAlias);
 		qb.leftJoin(`${junctionAlias}.address`, addressAlias);
-		qb.leftJoin(`${addressAlias}.state`, stateAlias);
-		qb.leftJoin(`${stateAlias}.country`, countryAlias);
+		qb.leftJoin(`${addressAlias}.country`, countryAlias);
 
 		// Apply each country filter condition (search by name or alpha2)
 		filters.forEach((condition, index) => {
@@ -677,6 +725,7 @@ export class AgentTypeOrmRepository
 	): Promise<PageResult<Agent>> {
 		const primaryContactTypes = this.extractPrimaryContactTypes(selection?.include);
 		const hasPrimaryAddress = this.hasPrimaryAddressInclude(selection?.include);
+		const hasAddresses = selection?.include?.includes('address') || false;
 
 		// Parse filter if it's a JSON string (query params come in as strings)
 		const filterObj =
@@ -695,6 +744,7 @@ export class AgentTypeOrmRepository
 		const needsCustomQuery =
 			primaryContactTypes.length > 0 ||
 			hasPrimaryAddress ||
+			hasAddresses ||
 			hasRelationalFilters ||
 			hasRelationalSort;
 
@@ -720,6 +770,9 @@ export class AgentTypeOrmRepository
 				}
 				if (hasPrimaryAddress) {
 					this.loadPrimaryAddress(qb, this.getAlias());
+				}
+				if (hasAddresses) {
+					this.loadAddressesWithVirtualState(qb, this.getAlias());
 				}
 
 				// Apply relational filters

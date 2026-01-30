@@ -259,10 +259,10 @@ export { StateEntity } from './entities/core/state.entity.js'
 export { ProgramEntity } from './entities/core/program.entity.js'
 
 /**
- * TypeORM entity for StateProgram join table.
+ * TypeORM entity for CountryProgram join table.
  * @public
  */
-export { StateProgramEntity } from './entities/core/state-program.entity.js'
+export { CountryProgramEntity } from './entities/core/country-program.entity.js'
 
 /**
  * TypeORM entity for OrganizationContact table.
