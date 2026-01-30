@@ -29,6 +29,9 @@ describe('ApiMetricsService - Pagination', () => {
 			find: jest.fn(),
 			createQueryBuilder: jest.fn(),
 			query: jest.fn(), // Add query method for getTopCallers
+			manager: {
+				query: jest.fn(), // For queryRawLogsForTimeSeries
+			},
 		} as any;
 
 		routeStatsRepo = {
@@ -600,6 +603,840 @@ describe('ApiMetricsService - Pagination', () => {
 					errorCodeCount: 0,
 				}),
 			);
+		});
+	});
+
+	describe('getTimeSeriesMetrics', () => {
+		it('should auto-select MINUTE bucket for ranges < 1 hour', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T00:30:00Z'); // 30 minutes
+
+			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue(mockStats),
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+			// Mock manager.query for fallback to raw logs
+			requestLogRepo.manager.query = jest.fn().mockResolvedValue([]);
+
+			await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				timeBucket: undefined, // Auto-select
+			});
+
+			expect(routeStatsRepo.createQueryBuilder).toHaveBeenCalled();
+			expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+				'stats.time_bucket = :timeBucket',
+				{ timeBucket: 'minute' },
+			);
+		});
+
+		it('should auto-select HOUR bucket for ranges 1-24 hours', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T12:00:00Z'); // 12 hours
+
+			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue(mockStats),
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+
+			await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				timeBucket: undefined, // Auto-select
+			});
+
+			expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+				'stats.time_bucket = :timeBucket',
+				{ timeBucket: 'hour' },
+			);
+		});
+
+		it('should auto-select DAY bucket for ranges > 24 hours', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-03T00:00:00Z'); // 48 hours
+
+			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue(mockStats),
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+
+			await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				timeBucket: undefined, // Auto-select
+			});
+
+			expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+				'stats.time_bucket = :timeBucket',
+				{ timeBucket: 'day' },
+			);
+		});
+
+		it('should use explicitly provided timeBucket', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T12:00:00Z'); // 12 hours, but we want DAY
+
+			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue(mockStats),
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+
+			await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				timeBucket: 'day' as any, // Explicit override
+			});
+
+			expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+				'stats.time_bucket = :timeBucket',
+				{ timeBucket: 'day' },
+			);
+		});
+
+		it('should apply route filter when provided', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T01:00:00Z');
+
+			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue(mockStats),
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+
+			await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				route: ['/v1/agents', '/v1/companies'],
+			});
+
+			expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+				'stats.route IN (:...routes)',
+				{ routes: ['/v1/agents', '/v1/companies'] },
+			);
+		});
+
+		it('should apply method filter when provided', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T01:00:00Z');
+
+			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue(mockStats),
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+
+			await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				method: ['GET', 'POST'] as any,
+			});
+
+			expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+				'stats.method IN (:...methods)',
+				{ methods: ['GET', 'POST'] },
+			);
+		});
+
+		it('should apply statusCode filter when provided', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T01:00:00Z');
+
+			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue(mockStats),
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+
+			await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				statusCode: [200, 404],
+			});
+
+			// Status code filter uses JSONB query with OR conditions
+			expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+				expect.stringContaining('stats.status_code_counts'),
+				expect.objectContaining({
+					statusCode0: '200',
+					statusCode1: '404',
+				}),
+			);
+		});
+
+		it('should fallback to raw logs for small ranges when no pre-aggregated data', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T00:30:00Z'); // 30 minutes
+
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue([]), // No pre-aggregated data
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+			// Mock manager.query for fallback to raw logs
+			requestLogRepo.manager.query = jest.fn().mockResolvedValue([]);
+
+			await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				timeBucket: undefined, // Auto-selects MINUTE
+			});
+
+			// Should fallback to raw logs query
+			expect(requestLogRepo.manager.query).toHaveBeenCalled();
+			expect(logger.debug).toHaveBeenCalledWith(
+				'No pre-aggregated data found, falling back to raw logs for small time range',
+				expect.any(Object),
+			);
+		});
+
+		it('should handle pre-aggregated query errors and fallback to raw logs', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T00:30:00Z'); // 30 minutes
+
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockRejectedValue(new Error('Query failed')),
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+			// Mock manager.query for fallback to raw logs
+			requestLogRepo.manager.query = jest.fn().mockResolvedValue([]);
+
+			await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				timeBucket: undefined, // Auto-selects MINUTE
+			});
+
+			// Should fallback to raw logs on error
+			expect(requestLogRepo.manager.query).toHaveBeenCalled();
+			expect(logger.warn).toHaveBeenCalledWith(
+				'Pre-aggregated query failed, falling back to raw logs',
+				expect.objectContaining({
+					error: 'Query failed',
+				}),
+			);
+		});
+
+		it('should throw error for large ranges when pre-aggregated query fails', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-02T00:00:00Z'); // 24 hours
+
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockRejectedValue(new Error('Query failed')),
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+
+			await expect(
+				service.getTimeSeriesMetrics({
+					startTime,
+					endTime,
+					timeBucket: undefined,
+				}),
+			).rejects.toThrow('Query failed');
+
+			// Should NOT fallback to raw logs for large ranges
+			expect(requestLogRepo.query).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('getSummary - Edge Cases', () => {
+		it('should handle null p95Latency from database', async () => {
+			const mockQueryResult = [{
+				totalRequests: '10',
+				errorCount: '0',
+				p95Latency: null, // Null when no data
+				activeActors: '1',
+				activeRateLimitViolations: '0',
+			}];
+
+			requestLogRepo.query = jest.fn().mockResolvedValue(mockQueryResult);
+
+			const result = await service.getSummary();
+
+			expect(result.p95Latency).toBe(0);
+			expect(result.totalRequests).toBe(10);
+		});
+
+		it('should handle empty query result', async () => {
+			requestLogRepo.query = jest.fn().mockResolvedValue([]);
+
+			const result = await service.getSummary();
+
+			expect(result).toEqual({
+				totalRequests: 0,
+				errorRate: 0,
+				p95Latency: 0,
+				activeActors: 0,
+				activeRateLimitViolations: 0,
+			});
+		});
+
+		it('should handle query result with missing fields', async () => {
+			const mockQueryResult = [{
+				totalRequests: '5',
+				// Missing other fields
+			}];
+
+			requestLogRepo.query = jest.fn().mockResolvedValue(mockQueryResult);
+
+			const result = await service.getSummary();
+
+			expect(result.totalRequests).toBe(5);
+			expect(result.errorRate).toBe(0);
+			expect(result.p95Latency).toBe(0);
+		});
+
+		it('should handle snake_case field names from database', async () => {
+			const mockQueryResult = [{
+				total_requests: '20',
+				error_count: '2',
+				p95_latency: '150',
+				active_actors: '3',
+				active_rate_limit_violations: '1',
+			}];
+
+			requestLogRepo.query = jest.fn().mockResolvedValue(mockQueryResult);
+
+			const result = await service.getSummary();
+
+			expect(result.totalRequests).toBe(20);
+			expect(result.errorRate).toBeCloseTo(0.1, 2);
+			expect(result.p95Latency).toBe(150);
+			expect(result.activeActors).toBe(3);
+			expect(result.activeRateLimitViolations).toBe(1);
+		});
+	});
+
+	describe('getTimeSeriesMetrics - Edge Cases', () => {
+		it('should return pre-aggregated stats when available (no fallback)', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T12:00:00Z'); // 12 hours
+
+			const mockStats: ApiRouteStatsEntity[] = [
+				{
+					id: '1',
+					route: '/v1/agents',
+					method: 'GET' as any,
+					timeBucket: 'hour' as any,
+					bucketStart: new Date('2024-01-01T00:00:00Z'),
+					requestCount: 100,
+					errorCount: 5,
+					latencyP50: 50,
+					latencyP95: 100,
+					latencyP99: 150,
+					latencyMin: 10,
+					latencyMax: 200,
+					statusCodeCounts: { '200': 95, '500': 5 },
+				} as ApiRouteStatsEntity,
+			];
+
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue(mockStats),
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+
+			const result = await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				timeBucket: undefined,
+			});
+
+			expect(result).toEqual(mockStats);
+			expect(result.length).toBe(1);
+			// Should NOT fallback to raw logs when pre-aggregated data exists
+			expect(requestLogRepo.manager.query).not.toHaveBeenCalled();
+		});
+
+		it('should return pre-aggregated stats for large ranges even when empty (no fallback)', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-02T00:00:00Z'); // 24 hours (large range)
+
+			const mockStats: ApiRouteStatsEntity[] = []; // Empty but still return it
+
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue(mockStats),
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+
+			const result = await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				timeBucket: undefined,
+			});
+
+			expect(result).toEqual(mockStats);
+			// Should NOT fallback to raw logs for large ranges (even when empty)
+			expect(requestLogRepo.manager.query).not.toHaveBeenCalled();
+		});
+
+		it('should return pre-aggregated stats when available even for small ranges', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T00:30:00Z'); // 30 minutes (small range)
+
+			const mockStats: ApiRouteStatsEntity[] = [
+				{
+					id: '1',
+					route: '/v1/agents',
+					method: 'GET' as any,
+					timeBucket: 'minute' as any,
+					bucketStart: new Date('2024-01-01T00:00:00Z'),
+					requestCount: 50,
+					errorCount: 2,
+					latencyP50: 30,
+					latencyP95: 80,
+					latencyP99: 120,
+					latencyMin: 5,
+					latencyMax: 150,
+					statusCodeCounts: { '200': 48, '500': 2 },
+				} as ApiRouteStatsEntity,
+			];
+
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue(mockStats),
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+
+			const result = await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				timeBucket: undefined, // Auto-selects MINUTE
+			});
+
+			expect(result).toEqual(mockStats);
+			// Should NOT fallback to raw logs when pre-aggregated data exists (even for small ranges)
+			expect(requestLogRepo.manager.query).not.toHaveBeenCalled();
+		});
+
+		it('should handle single route filter', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T01:00:00Z');
+
+			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue(mockStats),
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+			requestLogRepo.manager.query = jest.fn().mockResolvedValue([]);
+
+			await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				route: '/v1/agents', // Single route (not array)
+			});
+
+			// Should convert single value to array
+			expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+				'stats.route IN (:...routes)',
+				{ routes: ['/v1/agents'] },
+			);
+		});
+
+		it('should handle single method filter', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T01:00:00Z');
+
+			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue(mockStats),
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+			requestLogRepo.manager.query = jest.fn().mockResolvedValue([]);
+
+			await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				method: 'GET' as any, // Single method (not array)
+			});
+
+			// Should convert single value to array
+			expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+				'stats.method IN (:...methods)',
+				{ methods: ['GET'] },
+			);
+		});
+
+		it('should handle single statusCode filter', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T01:00:00Z');
+
+			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue(mockStats),
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+			requestLogRepo.manager.query = jest.fn().mockResolvedValue([]);
+
+			await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				statusCode: 200, // Single status code (not array)
+			});
+
+			// Should convert single value to array and use JSONB query
+			expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+				expect.stringContaining('stats.status_code_counts'),
+				expect.objectContaining({
+					statusCode0: '200',
+				}),
+			);
+		});
+
+		it('should build raw logs query with route filter', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T00:30:00Z'); // 30 minutes
+
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue([]), // No pre-aggregated data
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+			requestLogRepo.manager.query = jest.fn().mockResolvedValue([]);
+
+			await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				route: ['/v1/agents'],
+				timeBucket: undefined,
+			});
+
+			// Should fallback to raw logs with route filter
+			expect(requestLogRepo.manager.query).toHaveBeenCalled();
+			const sqlCall = requestLogRepo.manager.query.mock.calls[0][0];
+			expect(sqlCall).toContain('"log"."route" IN');
+		});
+
+		it('should build raw logs query with method filter', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T00:30:00Z'); // 30 minutes
+
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue([]), // No pre-aggregated data
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+			requestLogRepo.manager.query = jest.fn().mockResolvedValue([]);
+
+			await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				method: ['GET'],
+				timeBucket: undefined,
+			});
+
+			// Should fallback to raw logs with method filter
+			expect(requestLogRepo.manager.query).toHaveBeenCalled();
+			const sqlCall = requestLogRepo.manager.query.mock.calls[0][0];
+			expect(sqlCall).toContain('"log"."method" IN');
+		});
+
+		it('should build raw logs query with statusCode filter', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T00:30:00Z'); // 30 minutes
+
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue([]), // No pre-aggregated data
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+			requestLogRepo.manager.query = jest.fn().mockResolvedValue([]);
+
+			await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				statusCode: [200, 404],
+				timeBucket: undefined,
+			});
+
+			// Should fallback to raw logs with statusCode filter
+			expect(requestLogRepo.manager.query).toHaveBeenCalled();
+			const sqlCall = requestLogRepo.manager.query.mock.calls[0][0];
+			expect(sqlCall).toContain('"log"."status_code" IN');
+		});
+
+		it('should build raw logs query with all filters combined', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T00:30:00Z'); // 30 minutes
+
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue([]), // No pre-aggregated data
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+			requestLogRepo.manager.query = jest.fn().mockResolvedValue([]);
+
+			await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				route: ['/v1/agents'],
+				method: ['GET'],
+				statusCode: [200],
+				timeBucket: undefined,
+			});
+
+			// Should fallback to raw logs with all filters
+			expect(requestLogRepo.manager.query).toHaveBeenCalled();
+			const sqlCall = requestLogRepo.manager.query.mock.calls[0][0];
+			expect(sqlCall).toContain('"log"."route" IN');
+			expect(sqlCall).toContain('"log"."method" IN');
+			expect(sqlCall).toContain('"log"."status_code" IN');
+		});
+
+		it('should build raw logs query without filters', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T00:30:00Z'); // 30 minutes
+
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue([]), // No pre-aggregated data
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+			requestLogRepo.manager.query = jest.fn().mockResolvedValue([
+				{
+					route: '/v1/agents',
+					method: 'GET',
+					bucket_start: new Date('2024-01-01T00:00:00Z'),
+					request_count: 10,
+					error_count: 1,
+					latency_p50: 50,
+					latency_p95: 100,
+					latency_p99: 150,
+					latency_min: 10,
+					latency_max: 200,
+					status_code_counts: { '200': 9, '500': 1 },
+				},
+			]);
+
+			const result = await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				timeBucket: undefined,
+			});
+
+			// Should fallback to raw logs without filters
+			expect(requestLogRepo.manager.query).toHaveBeenCalled();
+			const sqlCall = requestLogRepo.manager.query.mock.calls[0][0];
+			expect(sqlCall).toContain('"log"."timestamp"');
+			expect(sqlCall).not.toContain('"log"."route" IN');
+			expect(sqlCall).not.toContain('"log"."method" IN');
+			expect(sqlCall).not.toContain('"log"."status_code" IN');
+			expect(result.length).toBeGreaterThan(0);
+		});
+
+		it('should transform raw logs query results correctly', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T00:30:00Z'); // 30 minutes
+
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue([]), // No pre-aggregated data
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+			
+			// Mock raw query result with string status_code_counts (needs JSON.parse)
+			requestLogRepo.manager.query = jest.fn().mockResolvedValue([
+				{
+					bucket_start: '2024-01-01T00:00:00Z',
+					route: '/v1/agents',
+					method: 'GET',
+					request_count: '25',
+					error_count: '2',
+					latency_p50: '45',
+					latency_p95: '95',
+					latency_p99: '145',
+					latency_min: '8',
+					latency_max: '195',
+					status_code_counts: '{"200":23,"500":2}', // String that needs parsing
+				},
+			]);
+
+			const result = await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				timeBucket: undefined,
+			});
+
+			expect(result.length).toBe(1);
+			expect(result[0].route).toBe('/v1/agents');
+			expect(result[0].method).toBe('GET');
+			expect(result[0].requestCount).toBe(25);
+			expect(result[0].errorCount).toBe(2);
+			expect(result[0].timeBucket).toBe('minute');
+			expect(result[0].statusCodeCounts).toEqual({ '200': 23, '500': 2 });
+		});
+
+		it('should handle raw logs query results with null/undefined latency values', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-01T00:30:00Z'); // 30 minutes
+
+			const mockQueryBuilder = {
+				select: jest.fn().mockReturnThis(),
+				where: jest.fn().mockReturnThis(),
+				andWhere: jest.fn().mockReturnThis(),
+				orderBy: jest.fn().mockReturnThis(),
+				addOrderBy: jest.fn().mockReturnThis(),
+				getMany: jest.fn().mockResolvedValue([]), // No pre-aggregated data
+			};
+
+			routeStatsRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
+			
+			// Mock raw query result with null latency values
+			requestLogRepo.manager.query = jest.fn().mockResolvedValue([
+				{
+					bucket_start: '2024-01-01T00:00:00Z',
+					route: '/v1/agents',
+					method: 'GET',
+					request_count: '5',
+					error_count: '0',
+					latency_p50: null,
+					latency_p95: null,
+					latency_p99: null,
+					latency_min: null,
+					latency_max: null,
+					status_code_counts: { '200': 5 },
+				},
+			]);
+
+			const result = await service.getTimeSeriesMetrics({
+				startTime,
+				endTime,
+				timeBucket: undefined,
+			});
+
+			expect(result.length).toBe(1);
+			expect(result[0].latencyP50).toBeUndefined();
+			expect(result[0].latencyP95).toBeUndefined();
+			expect(result[0].latencyP99).toBeUndefined();
+			expect(result[0].latencyMin).toBeUndefined();
+			expect(result[0].latencyMax).toBeUndefined();
 		});
 	});
 });

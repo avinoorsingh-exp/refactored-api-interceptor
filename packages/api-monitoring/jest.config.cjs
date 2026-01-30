@@ -27,6 +27,12 @@ module.exports = {
     'src/dto/paginated-*.dto.ts',
     'src/dto/summary-response.dto.ts',
     'src/dto/top-caller-response.dto.ts',
+    'src/dto/route-breakdown-query.dto.ts',
+    'src/dto/trends-query.dto.ts',
+    'src/dto/trends-response.dto.ts',
+    'src/dto/available-routes-query.dto.ts',
+    'src/dto/available-routes-response.dto.ts',
+    'src/dto/aggregation-response.dto.ts',
   ],
   coverageThreshold: {
     global: {

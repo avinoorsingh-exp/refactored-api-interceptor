@@ -124,6 +124,8 @@ private extractActorFromRequest(req: Request) {
    - Latency percentile calculations
    - Route breakdown statistics
    - Top callers analysis
+   - Trends metrics with period-over-period deltas
+   - Available routes and error codes queries
 
 5. **ApiMonitoringController** (Controller)
    - Internal-only admin endpoints
@@ -180,6 +182,9 @@ pnpm migration:run
 Use the admin endpoints for dashboard data:
 
 ```bash
+# Summary metrics (for admin header/dashboard)
+GET /v1/api-monitoring/summary?from=2024-01-01&to=2024-01-02
+
 # Time-series metrics
 GET /v1/api-monitoring/metrics/time-series?startTime=2024-01-01&endTime=2024-01-02&timeBucket=hour
 
@@ -189,11 +194,20 @@ GET /v1/api-monitoring/metrics/routes?startTime=2024-01-01&endTime=2024-01-02&li
 # Top callers
 GET /v1/api-monitoring/metrics/top-callers?startTime=2024-01-01&endTime=2024-01-02&limit=20
 
+# Long-term trends (30, 60, or 90 days)
+GET /v1/api-monitoring/trends?range=30d&route=/v1/agents&statusCode=200
+
 # Actor activity
 GET /v1/api-monitoring/actors/{actorId}/activity?startTime=2024-01-01&endTime=2024-01-02
 
 # Error samples
 GET /v1/api-monitoring/errors/samples?startTime=2024-01-01&endTime=2024-01-02&classification=server_error
+
+# Available routes and error codes (for filter dropdowns)
+GET /v1/api-monitoring/routes/available?startDate=2024-01-01&endDate=2024-01-02
+
+# Manual aggregation trigger (admin only)
+GET /v1/api-monitoring/aggregate?startTime=2024-01-01&endTime=2024-01-02&timeBucket=hour
 ```
 
 ## Performance Considerations
@@ -209,6 +223,13 @@ GET /v1/api-monitoring/errors/samples?startTime=2024-01-01&endTime=2024-01-02&cl
 - **PII Sanitization**: Error messages are sanitized (emails, phones, SSNs removed)
 - **Stack Traces**: Only captured for server errors (5xx)
 - **Admin Endpoints**: Should be protected with role-based access control
+  - **Important**: The `ApiMonitoringController` endpoints are NOT protected by default
+  - You MUST add role-based access control guards in your service:
+  ```typescript
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'monitoring')
+  export class ApiMonitoringController { ... }
+  ```
 - **No Payload Logging**: Request/response bodies are not logged by default
 
 ## Shared Package Benefits

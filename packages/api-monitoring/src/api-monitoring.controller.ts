@@ -40,12 +40,15 @@ import { API_MONITORING_LOGGER_TOKEN } from './interfaces/logger.interface.js';
  * These endpoints should be protected by role-based access control.
  * 
  * Endpoints:
+ * - GET /v1/api-monitoring/summary - Summary metrics for admin header
  * - GET /v1/api-monitoring/metrics/time-series - Time-series metrics
  * - GET /v1/api-monitoring/metrics/routes - Per-route breakdown
  * - GET /v1/api-monitoring/metrics/top-callers - Top external callers
  * - GET /v1/api-monitoring/trends - Long-term trends (30/60/90 days)
  * - GET /v1/api-monitoring/actors/:actorId/activity - Actor activity
  * - GET /v1/api-monitoring/errors/samples - Error samples
+ * - GET /v1/api-monitoring/routes/available - Available routes and error codes
+ * - GET /v1/api-monitoring/aggregate - Manual aggregation trigger
  * 
  * @public
  */

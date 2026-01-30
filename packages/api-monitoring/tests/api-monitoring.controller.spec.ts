@@ -9,6 +9,8 @@ import { ActorActivityQueryDto } from '../src/dto/actor-activity-query.dto.js';
 import { TimeSeriesQueryDto } from '../src/dto/time-series-query.dto.js';
 import { TopCallersQueryDto } from '../src/dto/top-callers-query.dto.js';
 import { AvailableRoutesQueryDto } from '../src/dto/available-routes-query.dto.js';
+import { RouteBreakdownQueryDto } from '../src/dto/route-breakdown-query.dto.js';
+import { TrendsQueryDto, TrendsRange } from '../src/dto/trends-query.dto.js';
 import { TimeBucket } from '@exprealty/shared-domain';
 
 describe('ApiMonitoringController - Pagination', () => {
@@ -32,6 +34,9 @@ describe('ApiMonitoringController - Pagination', () => {
 			getSummary: jest.fn(),
 			getTimeSeriesMetrics: jest.fn(),
 			getAvailableRoutesAndErrorCodes: jest.fn(),
+			getRouteBreakdown: jest.fn(),
+			getTrendsMetrics: jest.fn(),
+			aggregateAllRouteStats: jest.fn(),
 		} as any;
 
 		const module = await Test.createTestingModule({
@@ -392,6 +397,345 @@ describe('ApiMonitoringController - Pagination', () => {
 					endDate: '2024-01-31T23:59:59Z',
 				},
 			);
+		});
+	});
+
+	describe('getRouteBreakdown', () => {
+		it('should call service with query parameters', async () => {
+			const query = new RouteBreakdownQueryDto();
+			query.startTime = new Date('2024-01-01T00:00:00Z');
+			query.endTime = new Date('2024-01-02T00:00:00Z');
+			query.limit = 50;
+			query.route = ['/v1/agents'];
+			query.method = ['GET'] as any;
+			query.statusCode = [200];
+			query.debug = true;
+
+			metricsService.getRouteBreakdown = jest.fn().mockResolvedValue([]);
+
+			await controller.getRouteBreakdown(query);
+
+			expect(metricsService.getRouteBreakdown).toHaveBeenCalledWith(
+				expect.any(Date), // startTime
+				expect.any(Date), // endTime
+				50, // limit
+				['/v1/agents'], // route
+				['GET'], // method
+				[200], // statusCode
+				true, // debug
+			);
+		});
+
+		it('should use default time window when not provided', async () => {
+			const query = new RouteBreakdownQueryDto();
+			query.limit = 25;
+
+			metricsService.getRouteBreakdown = jest.fn().mockResolvedValue([]);
+
+			await controller.getRouteBreakdown(query);
+
+			const callArgs = metricsService.getRouteBreakdown.mock.calls[0];
+			expect(callArgs[0]).toBeInstanceOf(Date); // startTime (defaults to 15 min ago)
+			expect(callArgs[1]).toBeInstanceOf(Date); // endTime (defaults to now)
+			expect(callArgs[2]).toBe(25); // limit
+		});
+
+		it('should convert string dates to Date objects', async () => {
+			const query = new RouteBreakdownQueryDto();
+			query.startTime = '2024-01-01T00:00:00Z' as any;
+			query.endTime = '2024-01-02T00:00:00Z' as any;
+
+			metricsService.getRouteBreakdown = jest.fn().mockResolvedValue([]);
+
+			await controller.getRouteBreakdown(query);
+
+			const callArgs = metricsService.getRouteBreakdown.mock.calls[0];
+			expect(callArgs[0]).toBeInstanceOf(Date);
+			expect(callArgs[1]).toBeInstanceOf(Date);
+		});
+
+		it('should use default limit of 50 when not provided', async () => {
+			const query = new RouteBreakdownQueryDto();
+
+			metricsService.getRouteBreakdown = jest.fn().mockResolvedValue([]);
+
+			await controller.getRouteBreakdown(query);
+
+			expect(metricsService.getRouteBreakdown).toHaveBeenCalledWith(
+				expect.any(Date),
+				expect.any(Date),
+				50, // default limit
+				undefined,
+				undefined,
+				undefined,
+				false, // debug defaults to false
+			);
+		});
+
+		it('should log debug information', async () => {
+			const query = new RouteBreakdownQueryDto();
+			query.startTime = new Date('2024-01-01T00:00:00Z');
+			query.endTime = new Date('2024-01-02T00:00:00Z');
+			query.limit = 50;
+			query.debug = true;
+
+			metricsService.getRouteBreakdown = jest.fn().mockResolvedValue([]);
+
+			await controller.getRouteBreakdown(query);
+
+			expect(logger.debug).toHaveBeenCalledWith(
+				'Fetching route breakdown',
+				expect.objectContaining({
+					startTime: expect.any(String),
+					endTime: expect.any(String),
+					limit: 50,
+					debug: true,
+				}),
+			);
+		});
+	});
+
+	describe('getTrendsMetrics', () => {
+		it('should call service with range parameter', async () => {
+			const query = new TrendsQueryDto();
+			query.range = TrendsRange.DAYS_30;
+			query.route = ['/v1/agents'];
+			query.method = 'GET' as any;
+			query.statusCode = [200, 404];
+
+			const expectedResult = {
+				startDate: new Date('2024-01-01T00:00:00Z'),
+				endDate: new Date('2024-01-31T23:59:59Z'),
+				timeBucket: TimeBucket.DAY,
+				data: [],
+				kpiSummary: {
+					avgRequestsPerDay: 100,
+					overallErrorRate: 0.02,
+					avgP95Latency: 200,
+					avgLatencyVariability: 50,
+				},
+			};
+
+			metricsService.getTrendsMetrics = jest.fn().mockResolvedValue(expectedResult);
+
+			const result = await controller.getTrendsMetrics(query);
+
+			expect(metricsService.getTrendsMetrics).toHaveBeenCalledWith(
+				30, // range
+				['/v1/agents'], // route
+				'GET', // method
+				[200, 404], // statusCode
+			);
+			expect(result).toEqual(expectedResult);
+		});
+
+		it('should parse string range value "30d" to number', async () => {
+			const query = { range: '30d' as any } as TrendsQueryDto;
+			query.route = undefined;
+			query.method = undefined;
+			query.statusCode = undefined;
+
+			metricsService.getTrendsMetrics = jest.fn().mockResolvedValue({
+				startDate: new Date(),
+				endDate: new Date(),
+				timeBucket: TimeBucket.DAY,
+				data: [],
+				kpiSummary: {} as any,
+			});
+
+			await controller.getTrendsMetrics(query);
+
+			expect(metricsService.getTrendsMetrics).toHaveBeenCalledWith(
+				30, // parsed from "30d"
+				undefined,
+				undefined,
+				undefined,
+			);
+		});
+
+		it('should parse string range value "60d" to number', async () => {
+			const query = { range: '60d' as any } as TrendsQueryDto;
+
+			metricsService.getTrendsMetrics = jest.fn().mockResolvedValue({
+				startDate: new Date(),
+				endDate: new Date(),
+				timeBucket: TimeBucket.WEEK,
+				data: [],
+				kpiSummary: {} as any,
+			});
+
+			await controller.getTrendsMetrics(query);
+
+			expect(metricsService.getTrendsMetrics).toHaveBeenCalledWith(
+				60, // parsed from "60d"
+				undefined,
+				undefined,
+				undefined,
+			);
+		});
+
+		it('should throw error for invalid range string', async () => {
+			const query = { range: '45d' as any } as TrendsQueryDto;
+
+			await expect(controller.getTrendsMetrics(query)).rejects.toThrow(
+				'Invalid range: 45d. Must be 30d, 60d, 90d, 30, 60, or 90',
+			);
+		});
+
+		it('should throw error for invalid range type', async () => {
+			const query = { range: true as any } as TrendsQueryDto;
+
+			await expect(controller.getTrendsMetrics(query)).rejects.toThrow('Invalid range type: boolean');
+		});
+
+		it('should log debug information', async () => {
+			const query = new TrendsQueryDto();
+			query.range = TrendsRange.DAYS_90;
+			query.route = ['/v1/agents', '/v1/companies'];
+			query.statusCode = [200, 500];
+
+			metricsService.getTrendsMetrics = jest.fn().mockResolvedValue({
+				startDate: new Date(),
+				endDate: new Date(),
+				timeBucket: TimeBucket.WEEK,
+				data: [],
+				kpiSummary: {} as any,
+			});
+
+			await controller.getTrendsMetrics(query);
+
+			expect(logger.debug).toHaveBeenCalledWith(
+				'Fetching trends metrics',
+				expect.objectContaining({
+					range: 90,
+					routes: ['/v1/agents', '/v1/companies'],
+					statusCodes: [200, 500],
+				}),
+			);
+		});
+	});
+
+	describe('triggerAggregation', () => {
+		it('should call service with time range and bucket', async () => {
+			const startTime = '2024-01-01T00:00:00Z';
+			const endTime = '2024-01-02T00:00:00Z';
+			const timeBucket = TimeBucket.HOUR;
+
+			metricsService.aggregateAllRouteStats = jest.fn().mockResolvedValue(10);
+
+			const result = await controller.triggerAggregation(startTime, endTime, timeBucket);
+
+			expect(metricsService.aggregateAllRouteStats).toHaveBeenCalledWith(
+				expect.any(Date), // startTime converted to Date
+				expect.any(Date), // endTime converted to Date
+				TimeBucket.HOUR,
+			);
+			expect(result.aggregatedCount).toBe(10);
+			expect(result.timeBucket).toBe(TimeBucket.HOUR);
+		});
+
+		it('should use default time range when not provided', async () => {
+			metricsService.aggregateAllRouteStats = jest.fn().mockResolvedValue(5);
+
+			const result = await controller.triggerAggregation(undefined, undefined, undefined);
+
+			const callArgs = metricsService.aggregateAllRouteStats.mock.calls[0];
+			expect(callArgs[0]).toBeInstanceOf(Date); // startTime (defaults to 24h ago)
+			expect(callArgs[1]).toBeInstanceOf(Date); // endTime (defaults to now)
+			expect(callArgs[2]).toBe(TimeBucket.HOUR); // default bucket
+			expect(result.aggregatedCount).toBe(5);
+		});
+
+		it('should convert string dates to Date objects', async () => {
+			const startTime = '2024-01-01T00:00:00Z';
+			const endTime = '2024-01-02T00:00:00Z';
+
+			metricsService.aggregateAllRouteStats = jest.fn().mockResolvedValue(0);
+
+			await controller.triggerAggregation(startTime, endTime, undefined);
+
+			const callArgs = metricsService.aggregateAllRouteStats.mock.calls[0];
+			expect(callArgs[0]).toBeInstanceOf(Date);
+			expect(callArgs[1]).toBeInstanceOf(Date);
+			expect(callArgs[0].getTime()).toBe(new Date(startTime).getTime());
+			expect(callArgs[1].getTime()).toBe(new Date(endTime).getTime());
+		});
+
+		it('should pass through Date objects if already Date instances', async () => {
+			const startTime = new Date('2024-01-01T00:00:00Z');
+			const endTime = new Date('2024-01-02T00:00:00Z');
+
+			metricsService.aggregateAllRouteStats = jest.fn().mockResolvedValue(0);
+
+			await controller.triggerAggregation(startTime, endTime, TimeBucket.DAY);
+
+			expect(metricsService.aggregateAllRouteStats).toHaveBeenCalledWith(
+				startTime,
+				endTime,
+				TimeBucket.DAY,
+			);
+		});
+
+		it('should throw error for invalid startTime', async () => {
+			await expect(controller.triggerAggregation('invalid-date', undefined, undefined)).rejects.toThrow(
+				'Invalid startTime: invalid-date',
+			);
+		});
+
+		it('should throw error for invalid endTime', async () => {
+			// When endTime is invalid, startTime defaults to 24h ago (valid), so we need to provide a valid startTime
+			const validStartTime = new Date('2024-01-01T00:00:00Z');
+			await expect(controller.triggerAggregation(validStartTime, 'invalid-date', undefined)).rejects.toThrow(
+				'Invalid endTime: invalid-date',
+			);
+		});
+
+		it('should default to HOUR bucket for invalid timeBucket', async () => {
+			metricsService.aggregateAllRouteStats = jest.fn().mockResolvedValue(0);
+
+			await controller.triggerAggregation(undefined, undefined, 'invalid-bucket');
+
+			expect(metricsService.aggregateAllRouteStats).toHaveBeenCalledWith(
+				expect.any(Date),
+				expect.any(Date),
+				TimeBucket.HOUR, // defaults to HOUR
+			);
+		});
+
+		it('should log info with aggregation parameters', async () => {
+			const startTime = '2024-01-01T00:00:00Z';
+			const endTime = '2024-01-02T00:00:00Z';
+
+			metricsService.aggregateAllRouteStats = jest.fn().mockResolvedValue(15);
+
+			await controller.triggerAggregation(startTime, endTime, TimeBucket.DAY);
+
+			expect(logger.info).toHaveBeenCalledWith(
+				'Triggering route stats aggregation',
+				expect.objectContaining({
+					startTime: expect.any(String),
+					endTime: expect.any(String),
+					timeBucket: TimeBucket.DAY,
+				}),
+			);
+		});
+
+		it('should return aggregation result with ISO string dates', async () => {
+			const startTime = '2024-01-01T00:00:00Z';
+			const endTime = '2024-01-02T00:00:00Z';
+
+			metricsService.aggregateAllRouteStats = jest.fn().mockResolvedValue(20);
+
+			const result = await controller.triggerAggregation(startTime, endTime, TimeBucket.HOUR);
+
+			expect(result).toEqual({
+				aggregatedCount: 20,
+				startTime: expect.any(String), // ISO string
+				endTime: expect.any(String), // ISO string
+				timeBucket: TimeBucket.HOUR,
+			});
+			expect(result.startTime).toBe(new Date(startTime).toISOString());
+			expect(result.endTime).toBe(new Date(endTime).toISOString());
 		});
 	});
 });
