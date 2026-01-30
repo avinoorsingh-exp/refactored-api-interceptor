@@ -18,9 +18,10 @@ import { Request } from 'express';
  * @returns true if the request should be logged, false otherwise
  */
 export function shouldLogApiRequest(req: Request): boolean {
-	// Policy: Never log in development/local environments
+	// Policy: Never log in local development environments only
+	// AWS dev/test/prod environments should be logged
 	const nodeEnv = process.env.NODE_ENV?.toLowerCase();
-	if (nodeEnv === 'development' || nodeEnv === 'local' || nodeEnv === 'dev') {
+	if (nodeEnv === 'development' || nodeEnv === 'local') {
 		return false;
 	}
 
