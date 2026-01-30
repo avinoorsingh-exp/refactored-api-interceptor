@@ -155,10 +155,12 @@ export class ApiActorMiddleware implements NestMiddleware {
 	 * 
 	 * Priority:
 	 * 1. Authenticated user (user.id)
-	 * 2. API key (apiKey.id)
-	 * 3. Service account (serviceAccount.id)
-	 * 4. Local dev fallback (LOCAL_DEV_ACTOR) - if NODE_ENV !== 'production'
-	 * 5. Anonymous fallback (ANONYMOUS) - production-safe
+	 * 2. User from JWT token or API Gateway headers
+	 * 3. API key from Authorization header (raw API key value)
+	 * 4. API key (apiKey.id) - if set by auth middleware
+	 * 5. Service account (serviceAccount.id)
+	 * 6. Local dev fallback (LOCAL_DEV_ACTOR) - if NODE_ENV !== 'production'
+	 * 7. Anonymous fallback (ANONYMOUS) - production-safe
 	 * 
 	 * NOTE: This method is NOT called when isLocalDockerEnvironment() === true
 	 * 
@@ -218,7 +220,24 @@ export class ApiActorMiddleware implements NestMiddleware {
 			return { id: actor.id, type: actor.type };
 		}
 
-		// Priority 3: API key (only if set by auth middleware/guard with user context)
+		// Priority 3: Extract API key directly from Authorization header
+		// API Gateway passes the API key value directly (not as Bearer token)
+		// Since the API key is shared by multiple users, we use it as a stable identifier
+		// This ensures all requests using the same API key are attributed to the same actor
+		const apiKeyFromHeader = this.extractApiKeyFromHeader(req);
+		if (apiKeyFromHeader) {
+			const actor = await this.actorService.getOrCreateActor(
+				ApiActorType.API_KEY,
+				apiKeyFromHeader, // Use API key value as identifier for stable resolution
+				{
+					apiKeyValue: apiKeyFromHeader,
+					source: 'authorization_header',
+				},
+			);
+			return { id: actor.id, type: actor.type };
+		}
+
+		// Priority 4: API key (only if set by auth middleware/guard with user context)
 		// @ts-expect-error - apiKey may be set by auth middleware
 		const apiKey = req.apiKey;
 		if (apiKey?.id) {
@@ -233,7 +252,7 @@ export class ApiActorMiddleware implements NestMiddleware {
 			return { id: actor.id, type: actor.type };
 		}
 
-		// Priority 3: Service account
+		// Priority 5: Service account
 		// @ts-expect-error - serviceAccount may be set by auth middleware
 		const serviceAccount = req.serviceAccount;
 		if (serviceAccount?.id) {
@@ -248,7 +267,7 @@ export class ApiActorMiddleware implements NestMiddleware {
 			return { id: actor.id, type: actor.type };
 		}
 
-		// Priority 4: Local development fallback
+		// Priority 6: Local development fallback
 		// Use constant actor ID for dev mode to ensure stable identity
 		if (process.env.NODE_ENV !== 'production') {
 			const actor = await this.actorService.getOrCreateActor(
@@ -261,7 +280,7 @@ export class ApiActorMiddleware implements NestMiddleware {
 			return { id: actor.id, type: actor.type };
 		}
 
-		// Priority 5: Anonymous fallback (production-safe)
+		// Priority 7: Anonymous fallback (production-safe)
 		// Use constant actor ID for anonymous requests to ensure stable identity
 		const actor = await this.actorService.getOrCreateActor(
 			ApiActorType.ANONYMOUS,
@@ -426,6 +445,45 @@ export class ApiActorMiddleware implements NestMiddleware {
 			}
 			return undefined;
 		}
+	}
+
+	/**
+	 * Extract API key from Authorization header.
+	 * 
+	 * API Gateway passes the API key value directly (not as Bearer token).
+	 * Format: "0zAoKyp4ZT84XkU8YD8oh3PdqI9lXfJMaB5vszMo"
+	 * 
+	 * @param req - Express request object
+	 * @returns API key value if found, undefined otherwise
+	 */
+	private extractApiKeyFromHeader(req: Request): string | undefined {
+		const authHeader = req.get('authorization');
+		if (!authHeader) {
+			return undefined;
+		}
+
+		// Check if it's a Bearer token (JWT format)
+		if (authHeader.startsWith('Bearer ')) {
+			// This is a JWT token, not an API key
+			// Let extractUserFromToken handle it
+			return undefined;
+		}
+
+		// API Gateway passes the API key value directly
+		// Return the trimmed value
+		const apiKey = authHeader.trim();
+		if (apiKey.length === 0) {
+			return undefined;
+		}
+
+		if (process.env.NODE_ENV !== 'production') {
+			this.logger.debug('Extracted API key from authorization header', {
+				apiKeyPrefix: apiKey.substring(0, 10) + '...',
+				apiKeyLength: apiKey.length,
+			});
+		}
+
+		return apiKey;
 	}
 
 	/**
