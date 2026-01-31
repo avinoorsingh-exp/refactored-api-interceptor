@@ -32,6 +32,13 @@ import { ProjectionService } from '../../common/query/projection.service.js';
 			useClass: StatesTypeOrmRepository,
 		},
 	],
-	exports: [StatesService],
+	exports: [
+		StatesService,
+		// Export repository token for use in other modules
+		{
+			provide: 'IStatesRepository',
+			useClass: StatesTypeOrmRepository,
+		},
+	],
 })
 export class StatesModule {}

@@ -1,7 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
+import { ZodError } from 'zod';
 import { Consumer, KafkaMessage } from 'kafkajs';
 import { KafkaClientService } from '../kafka-client.service.js';
 import { KafkaMessageProcessingService } from '../kafka-message-processing.service.js';
+import { EnterpriseAgentUpsertService } from '../services/enterprise-agent-upsert.service.js';
 import { ConfigService } from '../../../core/config.service.js';
 import { LoggerService } from '../../../core/logger.service.js';
 import { RegisterableKafkaService } from '../kafka-runtime-manager.service.js';
@@ -28,7 +30,9 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 	constructor(
 		private readonly kafkaClientService: KafkaClientService,
 		private readonly configService: ConfigService,
+		@Inject(forwardRef(() => KafkaMessageProcessingService))
 		private readonly kafkaMessageProcessingService: KafkaMessageProcessingService,
+		private readonly enterpriseAgentUpsertService: EnterpriseAgentUpsertService,
 		loggerService: LoggerService,
 	) {
 		this.logger = loggerService;
@@ -152,17 +156,29 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 	 */
 	getMessageHandler(): (payload: { topic: string; partition: number; message: KafkaMessage }) => Promise<void> {
 		return async (payload: { topic: string; partition: number; message: KafkaMessage }) => {
-			await this.handleMessage(payload.topic, payload.partition, payload.message);
+			// Check if this is a retry (indicated by x-skip-translation header)
+			// For retries, we need to propagate errors so the retry endpoint can handle them
+			const isRetry = payload.message.headers?.['x-skip-translation']?.toString() === 'true';
+			
+			if (isRetry) {
+				// For retries, re-throw errors so retryMessage can catch them
+				await this.handleMessage(payload.topic, payload.partition, payload.message, true);
+			} else {
+				// For normal Kafka messages, swallow errors (existing behavior)
+				await this.handleMessage(payload.topic, payload.partition, payload.message, false);
+			}
 		};
 	}
 
 	/**
 	 * Handle incoming Kafka message
+	 * @param throwOnError - If true, re-throw errors instead of swallowing them (for retries)
 	 */
 	private async handleMessage(
 		topic: string,
 		partition: number,
 		message: KafkaMessage,
+		throwOnError: boolean = false,
 	): Promise<void> {
 		try {
 			const messageValue = message.value?.toString() || '';
@@ -200,23 +216,36 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 				return;
 			}
 
-			// Translate the message before storing it
+			// Check if translation should be skipped (e.g., for retry with custom payload)
+			const skipTranslation = message.headers?.['x-skip-translation']?.toString() === 'true';
+
+			// Translate the message before storing it (unless skip flag is set)
 			// This ensures the database stores the translated format, not the raw message
 			let translatedPayload: Record<string, unknown>;
-			try {
-				const translated = this.translateKafkaMessageToUpsertData(parsedMessage as any);
-				// Convert the translated object to a plain object for JSON storage
-				translatedPayload = translated as unknown as Record<string, unknown>;
-			} catch (translationError) {
-				// If translation fails, log error but store raw message
-				// This allows tracking even if translation has issues
-				this.logger.warn('Failed to translate message before storing - storing raw message', {
+			if (skipTranslation) {
+				// Skip translation for retry with custom payload
+				translatedPayload = parsedMessage as Record<string, unknown>;
+				this.logger.info('Skipping translation for retry with custom payload', {
 					topic,
 					partition,
 					offset: message.offset,
-					error: translationError instanceof Error ? translationError.message : 'Unknown error',
 				});
-				translatedPayload = parsedMessage as Record<string, unknown>;
+			} else {
+				try {
+					const translated = this.translateKafkaMessageToUpsertData(parsedMessage as any);
+					// Convert the translated object to a plain object for JSON storage
+					translatedPayload = translated as unknown as Record<string, unknown>;
+				} catch (translationError) {
+					// If translation fails, log error but store raw message
+					// This allows tracking even if translation has issues
+					this.logger.warn('Failed to translate message before storing - storing raw message', {
+						topic,
+						partition,
+						offset: message.offset,
+						error: translationError instanceof Error ? translationError.message : 'Unknown error',
+					});
+					translatedPayload = parsedMessage as Record<string, unknown>;
+				}
 			}
 
 			// On message receive: Lookup SENT record and increment attempt_count
@@ -239,7 +268,9 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 			});
 
 			// Process the message with retry logic
-			await this.processMessageWithRetry(parsedMessage, topic, partition, message.offset);
+			// For retries (throwOnError = true), re-throw errors so retryMessage can catch them
+			// For normal Kafka messages, errors are handled internally by processMessageWithRetry
+			await this.processMessageWithRetry(parsedMessage, topic, partition, message.offset, skipTranslation);
 
 			this.logger.info('Message processed successfully', {
 				topic,
@@ -254,6 +285,19 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 				error: error instanceof Error ? error.message : 'Unknown error',
 				stack: error instanceof Error ? error.stack : undefined,
 			});
+			
+			// For retries (throwOnError = true), re-throw the error so retryMessage can catch it
+			if (throwOnError) {
+				throw error;
+			}
+			
+			// If this is a retry (throwOnError = true), re-throw the error
+			// so the retry endpoint can catch it and mark the message as ERROR
+			if (throwOnError) {
+				throw error;
+			}
+			
+			// For normal Kafka messages, swallow the error (existing behavior)
 			// After all retries are exhausted, the message will be committed
 			// In a production system, you might want to send to a dead letter queue
 		}
@@ -269,12 +313,17 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 		topic: string,
 		partition: number,
 		offset: string,
+		skipTranslation: boolean = false,
 	): Promise<void> {
 		let lastError: Error | unknown;
 		
+		// For retries (skipTranslation = true), don't retry on validation errors
+		// Validation errors are permanent and won't be fixed by retrying
+		const isRetry = skipTranslation;
+		
 		for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
 			try {
-				await this.processAgentUpdate(message);
+				await this.processAgentUpdate(message, skipTranslation);
 				
 				// After successful processing: Update status = PROCESSED, processed_at = now(), updated_at = now()
 				await this.kafkaMessageProcessingService.markAsProcessed(
@@ -296,6 +345,34 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 				return; // Success - exit retry loop
 			} catch (error) {
 				lastError = error;
+				
+				// Check if this is a validation error (ZodError)
+				// Validation errors are permanent - don't retry them
+				const isValidationError = error instanceof ZodError;
+				
+				// For retries with validation errors, fail immediately without retrying
+				if (isRetry && isValidationError) {
+					this.logger.error('Validation error during retry - failing immediately without retry', {
+						topic,
+						partition,
+						offset,
+						attempt,
+						error: error instanceof Error ? error.message : 'Unknown error',
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+					
+					// Mark as error and throw immediately
+					await this.kafkaMessageProcessingService.markAsError(
+						topic,
+						partition,
+						offset,
+						error instanceof Error ? error : new Error(String(error)),
+						false, // Not retryable - validation errors are permanent
+					);
+					
+					throw error;
+				}
+				
 				const isLastAttempt = attempt === this.maxRetries;
 				
 				// Mark as error in database (non-blocking)
@@ -304,20 +381,21 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 					partition,
 					offset,
 					error instanceof Error ? error : new Error(String(error)),
-					!isLastAttempt, // Retryable if not last attempt
+					!isLastAttempt && !isValidationError, // Not retryable if validation error
 				);
 				
-				if (isLastAttempt) {
-					this.logger.error('Message processing failed after all retries', {
+				if (isLastAttempt || isValidationError) {
+					this.logger.error('Message processing failed', {
 						topic,
 						partition,
 						offset,
 						attempt,
 						maxRetries: this.maxRetries,
+						isValidationError,
 						error: error instanceof Error ? error.message : 'Unknown error',
 						stack: error instanceof Error ? error.stack : undefined,
 					});
-					// Re-throw on final attempt
+					// Re-throw on final attempt or validation error
 					throw error;
 				} else {
 					// Calculate exponential backoff delay: 1s, 2s, 4s
@@ -353,21 +431,47 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 	/**
 	 * Process agent update message
 	 * 
-	 * This is a placeholder implementation for proof of concept.
-	 * Replace this with your actual business logic.
+	 * Translates the Kafka message and upserts agent with all associations.
 	 */
-	private async processAgentUpdate(message: unknown): Promise<void> {
+		private async processAgentUpdate(message: unknown, skipTranslation: boolean = false): Promise<void> {
 		try {
-		// Translate Kafka message to database format
-		const translated = this.translateKafkaMessageToUpsertData(message as any);
-		
-		// Log the translated result for verification
-		// Pass the object directly - logger will handle JSON serialization properly
-		this.logger.info('Translated Kafka message to upsert format', {
-			translated: translated,
-		});
+			// Translate Kafka message to database format (skip if flag is set)
+			let translated: any;
+			if (skipTranslation) {
+				// Use message as-is when translation is skipped (for retry with custom payload)
+				translated = message;
+				this.logger.info('Skipping translation for retry with custom payload', {
+					hasAgent: !!(translated as any)?.agent,
+					agentFirstName: (translated as any)?.agent?.firstName,
+					agentLastName: (translated as any)?.agent?.lastName,
+					agentId: (translated as any)?.agent?.id,
+					messageType: typeof translated,
+					messageKeys: translated && typeof translated === 'object' ? Object.keys(translated) : [],
+				});
+			} else {
+				translated = this.translateKafkaMessageToUpsertData(message as any);
+				// Log the translated result for verification
+				this.logger.info('Translated Kafka message to upsert format', {
+					translated: translated,
+				});
+			}
+
+			// Log the payload structure before validation
+			this.logger.debug('Payload structure before validation', {
+				hasAgent: !!(translated as any)?.agent,
+				agentFirstName: (translated as any)?.agent?.firstName,
+				agentLastName: (translated as any)?.agent?.lastName,
+				agentId: (translated as any)?.agent?.id,
+				firstNameType: typeof (translated as any)?.agent?.firstName,
+				lastNameType: typeof (translated as any)?.agent?.lastName,
+				firstNameLength: (translated as any)?.agent?.firstName?.length,
+				lastNameLength: (translated as any)?.agent?.lastName?.length,
+			});
+
+			// Upsert agent and all associations (validates with Zod and saves to database)
+			await this.enterpriseAgentUpsertService.upsertAgentWithAssociations(translated);
 		} catch (error) {
-			this.logger.error('Error translating Kafka message', {
+			this.logger.error('Error processing agent update', {
 				error: error instanceof Error ? error.message : 'Unknown error',
 				stack: error instanceof Error ? error.stack : undefined,
 			});

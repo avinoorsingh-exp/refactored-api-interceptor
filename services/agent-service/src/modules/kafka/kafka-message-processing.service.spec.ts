@@ -1,10 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { DataSource, QueryRunner, Repository } from 'typeorm';
+import { DataSource, QueryRunner, Repository, SelectQueryBuilder } from 'typeorm';
+import { ModuleRef } from '@nestjs/core';
 import { KafkaMessageProcessingService } from './kafka-message-processing.service.js';
 import { KafkaMessageProcessingEntity, KafkaMessageStatus } from '@exprealty/database';
 import { LoggerService } from '../../core/logger.service.js';
 import { ConfigService } from '../../core/config.service.js';
+import { QueryService } from '../../common/query/query.service.js';
+import { KafkaBootstrapService } from './kafka-bootstrap.service.js';
+import { KafkaRuntimeManager } from './kafka-runtime-manager.service.js';
+import { KafkaMessage } from 'kafkajs';
 
 describe('KafkaMessageProcessingService', () => {
 	let service: KafkaMessageProcessingService;
@@ -14,6 +19,11 @@ describe('KafkaMessageProcessingService', () => {
 	let mockLogger: jest.Mocked<LoggerService>;
 	let mockMetrics: jest.Mocked<ReturnType<LoggerService['getMetrics']>>;
 	let mockConfigService: jest.Mocked<ConfigService>;
+	let mockQueryService: jest.Mocked<QueryService>;
+	let mockModuleRef: jest.Mocked<ModuleRef>;
+	let mockKafkaBootstrapService: jest.Mocked<KafkaBootstrapService>;
+	let mockKafkaRuntimeManager: jest.Mocked<KafkaRuntimeManager>;
+	let mockQueryBuilder: jest.Mocked<SelectQueryBuilder<KafkaMessageProcessingEntity>>;
 
 	const testTopic = 'test-topic';
 	const testPartition = 0;
@@ -77,7 +87,44 @@ describe('KafkaMessageProcessingService', () => {
 		// Create mock ConfigService
 		mockConfigService = {
 			get: jest.fn(),
+			getAll: jest.fn().mockReturnValue({ SERVICE_NAME: 'test-service' }),
 		} as any;
+
+		// Create mock QueryService
+		mockQueryService = {
+			normalize: jest.fn().mockReturnValue({
+				offset: 0,
+				limit: 25,
+				sort: undefined,
+				filter: undefined,
+			}),
+		} as any;
+
+		// Create mock QueryBuilder
+		mockQueryBuilder = {
+			orderBy: jest.fn().mockReturnThis(),
+			addOrderBy: jest.fn().mockReturnThis(),
+			skip: jest.fn().mockReturnThis(),
+			take: jest.fn().mockReturnThis(),
+			andWhere: jest.fn().mockReturnThis(),
+			getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+		} as any;
+
+		// Create mock ModuleRef
+		mockModuleRef = {
+			get: jest.fn(),
+		} as any;
+
+		// Create mock KafkaBootstrapService
+		mockKafkaBootstrapService = {
+			getServiceByTopic: jest.fn(),
+		} as any;
+
+		// Create mock KafkaRuntimeManager
+		mockKafkaRuntimeManager = {} as any;
+
+		// Update mockRepository to include createQueryBuilder
+		mockRepository.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder) as any;
 
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [
@@ -97,6 +144,22 @@ describe('KafkaMessageProcessingService', () => {
 				{
 					provide: ConfigService,
 					useValue: mockConfigService,
+				},
+				{
+					provide: QueryService,
+					useValue: mockQueryService,
+				},
+				{
+					provide: ModuleRef,
+					useValue: mockModuleRef,
+				},
+				{
+					provide: KafkaBootstrapService,
+					useValue: mockKafkaBootstrapService,
+				},
+				{
+					provide: KafkaRuntimeManager,
+					useValue: mockKafkaRuntimeManager,
 				},
 			],
 		}).compile();
@@ -140,14 +203,14 @@ describe('KafkaMessageProcessingService', () => {
 			expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
 			expect(mockQueryRunner.release).toHaveBeenCalled();
 
-			// Verify INSERT query was called with ON CONFLICT DO NOTHING
+			// Verify INSERT query was called with ON CONFLICT
 			const insertQueries = mockQueryRunner.query.mock.calls.filter((call) =>
 				call[0].includes('INSERT INTO'),
 			);
 			expect(insertQueries.length).toBeGreaterThan(0);
 			const insertQuery = insertQueries[0];
 			expect(insertQuery[0]).toContain('ON CONFLICT');
-			expect(insertQuery[0]).toContain('DO NOTHING');
+			expect(insertQuery[0]).toContain('DO UPDATE SET');
 
 			// Verify structured log for record creation
 			expect(mockLogger.info).toHaveBeenCalledWith(
@@ -266,7 +329,8 @@ describe('KafkaMessageProcessingService', () => {
 			);
 			expect(insertQueries.length).toBe(2); // Both calls should use INSERT
 			insertQueries.forEach((query) => {
-				expect(query[0]).toContain('ON CONFLICT (topic, partition, offset)');
+				// The offset column is quoted in the actual query
+				expect(query[0]).toMatch(/ON CONFLICT\s*\([^)]*topic[^)]*partition[^)]*["']?offset["']?[^)]*\)/i);
 				expect(query[0]).toContain('DO UPDATE SET');
 				// Verify the unique constraint columns are in ON CONFLICT
 				expect(query[0]).toMatch(/ON CONFLICT\s*\([^)]*topic[^)]*partition[^)]*offset[^)]*\)/i);
@@ -631,6 +695,823 @@ describe('KafkaMessageProcessingService', () => {
 					partition: testPartition,
 					offset: testOffset,
 				}),
+			);
+		});
+	});
+
+	describe('retryMessage', () => {
+		const messageId = 'test-message-id';
+		const mockMessage: KafkaMessageProcessingEntity = {
+			id: messageId,
+			topic: testTopic,
+			partition: testPartition,
+			offset: testOffset,
+			messageKey: 'test-key',
+			eventId: 'test-event-id',
+			status: KafkaMessageStatus.ERROR,
+			attemptCount: 1,
+			payload: { test: 'data' },
+			headers: { 'x-correlation-id': 'test-correlation-id' },
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		} as KafkaMessageProcessingEntity;
+
+		const mockConsumerService = {
+			getType: jest.fn().mockReturnValue('consumer'),
+			getMessageHandler: jest.fn().mockReturnValue(jest.fn().mockResolvedValue(undefined)),
+		};
+
+		beforeEach(() => {
+			mockRepository.findOne.mockResolvedValue(mockMessage);
+			mockKafkaBootstrapService.getServiceByTopic.mockResolvedValue({
+				service: mockConsumerService,
+				entity: {} as any,
+			});
+		});
+
+		it('should update last_attempt_at after successful processing', async () => {
+			// Arrange
+			mockQueryRunner.query
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						topic: testTopic,
+						status: KafkaMessageStatus.ERROR,
+						attempt_count: 1,
+					},
+				]) // SELECT FOR UPDATE
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						attempt_count: 2,
+						last_attempt_at: new Date(),
+					},
+				]); // UPDATE attempt_count
+
+			const updatedMessageAfterIncrement = {
+				...mockMessage,
+				status: KafkaMessageStatus.ERROR, // Still ERROR after increment
+				attemptCount: 2,
+			};
+			const finalMessage = {
+				...mockMessage,
+				status: KafkaMessageStatus.PROCESSED, // Changed to PROCESSED after processing
+				attemptCount: 2,
+			};
+			mockRepository.findOne
+				.mockResolvedValueOnce(updatedMessageAfterIncrement) // After initial update
+				.mockResolvedValueOnce(finalMessage); // After processing
+
+			mockDataSource.query.mockResolvedValueOnce([{ id: messageId }]);
+
+			// Act
+			await service.retryMessage(messageId);
+
+			// Assert
+			// Verify initial update (attempt_count increment) - this is done via queryRunner
+			expect(mockQueryRunner.query).toHaveBeenCalledWith(
+				expect.stringContaining('UPDATE core.kafka_message_processing'),
+				[messageId],
+			);
+			expect(mockQueryRunner.query).toHaveBeenCalledWith(
+				expect.stringContaining('attempt_count = attempt_count + 1'),
+				[messageId],
+			);
+			expect(mockQueryRunner.query).toHaveBeenCalledWith(
+				expect.stringContaining('last_attempt_at = NOW()'),
+				[messageId],
+			);
+
+			// Verify update after processing - this is done via dataSource.query
+			const updateAfterProcessingCalls = mockDataSource.query.mock.calls.filter((call) =>
+				call[0].includes('UPDATE core.kafka_message_processing'),
+			);
+			expect(updateAfterProcessingCalls.length).toBeGreaterThan(0);
+			expect(updateAfterProcessingCalls[0][0]).toContain('SET last_attempt_at = NOW()');
+			expect(updateAfterProcessingCalls[0][1]).toEqual([messageId]);
+		});
+
+		it('should update last_attempt_at after failed processing', async () => {
+			// Arrange
+			const processingError = new Error('Processing failed');
+			mockQueryRunner.query
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						topic: testTopic,
+						status: KafkaMessageStatus.ERROR,
+						attempt_count: 1,
+					},
+				]) // SELECT FOR UPDATE
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						attempt_count: 2,
+						last_attempt_at: new Date(),
+					},
+				]); // UPDATE attempt_count
+
+			mockRepository.findOne
+				.mockResolvedValueOnce({
+					...mockMessage,
+					attemptCount: 2,
+				}) // After initial update
+				.mockResolvedValueOnce({
+					...mockMessage,
+					status: KafkaMessageStatus.ERROR,
+					attemptCount: 2,
+				}); // After processing failure
+
+			mockConsumerService.getMessageHandler.mockReturnValue(
+				jest.fn().mockRejectedValue(processingError),
+			);
+
+			mockDataSource.query
+				.mockResolvedValueOnce([{ id: messageId }]) // After processing update
+				.mockResolvedValueOnce([
+					{
+						status: KafkaMessageStatus.ERROR,
+						error_code: 'Error',
+						error_message: 'Processing failed',
+						error_stacktrace: null,
+					},
+				]) // Status check query
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						topic: testTopic,
+						partition: testPartition,
+						offset: testOffset,
+						status: KafkaMessageStatus.ERROR,
+						message_key: 'test-key',
+						payload: { test: 'data' },
+						headers: { 'x-correlation-id': 'test-correlation-id' },
+						event_id: 'test-event-id',
+						consumer_group: testConsumerGroup,
+						service_name: testServiceName,
+						attempt_count: 2,
+						error_code: 'Error',
+						error_message: 'Processing failed',
+						error_stacktrace: null,
+						is_retryable: true,
+						processed_at: null,
+						last_attempt_at: new Date(),
+						created_at: new Date(),
+						updated_at: new Date(),
+					},
+				]); // Final full message query
+
+			// Act
+			await service.retryMessage(messageId);
+
+			// Assert
+			// Verify initial update (attempt_count increment)
+			expect(mockQueryRunner.query).toHaveBeenCalledWith(
+				expect.stringContaining('UPDATE core.kafka_message_processing'),
+				[messageId],
+			);
+
+			// Verify update after processing failure
+			const updateAfterFailureCalls = mockDataSource.query.mock.calls.filter((call) =>
+				call[0].includes('UPDATE core.kafka_message_processing'),
+			);
+			expect(updateAfterFailureCalls.length).toBeGreaterThan(0);
+			expect(updateAfterFailureCalls[0][0]).toContain('last_attempt_at = NOW()');
+			expect(updateAfterFailureCalls[0][1]).toContain(KafkaMessageStatus.ERROR);
+
+			// Verify error was logged
+			expect(mockLogger.warn).toHaveBeenCalledWith(
+				'Retry processing failed, returning final ERROR status with error details',
+				expect.objectContaining({
+					messageId,
+					processingError: 'Processing failed',
+				}),
+			);
+		});
+
+		it('should throw NotFoundException if message not found', async () => {
+			// Arrange
+			mockQueryRunner.query.mockResolvedValueOnce([]); // Empty result from SELECT FOR UPDATE
+
+			// Act & Assert
+			await expect(service.retryMessage(messageId)).rejects.toThrow('not found');
+			expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
+		});
+
+		it('should allow retry for PROCESSED status (race condition fix)', async () => {
+			// Arrange
+			mockQueryRunner.query
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						topic: testTopic,
+						status: KafkaMessageStatus.PROCESSED,
+						attempt_count: 1,
+					},
+				]) // SELECT FOR UPDATE
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						attempt_count: 2,
+						last_attempt_at: new Date(),
+					},
+				]); // UPDATE attempt_count
+
+			mockRepository.findOne
+				.mockResolvedValueOnce({
+					...mockMessage,
+					status: KafkaMessageStatus.PROCESSED,
+					attemptCount: 2,
+				})
+				.mockResolvedValueOnce({
+					...mockMessage,
+					status: KafkaMessageStatus.PROCESSED,
+					attemptCount: 2,
+				});
+
+			mockDataSource.query
+				.mockResolvedValueOnce([{ id: messageId }]) // After processing update
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						status: KafkaMessageStatus.PROCESSED,
+						error_code: null,
+						error_message: null,
+						error_stacktrace: null,
+					},
+				]); // Final status query
+
+			// Act
+			await service.retryMessage(messageId);
+
+			// Assert
+			// Should not throw - retry should be accepted for PROCESSED status
+			expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				'Retry accepted: processing message regardless of current status',
+				expect.objectContaining({
+					messageId,
+					requestStartStatus: KafkaMessageStatus.PROCESSED.toUpperCase(),
+				}),
+			);
+		});
+
+		it('should allow retry for SENT status', async () => {
+			// Arrange
+			mockQueryRunner.query
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						topic: testTopic,
+						status: KafkaMessageStatus.SENT,
+						attempt_count: 1,
+					},
+				]) // SELECT FOR UPDATE
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						attempt_count: 2,
+						last_attempt_at: new Date(),
+					},
+				]); // UPDATE attempt_count
+
+			mockRepository.findOne
+				.mockResolvedValueOnce({
+					...mockMessage,
+					status: KafkaMessageStatus.SENT,
+					attemptCount: 2,
+				})
+				.mockResolvedValueOnce({
+					...mockMessage,
+					status: KafkaMessageStatus.PROCESSED,
+					attemptCount: 2,
+				});
+
+			mockDataSource.query
+				.mockResolvedValueOnce([{ id: messageId }]) // After processing update
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						status: KafkaMessageStatus.PROCESSED,
+						error_code: null,
+						error_message: null,
+						error_stacktrace: null,
+					},
+				]); // Final status query
+
+			// Act
+			await service.retryMessage(messageId);
+
+			// Assert
+			expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+		});
+
+		it('should throw BadRequestException if message status is null/undefined', async () => {
+			// Arrange
+			mockQueryRunner.query.mockResolvedValueOnce([
+				{
+					id: messageId,
+					topic: testTopic,
+					status: null, // Invalid status
+					attempt_count: 1,
+				},
+			]);
+
+			// Act & Assert
+			await expect(service.retryMessage(messageId)).rejects.toThrow('invalid');
+			expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
+		});
+
+		it('should use custom payload when provided', async () => {
+			// Arrange
+			const customPayload = { custom: 'payload' };
+			mockQueryRunner.query
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						topic: testTopic,
+						status: KafkaMessageStatus.ERROR,
+						attempt_count: 1,
+					},
+				]) // SELECT FOR UPDATE
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						attempt_count: 2,
+						last_attempt_at: new Date(),
+					},
+				]); // UPDATE attempt_count
+
+			mockRepository.findOne
+				.mockResolvedValueOnce({
+					...mockMessage,
+					attemptCount: 2,
+				})
+				.mockResolvedValueOnce({
+					...mockMessage,
+					status: KafkaMessageStatus.PROCESSED,
+					attemptCount: 2,
+				});
+
+			mockDataSource.query
+				.mockResolvedValueOnce([{ id: messageId }]) // After processing update
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						status: KafkaMessageStatus.PROCESSED,
+						error_code: null,
+						error_message: null,
+						error_stacktrace: null,
+					},
+				]); // Final status query
+
+			// Act
+			await service.retryMessage(messageId, customPayload);
+
+			// Assert
+			// Verify message handler was called with custom payload
+			const messageHandler = mockConsumerService.getMessageHandler();
+			expect(messageHandler).toHaveBeenCalledWith(
+				expect.objectContaining({
+					message: expect.objectContaining({
+						value: Buffer.from(JSON.stringify(customPayload)),
+						headers: expect.objectContaining({
+							'x-skip-translation': Buffer.from('true'),
+						}),
+					}),
+				}),
+			);
+		});
+
+		it('should parse payload string from database (JSONB string handling)', async () => {
+			// Arrange
+			const payloadString = JSON.stringify({ agent: { firstName: 'John', lastName: 'Doe' } });
+			mockQueryRunner.query
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						topic: testTopic,
+						status: KafkaMessageStatus.ERROR,
+						attempt_count: 1,
+					},
+				]) // SELECT FOR UPDATE
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						attempt_count: 2,
+						last_attempt_at: new Date(),
+					},
+				]); // UPDATE attempt_count
+
+			mockRepository.findOne
+				.mockResolvedValueOnce({
+					...mockMessage,
+					payload: payloadString, // String payload
+					attemptCount: 2,
+				})
+				.mockResolvedValueOnce({
+					...mockMessage,
+					payload: JSON.parse(payloadString), // Parsed payload
+					status: KafkaMessageStatus.PROCESSED,
+					attemptCount: 2,
+				});
+
+			mockDataSource.query
+				.mockResolvedValueOnce([{ id: messageId }]) // After processing update
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						status: KafkaMessageStatus.PROCESSED,
+						error_code: null,
+						error_message: null,
+						error_stacktrace: null,
+					},
+				]); // Final status query
+
+			// Act
+			await service.retryMessage(messageId);
+
+			// Assert
+			// Verify message handler was called with parsed payload
+			const messageHandler = mockConsumerService.getMessageHandler();
+			expect(messageHandler).toHaveBeenCalled();
+			const callArgs = messageHandler.mock.calls[0][0];
+			const parsedPayload = JSON.parse(callArgs.message.value.toString());
+			expect(parsedPayload.agent.firstName).toBe('John');
+			expect(parsedPayload.agent.lastName).toBe('Doe');
+		});
+
+		it('should convert snake_case to camelCase for agent fields', async () => {
+			// Arrange
+			const payloadWithSnakeCase = {
+				agent: {
+					first_name: 'John',
+					last_name: 'Doe',
+					id: 'test-id',
+				},
+			};
+			mockQueryRunner.query
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						topic: testTopic,
+						status: KafkaMessageStatus.ERROR,
+						attempt_count: 1,
+					},
+				]) // SELECT FOR UPDATE
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						attempt_count: 2,
+						last_attempt_at: new Date(),
+					},
+				]); // UPDATE attempt_count
+
+			mockRepository.findOne
+				.mockResolvedValueOnce({
+					...mockMessage,
+					payload: payloadWithSnakeCase,
+					attemptCount: 2,
+				})
+				.mockResolvedValueOnce({
+					...mockMessage,
+					payload: payloadWithSnakeCase,
+					status: KafkaMessageStatus.PROCESSED,
+					attemptCount: 2,
+				});
+
+			mockDataSource.query
+				.mockResolvedValueOnce([{ id: messageId }]) // After processing update
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						status: KafkaMessageStatus.PROCESSED,
+						error_code: null,
+						error_message: null,
+						error_stacktrace: null,
+					},
+				]); // Final status query
+
+			// Act
+			await service.retryMessage(messageId);
+
+			// Assert
+			// Verify message handler was called with camelCase payload
+			const messageHandler = mockConsumerService.getMessageHandler();
+			expect(messageHandler).toHaveBeenCalled();
+			const callArgs = messageHandler.mock.calls[0][0];
+			const payload = JSON.parse(callArgs.message.value.toString());
+			// Should have both camelCase and snake_case (conversion adds camelCase but doesn't remove snake_case)
+			expect(payload.agent.firstName || payload.agent.first_name).toBe('John');
+			expect(payload.agent.lastName || payload.agent.last_name).toBe('Doe');
+		});
+
+		it('should handle ZodError and return error details in response', async () => {
+			// Arrange
+			const { ZodError } = await import('zod');
+			const zodError = new ZodError([
+				{
+					path: ['agent', 'firstName'],
+					message: 'String must contain at least 1 character(s)',
+					code: 'too_small',
+				},
+				{
+					path: ['agent', 'lastName'],
+					message: 'String must contain at least 1 character(s)',
+					code: 'too_small',
+				},
+			]);
+
+			mockQueryRunner.query
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						topic: testTopic,
+						status: KafkaMessageStatus.ERROR,
+						attempt_count: 1,
+					},
+				]) // SELECT FOR UPDATE
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						attempt_count: 2,
+						last_attempt_at: new Date(),
+					},
+				]); // UPDATE attempt_count
+
+			mockRepository.findOne
+				.mockResolvedValueOnce({
+					...mockMessage,
+					attemptCount: 2,
+				})
+				.mockResolvedValueOnce({
+					...mockMessage,
+					status: KafkaMessageStatus.ERROR,
+					attemptCount: 2,
+					errorCode: 'ZodError',
+					errorMessage: 'Validation failed: agent.firstName: String must contain at least 1 character(s); agent.lastName: String must contain at least 1 character(s)',
+					errorStacktrace: JSON.stringify({
+						type: 'ZodError',
+						issues: zodError.issues,
+					}),
+				});
+
+			mockConsumerService.getMessageHandler.mockReturnValue(
+				jest.fn().mockRejectedValue(zodError),
+			);
+
+			mockDataSource.query
+				.mockResolvedValueOnce([{ id: messageId }]) // After processing update
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						status: KafkaMessageStatus.ERROR,
+						error_code: 'ZodError',
+						error_message: 'Validation failed: agent.firstName: String must contain at least 1 character(s); agent.lastName: String must contain at least 1 character(s)',
+						error_stacktrace: JSON.stringify({
+							type: 'ZodError',
+							issues: zodError.issues,
+						}),
+					},
+				]); // Final status query
+
+			// Act
+			const result = await service.retryMessage(messageId);
+
+			// Assert
+			expect(result.status).toBe(KafkaMessageStatus.ERROR);
+			expect(result.errorCode).toBe('ZodError');
+			expect(result.errorMessage).toContain('Validation failed');
+			expect(result.errorStacktrace).toBeDefined();
+		});
+
+		it('should poll for final status and return committed status', async () => {
+			// Arrange
+			mockQueryRunner.query
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						topic: testTopic,
+						status: KafkaMessageStatus.ERROR,
+						attempt_count: 1,
+					},
+				]) // SELECT FOR UPDATE
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						attempt_count: 2,
+						last_attempt_at: new Date(),
+					},
+				]); // UPDATE attempt_count
+
+			mockRepository.findOne
+				.mockResolvedValueOnce({
+					...mockMessage,
+					attemptCount: 2,
+				})
+				.mockResolvedValueOnce({
+					...mockMessage,
+					status: KafkaMessageStatus.PROCESSED,
+					attemptCount: 2,
+				})
+				.mockResolvedValueOnce({
+					...mockMessage,
+					status: KafkaMessageStatus.PROCESSED,
+					attemptCount: 2,
+				})
+				.mockResolvedValueOnce({
+					...mockMessage,
+					status: KafkaMessageStatus.PROCESSED,
+					attemptCount: 2,
+				});
+
+			mockDataSource.query
+				.mockResolvedValueOnce([{ id: messageId }]) // After processing update
+				.mockResolvedValueOnce([
+					{
+						status: KafkaMessageStatus.PROCESSED,
+						error_code: null,
+						error_message: null,
+						error_stacktrace: null,
+					},
+				]) // Status check query
+				.mockResolvedValueOnce([
+					{
+						id: messageId,
+						topic: testTopic,
+						partition: testPartition,
+						offset: testOffset,
+						status: KafkaMessageStatus.PROCESSED,
+						message_key: 'test-key',
+						payload: { test: 'data' },
+						headers: { 'x-correlation-id': 'test-correlation-id' },
+						event_id: 'test-event-id',
+						consumer_group: testConsumerGroup,
+						service_name: testServiceName,
+						attempt_count: 2,
+						error_code: null,
+						error_message: null,
+						error_stacktrace: null,
+						is_retryable: true,
+						processed_at: new Date(),
+						last_attempt_at: new Date(),
+						created_at: new Date(),
+						updated_at: new Date(),
+					},
+				]); // Final full message query
+
+			// Act
+			const result = await service.retryMessage(messageId);
+
+			// Assert
+			expect(result.status).toBe(KafkaMessageStatus.PROCESSED);
+			expect(result.attemptCount).toBe(2);
+		});
+	});
+
+	describe('batchRetryMessages', () => {
+		const messageId1 = 'message-id-1';
+		const messageId2 = 'message-id-2';
+		const messageId3 = 'message-id-3';
+
+		it('should retry multiple messages and return summary', async () => {
+			// Arrange
+			const mockMessage: KafkaMessageProcessingEntity = {
+				id: messageId1,
+				topic: testTopic,
+				partition: testPartition,
+				offset: testOffset,
+				status: KafkaMessageStatus.ERROR,
+				attemptCount: 1,
+				payload: { test: 'data' },
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			} as KafkaMessageProcessingEntity;
+
+			mockRepository.findOne.mockResolvedValue(mockMessage);
+			mockQueryRunner.query.mockResolvedValue([
+				{
+					id: messageId1,
+					attempt_count: 2,
+					last_attempt_at: new Date(),
+				},
+			]);
+			mockDataSource.query.mockResolvedValue([{ id: messageId1 }]);
+
+			mockKafkaBootstrapService.getServiceByTopic.mockResolvedValue({
+				service: {
+					getType: jest.fn().mockReturnValue('consumer'),
+					getMessageHandler: jest.fn().mockReturnValue(
+						jest.fn().mockResolvedValue(undefined),
+					),
+				},
+				entity: {} as any,
+			});
+
+			// Mock retryMessage to succeed for first two, fail for third
+			jest.spyOn(service, 'retryMessage')
+				.mockResolvedValueOnce({} as any)
+				.mockResolvedValueOnce({} as any)
+				.mockRejectedValueOnce(new Error('Retry failed'));
+
+			// Act
+			const result = await service.batchRetryMessages([messageId1, messageId2, messageId3]);
+
+			// Assert
+			expect(result.successful).toBe(2);
+			expect(result.failed).toBe(1);
+			expect(result.results).toHaveLength(3);
+			expect(result.results[0]).toEqual({ messageId: messageId1, success: true });
+			expect(result.results[1]).toEqual({ messageId: messageId2, success: true });
+			expect(result.results[2]).toEqual({
+				messageId: messageId3,
+				success: false,
+				error: 'Retry failed',
+			});
+
+			expect(mockLogger.info).toHaveBeenCalledWith(
+				'Batch retry completed',
+				expect.objectContaining({
+					total: 3,
+					successful: 2,
+					failed: 1,
+				}),
+			);
+		});
+
+		it('should handle empty array', async () => {
+			// Act
+			const result = await service.batchRetryMessages([]);
+
+			// Assert
+			expect(result.successful).toBe(0);
+			expect(result.failed).toBe(0);
+			expect(result.results).toHaveLength(0);
+		});
+	});
+
+	describe('findPage', () => {
+		it('should default to sorting by last_attempt_at DESC with NULLS LAST', async () => {
+			// Arrange
+			const mockEntities: KafkaMessageProcessingEntity[] = [
+				{
+					id: 'id-1',
+					lastAttemptAt: new Date('2024-01-02'),
+					createdAt: new Date('2024-01-01'),
+				},
+				{
+					id: 'id-2',
+					lastAttemptAt: null,
+					createdAt: new Date('2024-01-03'),
+				},
+			] as any;
+
+			mockQueryBuilder.getManyAndCount.mockResolvedValue([mockEntities, 2]);
+			mockQueryService.normalize.mockReturnValue({
+				offset: 0,
+				limit: 25,
+				sort: undefined, // No sort specified - should use default
+				filter: undefined,
+			});
+
+			// Act
+			await service.findPage({});
+
+			// Assert
+			// Verify default sort was applied
+			expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith(
+				'kafka_message.last_attempt_at',
+				'DESC',
+				'NULLS LAST',
+			);
+			expect(mockQueryBuilder.addOrderBy).toHaveBeenCalledWith(
+				'kafka_message.created_at',
+				'DESC',
+			);
+		});
+
+		it('should use custom sort when provided', async () => {
+			// Arrange
+			mockQueryService.normalize.mockReturnValue({
+				offset: 0,
+				limit: 25,
+				sort: {
+					conditions: [
+						{ field: 'createdAt', direction: 'ASC' },
+					],
+				},
+				filter: undefined,
+			});
+
+			// Act
+			await service.findPage({ sort: '[{"field":"createdAt","direction":"ASC"}]' });
+
+			// Assert
+			// Should not use default sort when custom sort is provided
+			expect(mockQueryBuilder.orderBy).not.toHaveBeenCalledWith(
+				'kafka_message.last_attempt_at',
+				'DESC',
+				'NULLS LAST',
 			);
 		});
 	});

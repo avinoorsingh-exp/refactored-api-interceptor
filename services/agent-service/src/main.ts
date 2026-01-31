@@ -130,7 +130,9 @@ async function bootstrap() {
 		.addTag('regions', 'Region management endpoints')
 		.build()
 
-	const document = SwaggerModule.createDocument(app, swaggerConfig)
+	const document = SwaggerModule.createDocument(app, swaggerConfig, {
+		operationIdFactory: (controllerKey: string, methodKey: string) => methodKey,
+	})
 	SwaggerModule.setup('api', app, document)
 	
 	// NOTE: Global ValidationPipe removed in favor of Zod-first architecture

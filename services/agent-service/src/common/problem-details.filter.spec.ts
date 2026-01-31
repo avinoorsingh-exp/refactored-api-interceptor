@@ -367,6 +367,54 @@ describe('ProblemDetailsFilter', () => {
 				}),
 			)
 		})
+
+		it('should handle ZodError with missing message using code-based fallback', () => {
+			const zodError = new ZodError([
+				{
+					code: 'invalid_type',
+					expected: 'string',
+					received: 'number',
+					path: ['name'],
+					message: '', // Empty message
+				} as ZodIssue,
+			])
+
+			filter.catch(zodError, mockHost)
+
+			expect(mockResponse.json).toHaveBeenCalledWith(
+				expect.objectContaining({
+					invalidParams: expect.arrayContaining([
+						expect.objectContaining({
+							name: 'name',
+							reason: expect.stringContaining('invalid_type'), // Should use code-based fallback
+						}),
+					]),
+				}),
+			)
+		})
+
+		it('should handle ZodError with undefined message using generic fallback', () => {
+			const zodError = new ZodError([
+				{
+					code: 'custom',
+					path: ['field'],
+					message: undefined as any, // Undefined message
+				} as ZodIssue,
+			])
+
+			filter.catch(zodError, mockHost)
+
+			expect(mockResponse.json).toHaveBeenCalledWith(
+				expect.objectContaining({
+					invalidParams: expect.arrayContaining([
+						expect.objectContaining({
+							name: 'field',
+							reason: expect.any(String), // Should have a reason (generic fallback)
+						}),
+					]),
+				}),
+			)
+		})
 	})
 
 	describe('generic Error handling', () => {

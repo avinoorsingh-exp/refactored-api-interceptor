@@ -61,7 +61,7 @@ export class KafkaBulkOperationsService {
 			try {
 				let serviceEntry = this.kafkaBootstrapService.getServiceByEntityId(entity.id);
 				if (!serviceEntry) {
-					serviceEntry = this.kafkaBootstrapService.registerServiceEntity(entity);
+					serviceEntry = await this.kafkaBootstrapService.registerServiceEntity(entity);
 					if (!serviceEntry) {
 						results.push({
 							entityId: entity.id,
@@ -230,7 +230,7 @@ export class KafkaBulkOperationsService {
 
 				let serviceEntry = this.kafkaBootstrapService.getServiceByEntityId(entity.id);
 				if (!serviceEntry) {
-					serviceEntry = this.kafkaBootstrapService.registerServiceEntity(entity);
+					serviceEntry = await this.kafkaBootstrapService.registerServiceEntity(entity);
 					if (!serviceEntry) {
 						results.push({
 							entityId: entity.id,

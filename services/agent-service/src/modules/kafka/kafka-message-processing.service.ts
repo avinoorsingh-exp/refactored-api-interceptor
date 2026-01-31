@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, Brackets } from 'typeorm';
 import {
@@ -10,6 +11,11 @@ import { ConfigService } from '../../core/config.service.js';
 import { QueryService } from '../../common/query/query.service.js';
 import type { QueryParams } from '@exprealty/shared-domain';
 import { KafkaMessageProcessingResponseDto } from './dto/kafka-message-processing-response.dto.js';
+import type { KafkaProducerService } from './kafka-producer.service.js';
+import { KafkaRuntimeManager } from './kafka-runtime-manager.service.js';
+import { KafkaBootstrapService } from './kafka-bootstrap.service.js';
+import { KafkaMessage } from 'kafkajs';
+import { ZodError } from 'zod';
 
 /**
  * Data for creating a Kafka message processing record.
@@ -47,6 +53,7 @@ export interface CreateSentRecordData {
 @Injectable()
 export class KafkaMessageProcessingService {
 	private readonly metrics: ReturnType<LoggerService['getMetrics']>;
+	private _kafkaProducer: KafkaProducerService | null = null;
 
 	constructor(
 		@InjectRepository(KafkaMessageProcessingEntity)
@@ -55,9 +62,28 @@ export class KafkaMessageProcessingService {
 		private readonly logger: LoggerService,
 		private readonly configService: ConfigService,
 		private readonly queryService: QueryService,
+		private readonly moduleRef: ModuleRef,
+		private readonly kafkaRuntimeManager: KafkaRuntimeManager,
+		@Inject(forwardRef(() => KafkaBootstrapService))
+		private readonly kafkaBootstrapService: KafkaBootstrapService,
 	) {
 		this.logger.setContext('KafkaMessageProcessingService');
 		this.metrics = this.logger.getMetrics();
+	}
+
+	/**
+	 * Get KafkaProducerService instance lazily via ModuleRef.
+	 * This breaks the circular dependency by resolving at runtime.
+	 */
+	private async getKafkaProducer(): Promise<KafkaProducerService> {
+		if (this._kafkaProducer) {
+			return this._kafkaProducer;
+		}
+
+		// Dynamic import to avoid circular dependency at module load time
+		const { KafkaProducerService } = await import('./kafka-producer.service.js');
+		this._kafkaProducer = this.moduleRef.get(KafkaProducerService, { strict: false });
+		return this._kafkaProducer;
 	}
 
 	/**
@@ -474,9 +500,39 @@ export class KafkaMessageProcessingService {
 			const consumerGroup = record.consumer_group;
 			const serviceName = record.service_name;
 
-			const errorMessage = error instanceof Error ? error.message : error;
-			const errorStacktrace = error instanceof Error ? error.stack : null;
-			const errorCode = error instanceof Error ? error.name : 'Error';
+			// Handle ZodError specially to format validation errors
+			let errorMessage: string;
+			let errorStacktrace: string | null;
+			let errorCode: string;
+			
+			if (error instanceof ZodError) {
+				// This is a ZodError - format validation errors for better readability
+				const issues = error.issues;
+				
+				// Format validation errors into a readable message
+				const formattedErrors = issues.map((issue) => {
+					const fieldPath = issue.path.length > 0 ? issue.path.join('.') : 'root';
+					return `${fieldPath}: ${issue.message}`;
+				});
+				
+				errorMessage = `Validation failed: ${formattedErrors.join('; ')}`;
+				errorCode = 'ZodError';
+				// Store full error details in stacktrace for debugging
+				errorStacktrace = JSON.stringify({
+					type: 'ZodError',
+					issues: issues.map((issue) => ({
+						path: issue.path,
+						message: issue.message,
+						code: issue.code,
+					})),
+					stack: error.stack,
+				}, null, 2);
+			} else {
+				// Regular error handling
+				errorMessage = error instanceof Error ? error.message : String(error);
+				errorStacktrace = error instanceof Error ? error.stack : null;
+				errorCode = error instanceof Error ? error.name : 'Error';
+			}
 
 			// Update by primary key for optimal performance and to prevent race conditions
 			const updateResult = await queryRunner.query(
@@ -680,8 +736,933 @@ export class KafkaMessageProcessingService {
 	}
 
 	/**
+	 * Find a Kafka message processing record by ID.
+	 * 
+	 * @param id - Record ID (UUID)
+	 * @returns The record if found, null otherwise
+	 */
+	async findById(id: string): Promise<KafkaMessageProcessingEntity | null> {
+		try {
+			return await this.repository.findOne({
+				where: { id },
+			});
+		} catch (error) {
+			this.logger.warn('Failed to find Kafka message processing record by ID', {
+				id,
+				error: error instanceof Error ? error.message : 'Unknown error',
+			});
+			return null;
+		}
+	}
+
+	/**
+	 * Retry processing a message.
+	 * Allows retry for all valid statuses (SENT, PROCESSED, ERROR) to handle race conditions.
+	 * Re-invokes internal processing logic (same as what consumers do).
+	 * 
+	 * @param messageId - Message record ID (UUID)
+	 * @returns Updated message record with final committed status
+	 * @throws NotFoundException if message not found
+	 * @throws BadRequestException if message status is invalid (null/undefined)
+	 */
+	async retryMessage(messageId: string, customPayload?: Record<string, unknown>): Promise<KafkaMessageProcessingResponseDto> {
+		// Use atomic transaction with SELECT FOR UPDATE to:
+		// 1. Check status = ERROR atomically
+		// 2. Lock the record to prevent concurrent retries
+		// 3. Increment attempt_count
+		// This ensures status validation and retry initiation are atomic
+		const queryRunner = this.dataSource.createQueryRunner();
+		await queryRunner.connect();
+		await queryRunner.startTransaction();
+
+		let updatedMessage: KafkaMessageProcessingEntity | null = null;
+		let transactionCommitted = false;
+		// Flag to track if retry was accepted - once true, endpoint MUST return 200
+		let retryAccepted = false;
+
+		try {
+			// Atomic status check + lock + increment in single transaction
+			// SELECT FOR UPDATE locks the row, preventing concurrent retries
+			const lockResult = await queryRunner.query(
+				`
+				SELECT id, topic, partition, "offset", status, message_key, payload, headers, 
+				       event_id, consumer_group, service_name, attempt_count, error_code, 
+				       error_message, error_stacktrace, is_retryable, processed_at, 
+				       last_attempt_at, created_at, updated_at
+				FROM core.kafka_message_processing
+				WHERE id = $1
+				FOR UPDATE
+				`,
+				[messageId] as any[],
+			);
+
+			if (!lockResult || lockResult.length === 0) {
+				await queryRunner.rollbackTransaction();
+				throw new NotFoundException({
+					message: `Kafka message with ID '${messageId}' not found`,
+					i18nType: 'kafka.message.not_found',
+				});
+			}
+
+			const lockedMessage = lockResult[0];
+
+			// Extract topic from locked message (already validated to exist)
+			// PostgreSQL returns column names in lowercase by default
+			const topicFromLock = lockedMessage.topic || lockedMessage.TOPIC || (lockedMessage as any)?.['topic'] || (lockedMessage as any)?.['TOPIC'];
+			if (!topicFromLock) {
+				await queryRunner.rollbackTransaction();
+				this.logger.error('Topic is missing from locked message result', {
+					messageId,
+					lockedMessageKeys: Object.keys(lockedMessage || {}),
+					lockedMessage,
+				});
+				throw new Error(`Message with ID '${messageId}' is missing topic in database. Cannot retry.`);
+			}
+
+			// Extract current status for logging (while row is locked)
+			// PostgreSQL returns column names in lowercase by default
+			// Extract status with multiple fallbacks to handle any casing issues
+			const currentStatusRaw = lockedMessage.status || lockedMessage.STATUS || (lockedMessage as any)?.['status'] || (lockedMessage as any)?.['STATUS'];
+			// Normalize status to string and trim whitespace, convert to uppercase for comparison
+			const currentStatus = currentStatusRaw ? String(currentStatusRaw).trim().toUpperCase() : null;
+			
+			// Allow retry for all valid statuses (SENT, PROCESSED, ERROR)
+			// Only reject if status is truly invalid (null/undefined/empty)
+			// This fixes race conditions where status may be PROCESSED when retry is requested
+			if (!currentStatus) {
+				await queryRunner.rollbackTransaction();
+				this.logger.error('Retry rejected: message status is invalid (null/undefined)', {
+					messageId,
+					currentStatusRaw,
+					lockedMessageKeys: Object.keys(lockedMessage || {}),
+					lockedMessageStatus: lockedMessage.status,
+				});
+				throw new BadRequestException({
+					message: `Message with ID '${messageId}' cannot be retried. Current status is invalid.`,
+					i18nType: 'kafka.message.retry.invalid_status',
+				});
+			}
+			
+			// Retry is ACCEPTED - process regardless of current status (SENT, PROCESSED, or ERROR)
+			// Log the request-start status for debugging (but don't reject based on it)
+			this.logger.info('Retry accepted: processing message regardless of current status', {
+				messageId,
+				requestStartStatus: currentStatus,
+				requestStartStatusRaw: currentStatusRaw,
+				attemptCountBefore: lockedMessage.attempt_count || 0,
+				note: currentStatus !== KafkaMessageStatus.ERROR.toUpperCase() 
+					? 'Retrying message that is not in ERROR state (may be race condition)' 
+					: 'Retrying message in ERROR state',
+			});
+			
+			// From this point forward, the retry MUST succeed (return 200) regardless of:
+			// - Final status after processing
+			// - Any status reads during processing
+			// - Processing outcome (success or failure)
+			// No further status validation or exception throwing based on status is allowed
+			retryAccepted = true;
+
+			// Increment attempt_count and update last_attempt_at (while row is locked)
+			await queryRunner.query(
+				`
+				UPDATE core.kafka_message_processing
+				SET 
+					attempt_count = attempt_count + 1,
+					last_attempt_at = NOW(),
+					updated_at = NOW()
+				WHERE id = $1
+				`,
+				[messageId],
+			);
+
+			await queryRunner.commitTransaction();
+			transactionCommitted = true;
+
+			// Use repository to fetch the updated message - TypeORM handles JSONB correctly
+			const updatedEntity = await this.repository.findOne({
+				where: { id: messageId },
+			});
+
+			if (!updatedEntity) {
+				throw new Error(`Message with ID '${messageId}' not found after update. Cannot retry.`);
+			}
+
+			// Use topic from locked message (already validated) as fallback
+			const topic = updatedEntity.topic || topicFromLock;
+			if (!topic) {
+				this.logger.error('Topic is missing from both entity and locked message', {
+					messageId,
+					entityTopic: updatedEntity.topic,
+					lockedMessageTopic: topicFromLock,
+				});
+				throw new Error(`Message with ID '${messageId}' is missing topic in database. Cannot retry.`);
+			}
+			
+			// Log payload structure after retrieval
+			this.logger.info('Payload retrieved from database via repository', {
+				messageId,
+				hasAgent: !!updatedEntity.payload?.agent,
+				agentFirstName: (updatedEntity.payload?.agent as any)?.firstName,
+				agentLastName: (updatedEntity.payload?.agent as any)?.lastName,
+				agentId: (updatedEntity.payload?.agent as any)?.id,
+				agentKeys: updatedEntity.payload?.agent ? Object.keys(updatedEntity.payload.agent as any) : [],
+				payloadType: typeof updatedEntity.payload,
+			});
+			
+			updatedMessage = updatedEntity;
+		} catch (error) {
+			// Only rollback if transaction hasn't been committed yet
+			if (!transactionCommitted) {
+				try {
+					await queryRunner.rollbackTransaction();
+				} catch (rollbackError) {
+					// Ignore rollback errors - transaction may already be rolled back
+					this.logger.warn('Failed to rollback transaction (may already be rolled back)', {
+						messageId,
+						error: rollbackError instanceof Error ? rollbackError.message : 'Unknown error',
+					});
+				}
+			}
+			// Re-throw NotFoundException and BadRequestException as-is
+			if (error instanceof NotFoundException || error instanceof BadRequestException) {
+				throw error;
+			}
+			this.logger.error('Failed to atomically validate and update message for retry', {
+				messageId,
+				error: error instanceof Error ? error.message : 'Unknown error',
+			});
+			throw error;
+		} finally {
+			await queryRunner.release();
+		}
+
+		if (!updatedMessage) {
+			throw new Error('Message not found after atomic update');
+		}
+
+		// Validate that topic exists - required for retry
+		if (!updatedMessage.topic) {
+			this.logger.error('Message topic is missing - cannot retry', {
+				messageId,
+				message: updatedMessage,
+			});
+			throw new BadRequestException({
+				message: `Message with ID '${messageId}' is missing topic information. Cannot retry message processing.`,
+				i18nType: 'kafka.message.retry.no_topic',
+			});
+		}
+
+		// Use custom payload if provided and not empty, otherwise use stored payload
+		// Empty object {} should be treated as "no custom payload" to use stored payload
+		const hasCustomPayload = customPayload && 
+			typeof customPayload === 'object' && 
+			!Array.isArray(customPayload) && 
+			Object.keys(customPayload).length > 0;
+		
+		// Ensure payload is properly parsed if it's a string (PostgreSQL JSONB might return as string)
+		let storedPayload = updatedMessage.payload;
+		if (typeof storedPayload === 'string') {
+			try {
+				storedPayload = JSON.parse(storedPayload);
+			} catch (parseError) {
+				this.logger.warn('Failed to parse stored payload as JSON, using as-is', {
+					messageId,
+					payloadType: typeof storedPayload,
+					error: parseError instanceof Error ? parseError.message : 'Unknown error',
+				});
+			}
+		}
+		
+		// Deep clone the payload to avoid any reference issues
+		// This ensures the payload structure is preserved exactly as stored
+		const clonedPayload = storedPayload ? JSON.parse(JSON.stringify(storedPayload)) : {};
+		
+		// Ensure payloadToUse is never undefined - use empty object as fallback
+		const payloadToUse = hasCustomPayload ? customPayload : (clonedPayload || {});
+		
+		// Validate payload structure before using it
+		if (!hasCustomPayload && payloadToUse && typeof payloadToUse === 'object') {
+			const agent = (payloadToUse as any)?.agent;
+			if (agent) {
+				// Ensure firstName and lastName are preserved
+				if (!agent.firstName && agent.first_name) {
+					agent.firstName = agent.first_name;
+					delete agent.first_name;
+				}
+				if (!agent.lastName && agent.last_name) {
+					agent.lastName = agent.last_name;
+					delete agent.last_name;
+				}
+			}
+		}
+		
+		// Log payload structure for debugging
+		this.logger.info('Retry payload structure', {
+			messageId,
+			hasCustomPayload,
+			payloadType: typeof payloadToUse,
+			hasAgent: !!(payloadToUse as any)?.agent,
+			agentFirstName: (payloadToUse as any)?.agent?.firstName,
+			agentLastName: (payloadToUse as any)?.agent?.lastName,
+			agentId: (payloadToUse as any)?.agent?.id,
+			agentKeys: (payloadToUse as any)?.agent ? Object.keys((payloadToUse as any).agent) : [],
+		});
+
+		// Construct a mock Kafka message from payload
+		// Add header to indicate this is a retry (skip translation)
+		const headers: Record<string, Buffer> = updatedMessage.headers ? Object.fromEntries(
+			Object.entries(updatedMessage.headers).map(([k, v]) => [k, Buffer.from(String(v))])
+		) : {};
+		
+		// CRITICAL: Always skip translation for retries
+		// The payload stored in the database is already in the translated format
+		// If we try to translate it again, it will fail because the structure doesn't match
+		// the raw Kafka message format (e.g., payload.member_first_name doesn't exist)
+		headers['x-skip-translation'] = Buffer.from('true');
+
+		// Stringify payload and log it to verify structure is preserved
+		const stringifiedPayload = JSON.stringify(payloadToUse);
+		this.logger.info('Payload being stringified for retry', {
+			messageId,
+			payloadStringLength: stringifiedPayload.length,
+			hasAgent: !!(payloadToUse as any)?.agent,
+			agentFirstName: (payloadToUse as any)?.agent?.firstName,
+			agentLastName: (payloadToUse as any)?.agent?.lastName,
+			agentId: (payloadToUse as any)?.agent?.id,
+			payloadPreview: stringifiedPayload.substring(0, 500),
+		});
+
+		const mockKafkaMessage: KafkaMessage = {
+			key: updatedMessage.messageKey ? Buffer.from(updatedMessage.messageKey) : null,
+			value: Buffer.from(stringifiedPayload),
+			headers: headers,
+			offset: updatedMessage.offset,
+			timestamp: updatedMessage.createdAt.toISOString(),
+			attributes: 0,
+		};
+
+		// Get the consumer service for this topic
+		// This works for all consumer types (Enterprise, Global ADS, UK, AU, etc.)
+		// getServiceByTopic will find the consumer by topic name regardless of consumer type
+		const serviceEntry = await this.kafkaBootstrapService.getServiceByTopic(updatedMessage.topic);
+		if (!serviceEntry || serviceEntry.service.getType() !== 'consumer') {
+			throw new BadRequestException({
+				message: `No consumer service found for topic '${updatedMessage.topic}'. Cannot retry message processing.`,
+				i18nType: 'kafka.message.retry.no_consumer',
+			});
+		}
+
+		// Get message handler from consumer service
+		const messageHandler = serviceEntry.service.getMessageHandler?.();
+		if (!messageHandler) {
+			throw new BadRequestException({
+				message: `Consumer service for topic '${updatedMessage.topic}' does not provide a message handler. Cannot retry message processing.`,
+				i18nType: 'kafka.message.retry.no_handler',
+			});
+		}
+
+		// CRITICAL: Status validation already passed - retry is ACCEPTED
+		// Process the message synchronously and wait for final status to be committed
+		// Return the final committed status (PROCESSED or ERROR) in the response
+		// No post-processing status validation or exception throwing based on status is allowed
+		
+		this.logger.info('Retry accepted: processing message and waiting for final status', {
+			messageId,
+			topic: updatedMessage.topic,
+			partition: updatedMessage.partition,
+			offset: updatedMessage.offset,
+			attemptCount: updatedMessage.attemptCount,
+			statusAtAcceptance: updatedMessage.status,
+		});
+
+		// Process message synchronously and wait for final status
+		try {
+			await messageHandler({
+				topic: updatedMessage.topic,
+				partition: updatedMessage.partition,
+				message: mockKafkaMessage,
+			});
+
+			// Processing completed without throwing - this is success
+			// Wait for status updates to propagate (consumer may update status asynchronously)
+			// Poll up to 30 times (3 seconds total) to get the final committed status
+			let finalMessage = await this.findById(messageId);
+			if (!finalMessage) {
+				throw new Error('Message not found after processing');
+			}
+
+			// Poll for status changes to get the most up-to-date committed status
+			for (let i = 0; i < 30; i++) {
+				await new Promise(resolve => setTimeout(resolve, 100));
+				const currentMessage = await this.findById(messageId);
+				if (currentMessage) {
+					finalMessage = currentMessage;
+					// If status is PROCESSED or ERROR, we have the final status
+					if (currentMessage.status === KafkaMessageStatus.PROCESSED || 
+						currentMessage.status === KafkaMessageStatus.ERROR) {
+						break;
+					}
+				}
+			}
+
+			// Add a final short wait to ensure status is fully committed
+			await new Promise(resolve => setTimeout(resolve, 200));
+			const lastCheck = await this.findById(messageId);
+			if (lastCheck) {
+				finalMessage = lastCheck;
+			}
+
+			// IMPORTANT: Since messageHandler completed without throwing, processing should have succeeded.
+			// The consumer's markAsProcessed should have updated the status to PROCESSED.
+			// However, the consumer may have caught an error internally and set status to ERROR with error details.
+			// Check the current status and error details to determine the final state.
+			const currentStatusCheck = await this.dataSource.query(
+				`
+				SELECT status, error_code, error_message, error_stacktrace 
+				FROM core.kafka_message_processing 
+				WHERE id = $1
+				`,
+				[messageId],
+			);
+			
+			if (currentStatusCheck && currentStatusCheck.length > 0) {
+				const currentStatus = currentStatusCheck[0].status;
+				const hasErrorDetails = currentStatusCheck[0].error_code || 
+				                       currentStatusCheck[0].error_message || 
+				                       currentStatusCheck[0].error_stacktrace;
+				
+				if (currentStatus === KafkaMessageStatus.ERROR) {
+					if (hasErrorDetails) {
+						// Consumer set ERROR with error details - preserve them (processing actually failed)
+						// Just update last_attempt_at to reflect the retry attempt
+						await this.dataSource.query(
+							`
+							UPDATE core.kafka_message_processing
+							SET last_attempt_at = NOW(), updated_at = NOW()
+							WHERE id = $1
+							`,
+							[messageId],
+						);
+					} else {
+						// Status is ERROR but no error details - markAsProcessed likely failed (lookup issue)
+						// Update to PROCESSED as a fallback
+						await this.dataSource.query(
+							`
+							UPDATE core.kafka_message_processing
+							SET 
+								status = $1,
+								processed_at = COALESCE(processed_at, NOW()),
+								last_attempt_at = NOW(),
+								updated_at = NOW()
+							WHERE id = $2
+							`,
+							[KafkaMessageStatus.PROCESSED, messageId],
+						);
+					}
+				} else {
+					// Status is already PROCESSED (or something else), just update last_attempt_at
+					await this.dataSource.query(
+						`
+						UPDATE core.kafka_message_processing
+						SET last_attempt_at = NOW(), updated_at = NOW()
+						WHERE id = $1
+						`,
+						[messageId],
+					);
+				}
+			}
+
+			// Get the absolute latest committed status for the response
+			const latestStatusResult = await this.dataSource.query(
+				`
+				SELECT id, topic, partition, "offset", status, message_key, payload, headers, 
+				       event_id, consumer_group, service_name, attempt_count, error_code, 
+				       error_message, error_stacktrace, is_retryable, processed_at, 
+				       last_attempt_at, created_at, updated_at
+				FROM core.kafka_message_processing
+				WHERE id = $1
+				`,
+				[messageId],
+			);
+
+			if (!latestStatusResult || latestStatusResult.length === 0) {
+				throw new Error('Message not found after status update');
+			}
+
+			// Map raw database result to entity format
+			// Helper function to safely parse dates
+			const safeDate = (value: unknown): Date | null => {
+				if (!value) return null;
+				try {
+					const date = new Date(value as string);
+					return isNaN(date.getTime()) ? null : date;
+				} catch {
+					return null;
+				}
+			};
+
+			const raw = latestStatusResult[0];
+			const updatedFinalMessage: KafkaMessageProcessingEntity = {
+				id: raw.id,
+				topic: raw.topic,
+				partition: raw.partition,
+				offset: raw.offset,
+				status: raw.status,
+				messageKey: raw.message_key,
+				payload: raw.payload,
+				headers: raw.headers,
+				eventId: raw.event_id,
+				consumerGroup: raw.consumer_group,
+				serviceName: raw.service_name,
+				attemptCount: raw.attempt_count,
+				errorCode: raw.error_code,
+				errorMessage: raw.error_message,
+				errorStacktrace: raw.error_stacktrace,
+				isRetryable: raw.is_retryable,
+				processedAt: safeDate(raw.processed_at),
+				lastAttemptAt: safeDate(raw.last_attempt_at),
+				createdAt: safeDate(raw.created_at) || new Date(), // Fallback to now if invalid
+				updatedAt: safeDate(raw.updated_at) || new Date(), // Fallback to now if invalid
+			} as KafkaMessageProcessingEntity;
+
+			this.logger.info('Retry processing completed successfully, returning final committed status', {
+				messageId,
+				topic: updatedMessage.topic,
+				partition: updatedMessage.partition,
+				offset: updatedMessage.offset,
+				attemptCount: updatedFinalMessage.attemptCount,
+				finalStatus: updatedFinalMessage.status,
+			});
+
+			// CRITICAL: Return success with final committed status - retry was ACCEPTED (status validated at request start)
+			// The endpoint MUST return 200 here with the final committed status
+			// The response reflects "Retry accepted and completed" with final status (PROCESSED or ERROR)
+			return this.mapEntityToDto(updatedFinalMessage);
+		} catch (error) {
+			// Processing failed - ensure status is set to ERROR and get final committed status
+			// The consumer may have already marked it as ERROR, but we need to ensure it's ERROR
+			// Handle ZodError specially to format validation errors
+			let errorMessage: string;
+			let errorStacktrace: string | null;
+			let errorCode: string;
+			
+			if (error instanceof ZodError) {
+				// This is a ZodError - format validation errors for better readability
+				const issues = error.issues;
+				
+				// Format validation errors into a readable message
+				const formattedErrors = issues.map((issue) => {
+					const fieldPath = issue.path.length > 0 ? issue.path.join('.') : 'root';
+					return `${fieldPath}: ${issue.message}`;
+				});
+				
+				errorMessage = `Validation failed: ${formattedErrors.join('; ')}`;
+				errorCode = 'ZodError';
+				// Store full error details in stacktrace for debugging
+				errorStacktrace = JSON.stringify({
+					type: 'ZodError',
+					issues: issues.map((issue) => ({
+						path: issue.path,
+						message: issue.message,
+						code: issue.code,
+					})),
+					stack: error.stack,
+				}, null, 2);
+			} else {
+				// Regular error handling
+				errorMessage = error instanceof Error ? error.message : String(error);
+				errorStacktrace = error instanceof Error ? error.stack : null;
+				errorCode = error instanceof Error ? error.name : 'Error';
+			}
+			
+			await this.dataSource.query(
+				`
+				UPDATE core.kafka_message_processing
+				SET 
+					last_attempt_at = NOW(), 
+					updated_at = NOW(),
+					status = $1,
+					error_code = $2,
+					error_message = $3,
+					error_stacktrace = $4,
+					is_retryable = true
+				WHERE id = $5 AND status != $1
+				`,
+				[
+					KafkaMessageStatus.ERROR,
+					errorCode,
+					errorMessage,
+					errorStacktrace,
+					messageId,
+				],
+			);
+
+			// Wait briefly for the status update to be committed
+			await new Promise(resolve => setTimeout(resolve, 200));
+
+			// Get the final committed status with all error details
+			// Use raw query to ensure we get the latest error_code, error_message, error_stacktrace
+			// (consumer may have also set these, so we want the most recent values)
+			const finalStatusResult = await this.dataSource.query(
+				`
+				SELECT id, topic, partition, "offset", status, message_key, payload, headers, 
+				       event_id, consumer_group, service_name, attempt_count, error_code, 
+				       error_message, error_stacktrace, is_retryable, processed_at, 
+				       last_attempt_at, created_at, updated_at
+				FROM core.kafka_message_processing
+				WHERE id = $1
+				`,
+				[messageId],
+			);
+
+			if (!finalStatusResult || finalStatusResult.length === 0) {
+				throw new Error('Message not found after processing');
+			}
+
+			// Map raw database result to entity format
+			const safeDate = (value: unknown): Date | null => {
+				if (!value) return null;
+				try {
+					const date = new Date(value as string);
+					return isNaN(date.getTime()) ? null : date;
+				} catch {
+					return null;
+				}
+			};
+
+			const raw = finalStatusResult[0];
+			const finalMessage: KafkaMessageProcessingEntity = {
+				id: raw.id,
+				topic: raw.topic,
+				partition: raw.partition,
+				offset: raw.offset,
+				status: raw.status,
+				messageKey: raw.message_key,
+				payload: raw.payload,
+				headers: raw.headers,
+				eventId: raw.event_id,
+				consumerGroup: raw.consumer_group,
+				serviceName: raw.service_name,
+				attemptCount: raw.attempt_count,
+				errorCode: raw.error_code,
+				errorMessage: raw.error_message,
+				errorStacktrace: raw.error_stacktrace,
+				isRetryable: raw.is_retryable,
+				processedAt: safeDate(raw.processed_at),
+				lastAttemptAt: safeDate(raw.last_attempt_at),
+				createdAt: safeDate(raw.created_at) || new Date(),
+				updatedAt: safeDate(raw.updated_at) || new Date(),
+			} as KafkaMessageProcessingEntity;
+
+			this.logger.warn('Retry processing failed, returning final ERROR status with error details', {
+				messageId,
+				topic: updatedMessage.topic,
+				partition: updatedMessage.partition,
+				offset: updatedMessage.offset,
+				attemptCount: finalMessage.attemptCount,
+				finalStatus: finalMessage.status,
+				errorCode: finalMessage.errorCode,
+				errorMessage: finalMessage.errorMessage,
+				errorStacktrace: finalMessage.errorStacktrace ? 'Present' : 'Missing',
+				processingError: error instanceof Error ? error.message : 'Unknown error',
+			});
+
+			// CRITICAL: Return success with final ERROR status - retry was ACCEPTED (status validated at request start)
+			// The endpoint MUST return 200 here with the final committed status, even if processing failed
+			// The response reflects "Retry accepted and completed" with final status (ERROR)
+			// Error details (errorCode, errorMessage, errorStacktrace) are included in the response
+			return this.mapEntityToDto(finalMessage);
+		}
+	}
+
+	/**
+	 * Produce a message to any Kafka topic.
+	 * Creates a new entry with status = PENDING, sends message, then updates to SENT.
+	 * 
+	 * @param topic - Kafka topic name
+	 * @param payload - Message payload (will be JSON stringified). Accepts any JSON value (object, array, string, number, boolean, null).
+	 * @param key - Optional message key for partitioning
+	 * @param headers - Optional message headers
+	 * @returns Created message record
+	 */
+	async produceMessage(
+		topic: string,
+		payload: unknown,
+		key?: string,
+		headers?: Record<string, string>,
+	): Promise<KafkaMessageProcessingResponseDto> {
+		// Extract eventId if payload is an object with eventId or uuid property
+		const payloadObj = payload && typeof payload === 'object' && !Array.isArray(payload) 
+			? payload as Record<string, unknown> 
+			: null;
+		const eventId = payloadObj 
+			? ((payloadObj.eventId as string) || (payloadObj.uuid as string) || undefined)
+			: undefined;
+		
+		try {
+			// Send message to Kafka - this will create a SENT record via createSentRecord
+			const kafkaProducer = await this.getKafkaProducer();
+			await kafkaProducer.sendMessage(topic, payload, key, headers);
+
+			// Find the created record by topic, eventId (if available), or most recent
+			// Since createSentRecord uses ON CONFLICT, we need to find by topic and either
+			// eventId or the most recent record for this topic
+			let record: KafkaMessageProcessingEntity | null = null;
+			
+			if (eventId) {
+				// Try to find by eventId first (most reliable)
+				record = await this.repository.findOne({
+					where: {
+						topic,
+						eventId,
+						status: KafkaMessageStatus.SENT,
+					},
+					order: { createdAt: 'DESC' },
+				});
+			}
+
+			// If not found by eventId, find most recent SENT record for this topic
+			if (!record) {
+				record = await this.repository.findOne({
+					where: {
+						topic,
+						status: KafkaMessageStatus.SENT,
+					},
+					order: { createdAt: 'DESC' },
+				});
+			}
+
+			if (!record) {
+				// Record should have been created by producer, but if not found, log warning
+				this.logger.warn('Message sent to Kafka but record not found in database', {
+					topic,
+					messageKey: key,
+					eventId,
+				});
+				throw new Error('Message sent to Kafka but record not found in database');
+			}
+
+			this.logger.info('Message produced successfully', {
+				messageId: record.id,
+				topic,
+				messageKey: key,
+				eventId,
+			});
+
+			return this.mapEntityToDto(record);
+		} catch (error) {
+			this.logger.error('Failed to produce message to Kafka', {
+				topic,
+				messageKey: key,
+				eventId,
+				error: error instanceof Error ? error.message : 'Unknown error',
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			throw error;
+		}
+	}
+
+	/**
+	 * Retry multiple failed messages in batch.
+	 * 
+	 * @param messageIds - Array of message record IDs (UUIDs)
+	 * @returns Summary of retry results
+	 */
+	async batchRetryMessages(messageIds: string[]): Promise<{
+		successful: number;
+		failed: number;
+		results: Array<{
+			messageId: string;
+			success: boolean;
+			error?: string;
+		}>;
+	}> {
+		const results: Array<{
+			messageId: string;
+			success: boolean;
+			error?: string;
+		}> = [];
+
+		for (const messageId of messageIds) {
+			try {
+				await this.retryMessage(messageId);
+				results.push({
+					messageId,
+					success: true,
+				});
+			} catch (error) {
+				results.push({
+					messageId,
+					success: false,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
+		}
+
+		const successful = results.filter((r) => r.success).length;
+		const failed = results.filter((r) => !r.success).length;
+
+		this.logger.info('Batch retry completed', {
+			total: messageIds.length,
+			successful,
+			failed,
+		});
+
+		return {
+			successful,
+			failed,
+			results,
+		};
+	}
+
+	/**
+	 * Process retry message asynchronously.
+	 * This method is called after the retry is accepted and the API has returned success.
+	 * It handles the actual message processing and status updates in the background.
+	 */
+	private async processRetryMessageAsync(
+		messageId: string,
+		updatedMessage: KafkaMessageProcessingEntity,
+		mockKafkaMessage: KafkaMessage,
+		messageHandler: (message: { topic: string; partition: number; message: KafkaMessage }) => Promise<void>,
+	): Promise<void> {
+		try {
+			// Invoke the message handler to process the message
+			await messageHandler({
+				topic: updatedMessage.topic,
+				partition: updatedMessage.partition,
+				message: mockKafkaMessage,
+			});
+
+			// Processing completed without throwing - this is success
+			// Wait briefly for status updates to propagate (consumer may update status asynchronously)
+			// Poll up to 30 times (3 seconds total) to check if status was updated
+			for (let i = 0; i < 30; i++) {
+				await new Promise(resolve => setTimeout(resolve, 100));
+				const currentMessage = await this.findById(messageId);
+				if (currentMessage) {
+					// If status is PROCESSED or ERROR, we have the final status
+					if (currentMessage.status === KafkaMessageStatus.PROCESSED || 
+						currentMessage.status === KafkaMessageStatus.ERROR) {
+						break;
+					}
+				}
+			}
+
+			// Check if status needs to be updated (consumer's markAsProcessed may have failed)
+			const currentStatusCheck = await this.dataSource.query(
+				`
+				SELECT status FROM core.kafka_message_processing WHERE id = $1
+				`,
+				[messageId],
+			);
+			
+			if (currentStatusCheck && currentStatusCheck.length > 0 && currentStatusCheck[0].status === KafkaMessageStatus.ERROR) {
+				// Status is still ERROR, so markAsProcessed must have failed - update it directly
+				await this.dataSource.query(
+					`
+					UPDATE core.kafka_message_processing
+					SET 
+						status = $1,
+						processed_at = COALESCE(processed_at, NOW()),
+						last_attempt_at = NOW(),
+						updated_at = NOW()
+					WHERE id = $2
+					`,
+					[KafkaMessageStatus.PROCESSED, messageId],
+				);
+				
+				this.logger.info('Async retry processing: updated status to PROCESSED', {
+					messageId,
+					topic: updatedMessage.topic,
+				});
+			} else {
+				// Status is already PROCESSED (or something else), just update last_attempt_at
+				await this.dataSource.query(
+					`
+					UPDATE core.kafka_message_processing
+					SET last_attempt_at = NOW(), updated_at = NOW()
+					WHERE id = $1
+					`,
+					[messageId],
+				);
+			}
+
+			this.logger.info('Async retry processing completed successfully', {
+				messageId,
+				topic: updatedMessage.topic,
+				partition: updatedMessage.partition,
+				offset: updatedMessage.offset,
+			});
+		} catch (error) {
+			// Processing failed - ensure status is set to ERROR
+			// The consumer may have already marked it as ERROR, but we need to ensure it's ERROR
+			await this.dataSource.query(
+				`
+				UPDATE core.kafka_message_processing
+				SET 
+					last_attempt_at = NOW(), 
+					updated_at = NOW(),
+					status = $1,
+					error_code = $2,
+					error_message = $3,
+					error_stacktrace = $4,
+					is_retryable = true
+				WHERE id = $5 AND status != $1
+				`,
+				[
+					KafkaMessageStatus.ERROR,
+					error instanceof Error ? error.constructor.name : 'Error',
+					error instanceof Error ? error.message : String(error),
+					error instanceof Error ? error.stack : null,
+					messageId,
+				],
+			);
+
+			this.logger.warn('Async retry processing failed', {
+				messageId,
+				topic: updatedMessage.topic,
+				partition: updatedMessage.partition,
+				offset: updatedMessage.offset,
+				error: error instanceof Error ? error.message : 'Unknown error',
+			});
+
+			// Don't re-throw - retry was already accepted, error is logged
+		}
+	}
+
+	/**
+	 * Map entity to DTO.
+	 */
+	public mapEntityToDto(entity: KafkaMessageProcessingEntity): KafkaMessageProcessingResponseDto {
+		return {
+			id: entity.id,
+			topic: entity.topic,
+			partition: entity.partition,
+			offset: entity.offset,
+			messageKey: entity.messageKey,
+			eventId: entity.eventId,
+			status: entity.status,
+			attemptCount: entity.attemptCount,
+			lastAttemptAt: entity.lastAttemptAt,
+			processedAt: entity.processedAt,
+			errorCode: entity.errorCode,
+			errorMessage: entity.errorMessage,
+			errorStacktrace: entity.errorStacktrace,
+			isRetryable: entity.isRetryable,
+			deadLettered: entity.deadLettered,
+			payload: entity.payload,
+			headers: entity.headers,
+			consumerGroup: entity.consumerGroup,
+			serviceName: entity.serviceName,
+			createdAt: entity.createdAt,
+			updatedAt: entity.updatedAt,
+		};
+	}
+
+	/**
 	 * Retrieves a paginated list of Kafka message processing records.
-	 * Default sort: createdAt DESC (newest first).
+	 * Default sort: lastAttemptAt DESC (most recently attempted first), then createdAt DESC.
 	 * 
 	 * Supports extensive filtering with all operators (eq, ne, gt, gte, lt, lte, like, ilike, in, nin, between, isNull, isNotNull, etc.)
 	 * and logical operators (AND/OR).
@@ -874,8 +1855,10 @@ export class KafkaMessageProcessingService {
 					}
 				});
 			} else {
-				// Default sort: createdAt DESC (newest first)
-				qb.orderBy('kafka_message.created_at', 'DESC');
+				// Default sort: last_attempt_at DESC (most recently attempted first)
+				// If last_attempt_at is NULL, those records will appear last
+				qb.orderBy('kafka_message.last_attempt_at', 'DESC', 'NULLS LAST');
+				qb.addOrderBy('kafka_message.created_at', 'DESC');
 			}
 
 			// Apply pagination

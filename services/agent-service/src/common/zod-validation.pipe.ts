@@ -42,9 +42,17 @@ export class ZodValidationPipe implements PipeTransform {
 
 		const parsed = this.schema.safeParse(value, { errorMap: validationErrorMap })
 		if (!parsed.success) {
+			// Ensure all issues have messages - map issues to include message if missing
+			const issuesWithMessages = parsed.error.issues.map((issue) => ({
+				...issue,
+				message: issue.message || 
+					(issue.code ? `Validation failed for ${issue.code}` : 'Validation failed') ||
+					'Invalid value',
+			}));
+			
 			// Pass Zod error issues directly for better invalidParams extraction
 			const errorResponse: Record<string, unknown> = {
-				_zodIssues: parsed.error.issues,
+				_zodIssues: issuesWithMessages,
 			}
 			if (this.i18nType) {
 				errorResponse._i18nType = this.i18nType

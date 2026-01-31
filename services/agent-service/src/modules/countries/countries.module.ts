@@ -29,6 +29,13 @@ providers: [
 		useClass: CountriesRepository,
 	},
 ],
-exports: [CountriesService],
+exports: [
+	CountriesService,
+	// Export repository token for use in other modules
+	{
+		provide: 'ICountriesRepository',
+		useClass: CountriesRepository,
+	},
+],
 })
 export class CountriesModule {}

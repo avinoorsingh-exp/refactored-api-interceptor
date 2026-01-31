@@ -79,7 +79,14 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 			const exceptionResponse = exception.getResponse()
 
 			// Check if it's a validation error (BadRequestException from ZodValidationPipe)
-			if (status === 400 && typeof exceptionResponse === 'object') {
+			// ONLY call handleValidationError if the exception response has actual validation error fields
+			// (_zodIssues or _errors), not just a generic message
+			const hasValidationErrors = typeof exceptionResponse === 'object' && exceptionResponse !== null && (
+				'_zodIssues' in (exceptionResponse as Record<string, unknown>) ||
+				'_errors' in (exceptionResponse as Record<string, unknown>)
+			)
+			
+			if (status === 400 && typeof exceptionResponse === 'object' && hasValidationErrors) {
 				problem = this.handleValidationError(
 					exceptionResponse as Record<string, unknown>,
 					instance,

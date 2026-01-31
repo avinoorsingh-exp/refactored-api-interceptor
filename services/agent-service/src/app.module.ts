@@ -6,6 +6,7 @@ import { ConfigModule } from './core/config.module.js'
 import { LoggerModule } from './core/logger.module.js'
 import { QueryModule } from './common/query/query.module.js'
 import { MetadataModule } from './modules/metadata/metadata.module.js'
+import { ApiMonitoringModule } from './modules/api-monitoring/api-monitoring.module.js'
 import { AgentController, RootHealthController } from './app.controller.js'
 import { CountriesModule } from './modules/countries/countries.module.js'
 import { CompaniesModule } from './modules/companies/companies.module.js'
@@ -27,6 +28,7 @@ import { CorrelationIdMiddleware } from './common/correlation-id.middleware.js'
     ScheduleModule.forRoot(), // Enable scheduled tasks
     QueryModule,  // Global module - provides QueryService and search strategies
     MetadataModule,  // Global module - provides MetadataService for entity metadata
+    ApiMonitoringModule,  // Global module - provides ApiRequestContextService for request context
     CountriesModule,
     CompaniesModule,
     RegionsModule,
