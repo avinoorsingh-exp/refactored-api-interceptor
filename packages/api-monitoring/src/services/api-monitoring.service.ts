@@ -65,6 +65,22 @@ export class ApiMonitoringService {
 			return;
 		}
 
+		// CRITICAL: Do not log requests without an actor
+		// If there is no actor, there should be NO route requests logged
+		// This prevents NULL actor_id entries that won't show up in top callers
+		if (!metadata.actorId) {
+			// Silently skip - no actor means no logging
+			// This is expected for excluded origins, localhost, etc.
+			if (process.env.NODE_ENV !== 'production') {
+				this.logger.debug('Skipping API request log - no actor ID', {
+					route: metadata.route,
+					method: metadata.method,
+					correlationId: metadata.correlationId,
+				});
+			}
+			return;
+		}
+
 		// Sampling: skip some requests if sample rate < 1.0
 		if (this.sampleRate < 1.0 && Math.random() > this.sampleRate) {
 			return;
