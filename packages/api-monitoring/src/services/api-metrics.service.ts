@@ -873,7 +873,7 @@ export class ApiMetricsService {
 					COUNT(*) AS "requestCount",
 					SUM(CASE WHEN "log"."has_error" = true THEN 1 ELSE 0 END) AS "errorCount"
 				FROM "core"."api_request_log" AS "log"
-				LEFT JOIN "core"."api_actor" AS "actor" ON "actor"."id" = "log"."actor_id" AND "actor"."active" = true
+				LEFT JOIN "core"."api_actor" AS "actor" ON "actor"."id" = "log"."actor_id"
 				WHERE ${whereConditions.join(' AND ')}
 				GROUP BY "log"."actor_id", "log"."actor_type", "actor"."display_name"
 				ORDER BY "requestCount" DESC, "log"."actor_id" ASC
@@ -888,6 +888,82 @@ export class ApiMetricsService {
 			}
 			
 			const results = await this.requestLogRepo.query(sql, params);
+			
+			// Debug: Log query results and actor lookup
+			if (debug || process.env.NODE_ENV !== 'production') {
+				this.logger.debug('Top callers - Query results', {
+					resultCount: results.length,
+					sampleResults: results.slice(0, 3),
+					hasResults: results.length > 0,
+					timeRange: {
+						start: startTimeDate.toISOString(),
+						end: endTimeDate.toISOString(),
+					},
+				});
+				
+				// Diagnostic: Check total request logs in time range
+				try {
+					const totalLogsSql = `
+						SELECT COUNT(*) as total_logs
+						FROM "core"."api_request_log"
+						WHERE "timestamp" >= $1::timestamptz
+							AND "timestamp" <= $2::timestamptz
+							AND "actor_id" IS NOT NULL
+					`;
+					const totalLogs = await this.requestLogRepo.query(totalLogsSql, [
+						startTimeDate.toISOString(),
+						endTimeDate.toISOString(),
+					]);
+					this.logger.debug('Top callers - Total request logs in time range', {
+						totalLogs: totalLogs[0]?.total_logs || 0,
+					});
+					
+					// Diagnostic: Check for any actors with logs in time range
+					const uniqueActorsSql = `
+						SELECT COUNT(DISTINCT "actor_id") as unique_actors
+						FROM "core"."api_request_log"
+						WHERE "timestamp" >= $1::timestamptz
+							AND "timestamp" <= $2::timestamptz
+							AND "actor_id" IS NOT NULL
+					`;
+					const uniqueActors = await this.requestLogRepo.query(uniqueActorsSql, [
+						startTimeDate.toISOString(),
+						endTimeDate.toISOString(),
+					]);
+					this.logger.debug('Top callers - Unique actors with logs in time range', {
+						uniqueActors: uniqueActors[0]?.unique_actors || 0,
+					});
+				} catch (err) {
+					this.logger.warn('Top callers - Failed diagnostic queries', {
+						error: err instanceof Error ? err.message : String(err),
+					});
+				}
+				
+				// Diagnostic: Check if actors exist in database
+				if (results.length > 0) {
+					const actorIds = results.map((r: Record<string, unknown>) => r.actorId || r.actor_id).filter(Boolean);
+					if (actorIds.length > 0) {
+						const actorCheckSql = `
+							SELECT "id", "type", "identifier", "display_name", "active"
+							FROM "core"."api_actor"
+							WHERE "id" = ANY($1::uuid[])
+							LIMIT 10
+						`;
+						try {
+							const actorCheck = await this.requestLogRepo.query(actorCheckSql, [actorIds]);
+							this.logger.debug('Top callers - Actor lookup diagnostic', {
+								requestedActorIds: actorIds.slice(0, 5),
+								foundActors: actorCheck.length,
+								actors: actorCheck,
+							});
+						} catch (err) {
+							this.logger.warn('Top callers - Failed to check actors', {
+								error: err instanceof Error ? err.message : String(err),
+							});
+						}
+					}
+				}
+			}
 
 			// Transform raw results to match expected format
 			let transformedResults = results.map((row: Record<string, unknown>) => ({
