@@ -55,6 +55,19 @@ export class AgentServiceController {
     const headers = req.headers
 
     try {
+      // TEMPORARY DEBUG: Log all headers to see what API Gateway is sending
+      const allHeaders: Record<string, string | string[] | undefined> = {};
+      Object.keys(headers).forEach((key) => {
+        allHeaders[key.toLowerCase()] = headers[key];
+      });
+      this.logger.info('API Gateway request headers (for debugging)', {
+        method,
+        path,
+        headers: allHeaders,
+        hasAuthorization: !!headers['authorization'],
+        authorizationPrefix: headers['authorization'] ? (Array.isArray(headers['authorization']) ? headers['authorization'][0] : headers['authorization']).substring(0, 30) : 'none',
+      });
+
       this.logger.info('Agent service request', {
         method,
         path,
@@ -71,22 +84,29 @@ export class AgentServiceController {
       //
       const client = this.agentFactory.get()
 
-      // Proxy the request
+      // Proxy the request - Forward ALL headers to preserve API Gateway context
+      // This ensures user identification headers (X-User-Id, X-Cognito-Username, etc.) reach agent-service
+      const forwardedHeaders: Record<string, string> = {};
+      
+      // Forward all headers (API Gateway may set custom headers for user identification)
+      Object.keys(headers).forEach((key) => {
+        const value = headers[key];
+        if (value) {
+          // Handle array values (Express can return arrays for duplicate headers)
+          forwardedHeaders[key.toLowerCase()] = Array.isArray(value) ? value[0] : value;
+        }
+      });
+
+      // Ensure proxy headers are set
+      forwardedHeaders['x-forwarded-host'] = forwardedHeaders['x-forwarded-host'] || (Array.isArray(headers.host) ? headers.host[0] : headers.host) || '';
+      forwardedHeaders['x-forwarded-proto'] = forwardedHeaders['x-forwarded-proto'] || req.protocol;
+
       const response = await client.proxy({
         method: method as any,
         path,
         body,
         query,
-        headers: {
-          // Forward important headers
-          ...(headers['content-type'] && { 'content-type': headers['content-type'] }),
-          ...(headers['accept'] && { 'accept': headers['accept'] }),
-          ...(headers['user-agent'] && { 'user-agent': headers['user-agent'] }),
-          ...(headers['authorization'] && { 'authorization': headers['authorization'] }),  // Forward auth if present
-          // Forward proxy headers for correct URL generation (e.g., Link header pagination)
-          'x-forwarded-host': (Array.isArray(headers['x-forwarded-host']) ? headers['x-forwarded-host'][0] : headers['x-forwarded-host']) || headers.host as string,
-          'x-forwarded-proto': (Array.isArray(headers['x-forwarded-proto']) ? headers['x-forwarded-proto'][0] : headers['x-forwarded-proto']) || req.protocol,
-        },
+        headers: forwardedHeaders,
       })
 
       const duration = Date.now() - startTime

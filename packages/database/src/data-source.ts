@@ -41,7 +41,7 @@ import { CountryEntity } from './entities/core/country.entity.js'
 import { RegionEntity } from './entities/core/region.entity.js'
 import { StateEntity } from './entities/core/state.entity.js'
 import { ProgramEntity } from './entities/core/program.entity.js'
-import { StateProgramEntity } from './entities/core/state-program.entity.js'
+import { CountryProgramEntity } from './entities/core/country-program.entity.js'
 import { OrganizationContactEntity } from './entities/core/organization-contact.entity.js'
 import { W9Entity } from './entities/core/w9.entity.js'
 import { W9AddressEntity } from './entities/core/w9-address.entity.js'
@@ -55,6 +55,9 @@ import { KafkaMessageProcessingEntity } from './entities/core/kafka-message-proc
 import { KafkaServiceEntity } from './entities/core/kafka-service.entity.js'
 import { AdminJobEntity } from './entities/core/admin-job.entity.js'
 import { AdminJobExecutionEntity } from './entities/core/admin-job-execution.entity.js'
+import { ApiActorEntity } from './entities/core/api-actor.entity.js'
+import { ApiRequestLogEntity } from './entities/core/api-request-log.entity.js'
+import { ApiRouteStatsEntity } from './entities/core/api-route-stats.entity.js'
 
 /**
  * Get SSL configuration for RDS connections
@@ -187,7 +190,7 @@ export const AppDataSource = new DataSource({
 		RegionEntity,
 		StateEntity,
 		ProgramEntity,
-		StateProgramEntity,
+		CountryProgramEntity,
 		OrganizationContactEntity,
 		W9Entity,
 		W9AddressEntity,
@@ -201,6 +204,9 @@ export const AppDataSource = new DataSource({
 		KafkaServiceEntity,
 		AdminJobEntity,
 		AdminJobExecutionEntity,
+		ApiActorEntity,
+		ApiRequestLogEntity,
+		ApiRouteStatsEntity,
 	],
 
 	// Migrations

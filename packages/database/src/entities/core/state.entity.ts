@@ -10,7 +10,6 @@ import { RegionEntity } from './region.entity.js'
 import { CountryEntity } from './country.entity.js'
 import { SearchableAuditableEntity } from './searchable-auditable.entity.js'
 import { Searchable, Filterable, Sortable, SearchValidators } from '../../decorators/searchable-decorators.js'
-import type { StateProgramEntity } from './state-program.entity.js'
 
 /**
  * TypeORM entity for State table.
@@ -76,11 +75,4 @@ export class StateEntity extends SearchableAuditableEntity {
 	@ManyToOne(() => CountryEntity, { eager: false })
 	@JoinColumn({ name: 'country_id' })
 	country?: CountryEntity
-
-	/**
-	 * One-to-many relationship with StateProgram.
-	 * Uses string name to avoid circular dependency at module load time.
-	 */
-	@OneToMany('StateProgramEntity', 'state')
-	statePrograms?: StateProgramEntity[]
 }

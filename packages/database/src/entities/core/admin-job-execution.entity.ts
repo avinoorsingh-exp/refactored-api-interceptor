@@ -58,6 +58,14 @@ export class AdminJobExecutionEntity {
 	startedAt!: Date;
 
 	/**
+	 * Last activity timestamp (updated during execution when logs/queries occur).
+	 * Optional field for tracking execution activity, used for orphaned execution detection.
+	 * @public
+	 */
+	@Column({ name: 'last_activity_at', type: 'timestamp with time zone', nullable: true })
+	lastActivityAt?: Date | null;
+
+	/**
 	 * Execution finish timestamp.
 	 * @public
 	 */

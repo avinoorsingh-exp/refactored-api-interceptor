@@ -18,11 +18,13 @@ import { MLSModule } from './modules/mls/mls.module.js'
 import { AgentModule } from './modules/agents/agent.module.js'
 import { KafkaModule } from './modules/kafka/kafka.module.js'
 import { AdminJobsModule } from './modules/admin/jobs/admin-jobs.module.js'
+import { ApiMonitoringModule, ApiActorMiddleware, API_MONITORING_LOGGER_TOKEN } from '@exprealty/api-monitoring'
 import { CorrelationIdMiddleware } from './common/correlation-id.middleware.js'
+import { LoggerService } from './core/logger.service.js'
 
 @Module({
 	imports: [
-    LoggerModule,
+    LoggerModule,  // Must be first so LoggerService is available
     ConfigModule,
     DatabaseModule,
     ScheduleModule.forRoot(), // Enable scheduled tasks
@@ -39,15 +41,46 @@ import { CorrelationIdMiddleware } from './common/correlation-id.middleware.js'
     AgentModule,
     KafkaModule,
     AdminJobsModule,
+    ApiMonitoringModule.forRoot({
+      logger: LoggerService, // LoggerService class from LoggerModule (which is @Global())
+    }),
 	],
 	controllers: [AgentController, RootHealthController],
-	providers: [],
+	providers: [
+		// CRITICAL: Provide API_MONITORING_LOGGER_TOKEN in AppModule context
+		// 
+		// WHY THIS IS NEEDED:
+		// - ApiActorMiddleware is registered in AppModule.configure() via consumer.apply()
+		// - When app.listen() is called, NestJS resolves middleware dependencies
+		// - Middleware resolution looks for tokens in the SAME module context where
+		//   the middleware is registered (AppModule), not in the module where it's defined
+		// - Even though ApiMonitoringModule is @Global(), middleware registered via
+		//   MiddlewareConsumer requires tokens to be available in the registering module
+		// - useExisting references LoggerService from @Global() LoggerModule, which
+		//   is available app-wide, so this will resolve correctly
+		//
+		// This ensures the token is available when NestJS resolves ApiActorMiddleware
+		// dependencies during HTTP server startup (app.listen()).
+		{
+			provide: API_MONITORING_LOGGER_TOKEN,
+			useExisting: LoggerService,
+		},
+	],
 })
 export class AppModule implements NestModule {
 	configure(consumer: MiddlewareConsumer) {
-		// Apply correlation ID middleware to all routes
+		// CRITICAL: Correlation ID middleware MUST run FIRST
+		// It creates the async context that ApiActorMiddleware needs to update
+		// Without this context, actor info cannot be stored and retrieved
 		consumer
 			.apply(CorrelationIdMiddleware)
+			.forRoutes('*')
+
+		// Apply API actor middleware after context is created
+		// Actor identity must be resolved BEFORE logging, metrics, or any other middleware
+		// This ensures req.apiActor is always available to downstream code
+		consumer
+			.apply(ApiActorMiddleware)
 			.forRoutes('*')
 	}
 }

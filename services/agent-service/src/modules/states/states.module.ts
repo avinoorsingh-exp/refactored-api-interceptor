@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { StateEntity, StateProgramEntity, ProgramEntity, CountryEntity } from '@exprealty/database';
+import { StateEntity, CountryProgramEntity, ProgramEntity, CountryEntity } from '@exprealty/database';
 import { StatesController } from './states.controller.js';
 import { StatesService } from './states.service.js';
 import { StatesTypeOrmRepository } from './states.repository.js';
@@ -19,7 +19,7 @@ import { ProjectionService } from '../../common/query/projection.service.js';
 @Module({
 	imports: [
 		// Register all entities involved in relationships for proper TypeORM metadata resolution
-		TypeOrmModule.forFeature([StateEntity, StateProgramEntity, ProgramEntity, CountryEntity]),
+		TypeOrmModule.forFeature([StateEntity, CountryProgramEntity, ProgramEntity, CountryEntity]),
 		PaginationModule,
 	],
 	controllers: [StatesController],

@@ -98,9 +98,9 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		},
 		address: {
 			property: 'addresses',
-			fields: ['id', 'type', 'role', 'line1', 'line2', 'city', 'unit', 'postalCode', 'county', 'label', 'stateId'],
-			nested: ['state'], // Include state entity for address.state projection
-			// TypeORM handles junction table transparently via @ManyToMany (like mls)
+			fields: ['id', 'type', 'role', 'line1', 'line2', 'city', 'unit', 'postalCode', 'county', 'label', 'countryId', 'stateCode'],
+			nested: ['country'], // Only country is a real relation
+			// Note: state is loaded virtually via repository, not through TypeORM relations
 		},
 		agentAddress: {
 			property: 'agentAddresses',
@@ -153,7 +153,8 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		// Maps address directly (like primaryEmail), not the junction table
 		primaryAddress: {
 			property: 'primaryAddress',
-			fields: ['id', 'type', 'role', 'line1', 'line2', 'city', 'unit', 'postalCode', 'county', 'label', 'stateId'],
+			fields: ['id', 'type', 'role', 'line1', 'line2', 'city', 'unit', 'postalCode', 'county', 'label', 'countryId', 'stateCode'],
+			nested: ['country', 'state'], // Both loaded by repository virtual join
 			virtual: true, // Loaded by repository, not ProjectionService
 		},
 	},

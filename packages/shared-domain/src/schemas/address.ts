@@ -75,7 +75,8 @@ export const AddressBaseSchema = z
 		postalCode: PostalCode,
 		county: County.nullable().optional(),
 		label: Label.nullable().optional(),
-		stateId: z.string().uuid({ message: 'errors.address.stateId.invalid' }).nullable().optional(),
+		countryId: z.number().int().positive({ message: 'errors.address.countryId.invalid' }),
+		stateCode: z.string().length(2, { message: 'errors.address.stateCode.invalid' }).nullable().optional(),
 		created: InstantUTC,
 		lastModified: InstantUTC,
 		modifiedBy: z.string().optional(),
@@ -91,7 +92,8 @@ export const AddressBaseSchema = z
  */
 export const AddressExpandedSchema = AddressBaseSchema.extend({
 	// Relationships loaded in expanded view
-	state: z.lazy(() => z.any()).optional(),
+	country: z.lazy(() => z.any()).optional(), // Country entity (direct relationship)
+	state: z.lazy(() => z.any()).optional(), // State entity (virtual via countryId + stateCode)
 	agentAddresses: z.lazy(() => z.array(z.any())).optional(), // AgentAddressBaseSchema[]
 	activeLocations: z.lazy(() => z.array(z.any())).optional(), // ActiveLocationBaseSchema[]
 }).describe('Expanded Address with relationships')
@@ -139,7 +141,8 @@ export const CreateAddressInput = z.object({
 	postalCode: PostalCode,
 	county: County.optional().nullable(),
 	label: Label.optional().nullable(),
-	stateId: z.string().uuid().nullable().optional(),
+	countryId: z.number().int().positive({ message: 'errors.address.countryId.invalid' }),
+	stateCode: z.string().length(2, { message: 'errors.address.stateCode.invalid' }).nullable().optional(),
 })
 
 /**

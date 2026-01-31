@@ -16,10 +16,14 @@ export interface AgentAddressWithAddress extends AgentAddress {
 		postalCode: string;
 		county?: string | null;
 		label?: string | null;
-		stateId?: string | null;
+		countryId: number;
+		stateCode?: string | null;
 		created: Date;
 		lastModified: Date;
 		modifiedBy: string;
+		// Relations (loaded when included)
+		country?: any;
+		state?: any;
 	};
 }
 
@@ -40,7 +44,8 @@ export interface CreateAgentAddressData {
 	postalCode: string;
 	county?: string | null;
 	label?: string | null;
-	stateId?: string | null;
+	countryId: number;
+	stateCode?: string | null;
 }
 
 /**
@@ -61,7 +66,8 @@ export interface UpdateAgentAddressData {
 	postalCode?: string;
 	county?: string | null;
 	label?: string | null;
-	stateId?: string | null;
+	countryId?: number;
+	stateCode?: string | null;
 }
 
 /**

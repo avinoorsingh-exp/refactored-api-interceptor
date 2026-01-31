@@ -55,3 +55,4 @@ docs/ERD/**
 .kiro/**
 .claude/settings.json
 docs/miro/*
+postman/scripts

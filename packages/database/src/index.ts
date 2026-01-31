@@ -259,10 +259,10 @@ export { StateEntity } from './entities/core/state.entity.js'
 export { ProgramEntity } from './entities/core/program.entity.js'
 
 /**
- * TypeORM entity for StateProgram join table.
+ * TypeORM entity for CountryProgram join table.
  * @public
  */
-export { StateProgramEntity } from './entities/core/state-program.entity.js'
+export { CountryProgramEntity } from './entities/core/country-program.entity.js'
 
 /**
  * TypeORM entity for OrganizationContact table.
@@ -346,6 +346,27 @@ export { AdminJobEntity } from './entities/core/admin-job.entity.js'
  * @public
  */
 export { AdminJobExecutionEntity, AdminJobExecutionStatus } from './entities/core/admin-job-execution.entity.js'
+
+/**
+ * TypeORM entity for ApiActor table.
+ * Tracks external actors (users, API keys, service accounts) that make API requests.
+ * @public
+ */
+export { ApiActorEntity } from './entities/core/api-actor.entity.js'
+
+/**
+ * TypeORM entity for ApiRequestLog table.
+ * High-volume, append-only log of all API requests.
+ * @public
+ */
+export { ApiRequestLogEntity } from './entities/core/api-request-log.entity.js'
+
+/**
+ * TypeORM entity for ApiRouteStats table.
+ * Pre-aggregated statistics by route, method, and time bucket.
+ * @public
+ */
+export { ApiRouteStatsEntity } from './entities/core/api-route-stats.entity.js'
 
 // ============================================================================
 // Query Decorators

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { AgentAddressEntity, AddressEntity } from '@exprealty/database';
+import { AgentAddressEntity, AddressEntity, StateEntity } from '@exprealty/database';
 import type { QueryParams, FieldSelection } from '@exprealty/shared-domain';
 import type {
 	IAgentAddressRepository,
@@ -53,11 +53,22 @@ export class AgentAddressTypeOrmRepository implements IAgentAddressRepository {
 				postalCode: entity.address.postalCode,
 				county: entity.address.county,
 				label: entity.address.label,
-				stateId: entity.address.stateId,
+				countryId: entity.address.countryId,
+				stateCode: entity.address.stateCode,
 				created: entity.address.created,
 				lastModified: entity.address.lastModified,
 				modifiedBy: entity.address.modifiedBy,
-			};
+			} as any;
+
+			// Include country if loaded
+			if (entity.address.country) {
+				(result.address as any).country = entity.address.country;
+			}
+
+			// Include virtual state if loaded
+			if (entity.address.state) {
+				(result.address as any).state = entity.address.state;
+			}
 		}
 
 		return result;
@@ -80,7 +91,8 @@ export class AgentAddressTypeOrmRepository implements IAgentAddressRepository {
 				postalCode: data.postalCode,
 				county: data.county,
 				label: data.label,
-				stateId: data.stateId,
+				countryId: data.countryId,
+				stateCode: data.stateCode,
 			});
 			const savedAddress = await manager.save(AddressEntity, addressEntity);
 
@@ -101,18 +113,41 @@ export class AgentAddressTypeOrmRepository implements IAgentAddressRepository {
 
 	async findByCompositeKey(agentId: string, addressId: string): Promise<AgentAddressWithAddress | null> {
 		const addressIdNum = BigInt(addressId);
-		const entity = await this.agentAddressRepo.findOne({
-			where: { agentId, addressId : addressIdNum.toString() },
-			relations: ['address'],
-		});
+
+		// Use query builder to load virtual state relation
+		const entity = await this.agentAddressRepo
+			.createQueryBuilder('agentAddress')
+			.leftJoinAndSelect('agentAddress.address', 'address')
+			.leftJoinAndSelect('address.country', 'country')
+			.leftJoinAndMapOne(
+				'address.state',
+				'StateEntity',
+				'state',
+				'state.countryId = address.countryId AND state.code = address.stateCode'
+			)
+			.where('agentAddress.agentId = :agentId', { agentId })
+			.andWhere('agentAddress.addressId = :addressId', { addressId: addressIdNum.toString() })
+			.getOne();
+
 		return entity ? this.mapToDomain(entity) : null;
 	}
 
 	async findPrimaryByAgentId(agentId: string): Promise<AgentAddressWithAddress | null> {
-		const entity = await this.agentAddressRepo.findOne({
-			where: { agentId, isPrimary: true },
-			relations: ['address'],
-		});
+		// Use query builder to load virtual state relation
+		const entity = await this.agentAddressRepo
+			.createQueryBuilder('agentAddress')
+			.leftJoinAndSelect('agentAddress.address', 'address')
+			.leftJoinAndSelect('address.country', 'country')
+			.leftJoinAndMapOne(
+				'address.state',
+				'StateEntity',
+				'state',
+				'state.countryId = address.countryId AND state.code = address.stateCode'
+			)
+			.where('agentAddress.agentId = :agentId', { agentId })
+			.andWhere('agentAddress.isPrimary = :isPrimary', { isPrimary: true })
+			.getOne();
+
 		return entity ? this.mapToDomain(entity) : null;
 	}
 
@@ -124,13 +159,23 @@ export class AgentAddressTypeOrmRepository implements IAgentAddressRepository {
 		const offset = query?.offset ?? 0;
 		const limit = Math.min(query?.limit ?? 25, 50);
 
-		const [entities, total] = await this.agentAddressRepo.findAndCount({
-			where: { agentId },
-			relations: ['address'],
-			skip: offset,
-			take: limit,
-			order: { isPrimary: 'DESC' }, // Primary first
-		});
+		// Use query builder to load virtual state relation
+		const qb = this.agentAddressRepo
+			.createQueryBuilder('agentAddress')
+			.leftJoinAndSelect('agentAddress.address', 'address')
+			.leftJoinAndSelect('address.country', 'country')
+			.leftJoinAndMapOne(
+				'address.state',
+				'StateEntity',
+				'state',
+				'state.countryId = address.countryId AND state.code = address.stateCode'
+			)
+			.where('agentAddress.agentId = :agentId', { agentId })
+			.orderBy('agentAddress.isPrimary', 'DESC') // Primary first
+			.skip(offset)
+			.take(limit);
+
+		const [entities, total] = await qb.getManyAndCount();
 
 		return {
 			items: entities.map((e) => this.mapToDomain(e)),
@@ -173,7 +218,8 @@ export class AgentAddressTypeOrmRepository implements IAgentAddressRepository {
 			if (data.postalCode !== undefined) addressUpdates.postalCode = data.postalCode;
 			if (data.county !== undefined) addressUpdates.county = data.county ?? undefined;
 			if (data.label !== undefined) addressUpdates.label = data.label ?? undefined;
-			if (data.stateId !== undefined) addressUpdates.stateId = data.stateId ?? undefined;
+			if (data.countryId !== undefined) addressUpdates.countryId = data.countryId;
+			if (data.stateCode !== undefined) addressUpdates.stateCode = data.stateCode ?? undefined;
 
 			if (Object.keys(addressUpdates).length > 0 && existing.address) {
 				await manager.update(AddressEntity, existing.addressId, addressUpdates);

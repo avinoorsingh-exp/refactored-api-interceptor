@@ -32,7 +32,8 @@ export const LicenseBaseSchema = z
 		suffix: z.string().max(20).optional(),
 		number: z.string().min(1).max(100),
 		lineOfBusinessId: z.string(),
-		stateId: z.string().uuid(),
+		countryId: z.number().int().positive({ message: 'errors.license.countryId.invalid' }),
+		stateCode: z.string().length(2, { message: 'errors.license.stateCode.invalid' }).nullable().optional(),
 	})
 	.describe('Base License')
 
@@ -48,6 +49,8 @@ export type LicenseBase = z.infer<typeof LicenseBaseSchema>
  */
 export const LicenseExpandedSchema = LicenseBaseSchema.extend({
 	lineOfBusiness: z.lazy(() => z.any()).optional(),
+	country: z.lazy(() => z.any()).optional(), // Country entity (direct relationship)
+	state: z.lazy(() => z.any()).optional(), // State entity (virtual via countryId + stateCode)
 	licenseEvents: z.lazy(() => z.array(z.any())).optional(),
 }).describe('Expanded License with relationships')
 

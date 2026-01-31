@@ -42,6 +42,9 @@ export class UpdateAgentAddressDto {
 	@ApiPropertyOptional({ description: 'Address label for display', example: 'Home Address' })
 	label?: string | null;
 
-	@ApiPropertyOptional({ description: 'Foreign key to State entity (UUID)' })
-	stateId?: string | null;
+	@ApiPropertyOptional({ description: 'Foreign key to Country entity', example: 1 })
+	countryId?: number;
+
+	@ApiPropertyOptional({ description: 'State/province code (e.g., "CA", "TX")', example: 'TX' })
+	stateCode?: string | null;
 }

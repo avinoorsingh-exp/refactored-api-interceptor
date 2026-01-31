@@ -1,4 +1,5 @@
-import { ApiRequestContextService, ApiActorType } from './api-request-context.service.js';
+import { ApiRequestContextService } from './api-request-context.service.js';
+import { ApiActorType } from '@exprealty/shared-domain';
 import { AsyncContextStorage, RequestContext } from '@exprealty/cache';
 
 /**

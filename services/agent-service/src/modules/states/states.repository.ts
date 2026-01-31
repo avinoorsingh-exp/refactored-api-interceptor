@@ -79,7 +79,6 @@ export class StatesTypeOrmRepository
 			modifiedBy: entity.modifiedBy,
 			region: entity.region ? { id: entity.region.id, name: entity.region.name } : undefined,
 			country: entity.country ? { id: entity.country.id, name: entity.country.name, alpha2: entity.country.alpha2, alpha3: entity.country.alpha3 } : undefined,
-			statePrograms: entity.statePrograms,
 		};
 	}
 

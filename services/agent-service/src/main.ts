@@ -1,3 +1,58 @@
+// CRITICAL: Process-level error handlers MUST be registered FIRST, before any imports
+// This ensures we catch ALL errors, including those during module initialization
+
+// ============================================================================
+// PROCESS-LEVEL ERROR HANDLERS (Registered BEFORE any other code)
+// ============================================================================
+
+console.error('[MAIN] Process starting - registering error handlers...')
+
+// Trap uncaught exceptions
+process.on('uncaughtException', (error: Error) => {
+	console.error('[FATAL] Uncaught Exception:', error.message)
+	console.error('[FATAL] Stack:', error.stack)
+	console.error('[FATAL] Process will exit with code 1')
+	process.exit(1)
+})
+
+// Trap unhandled promise rejections
+process.on('unhandledRejection', (reason: unknown, promise: Promise<unknown>) => {
+	const errorMessage = reason instanceof Error ? reason.message : String(reason)
+	const errorStack = reason instanceof Error ? reason.stack : undefined
+	console.error('[FATAL] Unhandled Promise Rejection:', errorMessage)
+	if (errorStack) {
+		console.error('[FATAL] Stack:', errorStack)
+	}
+	console.error('[FATAL] Process will exit with code 1')
+	process.exit(1)
+})
+
+// Trap process exit
+process.on('exit', (code: number) => {
+	console.error(`[EXIT] Process exiting with code ${code}`)
+	// Force flush stderr before exit
+	process.stderr.write(`[EXIT] Process exiting with code ${code}\n`, () => {
+		process.exit(code)
+	})
+})
+
+// Trap beforeExit (fires when event loop is empty)
+process.on('beforeExit', (code: number) => {
+	console.error(`[BEFORE_EXIT] Process beforeExit event, code: ${code}`)
+	// This should not happen if app is running correctly
+	// If it does, something is wrong with the event loop
+	setTimeout(() => {
+		console.error('[BEFORE_EXIT] Event loop is empty - this should not happen if app is running')
+		process.exit(1)
+	}, 1000)
+})
+
+console.error('[MAIN] Error handlers registered successfully')
+
+// ============================================================================
+// IMPORTS (After error handlers are registered)
+// ============================================================================
+
 import { NestFactory } from '@nestjs/core'
 import { AppModule } from './app.module.js'
 import { ConfigService } from './core/config.service.js'
@@ -11,215 +66,403 @@ import { QueryPerformanceInterceptor } from './common/interceptors/query-perform
 import { PerformanceInterceptor } from './common/interceptors/performance.interceptor.js'
 import { DataSource } from 'typeorm'
 
+console.error('[MAIN] Imports loaded successfully')
+
+// ============================================================================
+// BOOTSTRAP FUNCTION
+// ============================================================================
+
 async function bootstrap() {
-	// CRITICAL: Load configuration BEFORE creating NestJS app
-	// This ensures AWS Secrets Manager secrets are loaded before any modules initialize
-	console.log('[Bootstrap] Preloading configuration...')
-	await configuration()
-	console.log('[Bootstrap] Configuration preloaded successfully')
-	
-	const app = await NestFactory.create(AppModule)
-
-	// Get services
-	const configService = app.get(ConfigService)
-	const config = configService.getAll()
-
-	// Get dependencies from DI container
-  	const dataSource = app.get(DataSource);
-	// Get LoggerService from DI container
-	const logger = app.get(LoggerService)
-
-	//Global middleware and settings
-	app.use(
-		helmet({
-		contentSecurityPolicy: false,
-		})
-	);
-	
-	// Configure compression middleware
-	// The filter ensures compression only applies when appropriate
-	app.use(compression({
-		// Only compress responses above 1KB (default is 1KB, being explicit)
-		threshold: 1024,
-		// Filter function to decide if response should be compressed
-		filter: (req, res) => {
-			// Don't compress if client doesn't accept encoding
-			if (req.headers['x-no-compression']) {
-				return false;
-			}
-			// Use compression's default filter for MIME types
-			return compression.filter(req, res);
-		},
-	}));
-	
-	// Middleware to fix conflicting Content-Length and Transfer-Encoding headers
-	// HTTP spec: Cannot have both Content-Length and Transfer-Encoding: chunked
-	// This ensures only one is present before response is sent
-	app.use((req: any, res: any, next: any) => {
-		const originalWrite = res.write.bind(res);
-		const originalEnd = res.end.bind(res);
+	try {
+		console.error('[BOOTSTRAP] Starting bootstrap function...')
 		
-		const fixHeaders = () => {
-			const transferEncoding = res.getHeader('transfer-encoding');
-			const contentLength = res.getHeader('content-length');
+		// CRITICAL: Load configuration BEFORE creating NestJS app
+		// This ensures AWS Secrets Manager secrets are loaded before any modules initialize
+		console.error('[BOOTSTRAP] Step 1: Preloading configuration...')
+		try {
+			await configuration()
+			console.error('[BOOTSTRAP] Step 1: Configuration preloaded successfully')
+		} catch (configError) {
+			console.error('[BOOTSTRAP] Step 1: Configuration preload FAILED:', configError)
+			if (configError instanceof Error) {
+				console.error('[BOOTSTRAP] Config error message:', configError.message)
+				console.error('[BOOTSTRAP] Config error stack:', configError.stack)
+			}
+			throw configError
+		}
+		
+		console.error('[BOOTSTRAP] Step 2: Creating NestJS application...')
+		let app
+		try {
+			app = await NestFactory.create(AppModule)
+			console.error('[BOOTSTRAP] Step 2: NestJS application created successfully')
+		} catch (nestError) {
+			console.error('[BOOTSTRAP] Step 2: NestJS application creation FAILED:', nestError)
+			if (nestError instanceof Error) {
+				console.error('[BOOTSTRAP] Nest error message:', nestError.message)
+				console.error('[BOOTSTRAP] Nest error stack:', nestError.stack)
+			}
+			throw nestError
+		}
+
+		console.error('[BOOTSTRAP] Step 3: Getting services from DI container...')
+		let configService: ConfigService
+		let config: any
+		let dataSource: DataSource
+		let logger: LoggerService
+		
+		try {
+			configService = app.get(ConfigService)
+			config = configService.getAll()
+			dataSource = app.get(DataSource)
+			logger = app.get(LoggerService)
+			console.error('[BOOTSTRAP] Step 3: Services retrieved successfully')
+		} catch (serviceError) {
+			console.error('[BOOTSTRAP] Step 3: Service retrieval FAILED:', serviceError)
+			if (serviceError instanceof Error) {
+				console.error('[BOOTSTRAP] Service error message:', serviceError.message)
+				console.error('[BOOTSTRAP] Service error stack:', serviceError.stack)
+			}
+			throw serviceError
+		}
+
+		console.error('[BOOTSTRAP] Step 4: Configuring middleware...')
+		try {
+			//Global middleware and settings
+			app.use(
+				helmet({
+					contentSecurityPolicy: false,
+				})
+			);
 			
-			// If both headers are set, remove Content-Length (Transfer-Encoding takes precedence)
-			if (transferEncoding && contentLength) {
-				res.removeHeader('content-length');
+			// Configure compression middleware
+			app.use(compression({
+				threshold: 1024,
+				filter: (req, res) => {
+					if (req.headers['x-no-compression']) {
+						return false;
+					}
+					return compression.filter(req, res);
+				},
+			}));
+			
+			// Middleware to fix conflicting Content-Length and Transfer-Encoding headers
+			app.use((req: any, res: any, next: any) => {
+				const originalWrite = res.write.bind(res);
+				const originalEnd = res.end.bind(res);
+				
+				const fixHeaders = () => {
+					const transferEncoding = res.getHeader('transfer-encoding');
+					const contentLength = res.getHeader('content-length');
+					
+					if (transferEncoding && contentLength) {
+						res.removeHeader('content-length');
+					}
+				};
+				
+				res.write = function(...args: any[]) {
+					fixHeaders();
+					return originalWrite(...args);
+				};
+				
+				res.end = function(...args: any[]) {
+					fixHeaders();
+					return originalEnd(...args);
+				};
+				
+				next();
+			});
+			
+			console.error('[BOOTSTRAP] Step 4: Middleware configured successfully')
+		} catch (middlewareError) {
+			console.error('[BOOTSTRAP] Step 4: Middleware configuration FAILED:', middlewareError)
+			if (middlewareError instanceof Error) {
+				console.error('[BOOTSTRAP] Middleware error message:', middlewareError.message)
+				console.error('[BOOTSTRAP] Middleware error stack:', middlewareError.stack)
 			}
-		};
-		
-		res.write = function(...args: any[]) {
-			fixHeaders();
-			return originalWrite(...args);
-		};
-		
-		res.end = function(...args: any[]) {
-			fixHeaders();
-			return originalEnd(...args);
-		};
-		
-		next();
-	});
+			throw middlewareError
+		}
 
-	// Enable CORS
-	app.enableCors({
-		origin: config.ALLOWED_ORIGINS.split(','),
-		credentials: true,
-	})
+		console.error('[BOOTSTRAP] Step 5: Enabling CORS...')
+		try {
+			app.enableCors({
+				origin: config.ALLOWED_ORIGINS.split(','),
+				credentials: true,
+			})
+			console.error('[BOOTSTRAP] Step 5: CORS enabled successfully')
+		} catch (corsError) {
+			console.error('[BOOTSTRAP] Step 5: CORS configuration FAILED:', corsError)
+			if (corsError instanceof Error) {
+				console.error('[BOOTSTRAP] CORS error message:', corsError.message)
+				console.error('[BOOTSTRAP] CORS error stack:', corsError.stack)
+			}
+			throw corsError
+		}
 
-	// Configure interceptors based on environment
-	// Use ConfigService for environment detection (NODE_ENV: 'local', 'dev', 'staging', 'prod')
-	const environment = configService.get('NODE_ENV')
-	const includeQueryMetadata = environment === 'local' || environment === 'dev'
+		console.error('[BOOTSTRAP] Step 6: Configuring interceptors...')
+		try {
+			const environment = configService.get('NODE_ENV')
+			const includeQueryMetadata = environment === 'local' || environment === 'dev'
 
-	if (includeQueryMetadata) {
-		// Local/Dev: Include full query metadata in response for debugging
-		app.useGlobalInterceptors(
-			new QueryPerformanceInterceptor(dataSource, {
-				slowQueryThresholdMs: 2000,      // Log queries > 2 seconds
-				criticalQueryThresholdMs: 10000, // Error log queries > 10 seconds
-				logAllQueries: false,            // Only log slow queries in prod
-				captureExplain: true,            // Run EXPLAIN ANALYZE on slow queries
-				includeInResponse: includeQueryMetadata, // Include SQL in dev
-}),
-		)
-		logger.info(`Query metadata enabled for environment: ${environment}`)
-	} else {
-		// Staging/Production: Only performance headers, no body metadata
-		app.useGlobalInterceptors(
-			new PerformanceInterceptor({
-				slowQueryThresholdMs: 2000,
-				includeInBody: false,
-				logAllQueries: false,
-			}),
-		)
-		logger.info(`Performance-only interceptor enabled for environment: ${environment}`)
+			if (includeQueryMetadata) {
+				app.useGlobalInterceptors(
+					new QueryPerformanceInterceptor(dataSource, {
+						slowQueryThresholdMs: 2000,
+						criticalQueryThresholdMs: 10000,
+						logAllQueries: false,
+						captureExplain: true,
+						includeInResponse: includeQueryMetadata,
+					}),
+				)
+				logger.info(`Query metadata enabled for environment: ${environment}`)
+			} else {
+				app.useGlobalInterceptors(
+					new PerformanceInterceptor({
+						slowQueryThresholdMs: 2000,
+						includeInBody: false,
+						logAllQueries: false,
+					}),
+				)
+				logger.info(`Performance-only interceptor enabled for environment: ${environment}`)
+			}
+			console.error('[BOOTSTRAP] Step 6: Interceptors configured successfully')
+		} catch (interceptorError) {
+			console.error('[BOOTSTRAP] Step 6: Interceptor configuration FAILED:', interceptorError)
+			if (interceptorError instanceof Error) {
+				console.error('[BOOTSTRAP] Interceptor error message:', interceptorError.message)
+				console.error('[BOOTSTRAP] Interceptor error stack:', interceptorError.stack)
+			}
+			throw interceptorError
+		}
+
+		console.error('[BOOTSTRAP] Step 7: Registering exception filter...')
+		try {
+			app.useGlobalFilters(new ProblemDetailsFilter(logger))
+			console.error('[BOOTSTRAP] Step 7: Exception filter registered successfully')
+		} catch (filterError) {
+			console.error('[BOOTSTRAP] Step 7: Exception filter registration FAILED:', filterError)
+			if (filterError instanceof Error) {
+				console.error('[BOOTSTRAP] Filter error message:', filterError.message)
+				console.error('[BOOTSTRAP] Filter error stack:', filterError.stack)
+			}
+			throw filterError
+		}
+
+		console.error('[BOOTSTRAP] Step 8: Setting up Swagger...')
+		try {
+			const swaggerConfig = new DocumentBuilder()
+				.setTitle('Agent Service API')
+				.setDescription('REST API for managing agents, companies, regions, and related entities')
+				.setVersion('1.0')
+				.addTag('countries', 'Country management endpoints')
+				.addTag('companies', 'Company management endpoints')
+				.addTag('regions', 'Region management endpoints')
+				.build()
+
+			const document = SwaggerModule.createDocument(app, swaggerConfig)
+			SwaggerModule.setup('api', app, document)
+			console.error('[BOOTSTRAP] Step 8: Swagger setup completed successfully')
+		} catch (swaggerError) {
+			console.error('[BOOTSTRAP] Step 8: Swagger setup FAILED:', swaggerError)
+			if (swaggerError instanceof Error) {
+				console.error('[BOOTSTRAP] Swagger error message:', swaggerError.message)
+				console.error('[BOOTSTRAP] Swagger error stack:', swaggerError.stack)
+			}
+			throw swaggerError
+		}
+
+		console.error('[BOOTSTRAP] Step 9: Asserting local development actor cardinality...')
+		try {
+			// HARD STOP: In local development (NODE_ENV === 'local'), assert that exactly ONE actor exists
+			// If count > 1, CRASH THE APP - this is a correctness violation
+			// CRITICAL: Only runs when NODE_ENV === 'local' - NEVER in AWS dev/test/prod
+			// Use DataSource directly to avoid DI context issues
+			const isLocal = process.env.NODE_ENV === 'local'
+			if (isLocal) {
+				const { ApiActorEntity } = await import('@exprealty/database')
+				const actorRepo = dataSource.getRepository(ApiActorEntity)
+				
+				// Step 1: Cleanup - deactivate all actors except LOCAL_DOCKER_ACTOR
+				const allActors = await actorRepo.find({
+					where: { active: true },
+				})
+				
+				const localDockerActor = allActors.find(
+					(a) => a.identifier === 'LOCAL_DOCKER_ACTOR' && a.type === 'system',
+				)
+				
+				if (localDockerActor) {
+					// Deactivate all other actors
+					const otherActors = allActors.filter((a) => a.id !== localDockerActor.id)
+					if (otherActors.length > 0) {
+						const otherActorIds = otherActors.map((a) => a.id)
+						await actorRepo
+							.createQueryBuilder()
+							.update(ApiActorEntity)
+							.set({ active: false })
+							.where('id IN (:...ids)', { ids: otherActorIds })
+							.execute()
+						logger.info('Deactivated old actors in local development', {
+							deactivatedCount: otherActors.length,
+							keptActorId: localDockerActor.id,
+						})
+					}
+				} else {
+					// No LOCAL_DOCKER_ACTOR exists - deactivate all and one will be created on first request
+					if (allActors.length > 0) {
+						const allActorIds = allActors.map((a) => a.id)
+						await actorRepo
+							.createQueryBuilder()
+							.update(ApiActorEntity)
+							.set({ active: false })
+							.where('id IN (:...ids)', { ids: allActorIds })
+							.execute()
+						logger.info('Deactivated all existing actors in local development - LOCAL_DOCKER_ACTOR will be created on first request', {
+							deactivatedCount: allActors.length,
+						})
+					}
+				}
+				
+				// Step 2: Assert that exactly ONE active actor exists (or zero, which is fine - will be created)
+				const activeActors = await actorRepo.find({
+					where: { active: true },
+				})
+
+				if (activeActors.length > 1) {
+					const actorIds = activeActors.map((a) => ({
+						id: a.id,
+						type: a.type,
+						identifier: a.identifier,
+						displayName: a.displayName,
+					}))
+
+					const errorMessage = `ACTOR CARDINALITY VIOLATION IN LOCAL DEVELOPMENT: After cleanup, found ${activeActors.length} active actors, but only 1 is allowed. Actor IDs: ${JSON.stringify(actorIds, null, 2)}`
+					logger.error(errorMessage, { actorCount: activeActors.length, actors: actorIds })
+					throw new Error(errorMessage)
+				}
+
+				logger.info('Local development actor cardinality check passed', {
+					actorCount: activeActors.length,
+				})
+			}
+			console.error('[BOOTSTRAP] Step 9: Actor cardinality check passed')
+		} catch (assertionError) {
+			console.error('[BOOTSTRAP] Step 9: Actor cardinality assertion FAILED:', assertionError)
+			if (assertionError instanceof Error) {
+				console.error('[BOOTSTRAP] Assertion error message:', assertionError.message)
+				console.error('[BOOTSTRAP] Assertion error stack:', assertionError.stack)
+			}
+			// CRASH THE APP - this is intentional
+			throw assertionError
+		}
+
+		console.error('[BOOTSTRAP] Step 10: Starting HTTP server...')
+		try {
+			await app.listen(config.PORT)
+			console.error(`[BOOTSTRAP] Step 10: HTTP server started successfully on port ${config.PORT}`)
+			logger.info(`Agent service listening on port ${config.PORT}`, {
+				port: config.PORT,
+				environment: config.NODE_ENV,
+			})
+		} catch (listenError) {
+			console.error('[BOOTSTRAP] Step 10: HTTP server startup FAILED:', listenError)
+			if (listenError instanceof Error) {
+				console.error('[BOOTSTRAP] Listen error message:', listenError.message)
+				console.error('[BOOTSTRAP] Listen error stack:', listenError.stack)
+			}
+			throw listenError
+		}
+
+		console.error('[BOOTSTRAP] Step 11: Enabling shutdown hooks...')
+		try {
+			app.enableShutdownHooks()
+			console.error('[BOOTSTRAP] Step 11: Shutdown hooks enabled successfully')
+		} catch (shutdownError) {
+			console.error('[BOOTSTRAP] Step 11: Shutdown hooks FAILED:', shutdownError)
+			if (shutdownError instanceof Error) {
+				console.error('[BOOTSTRAP] Shutdown error message:', shutdownError.message)
+				console.error('[BOOTSTRAP] Shutdown error stack:', shutdownError.stack)
+			}
+			// Don't throw - shutdown hooks are optional
+		}
+
+		console.error('[BOOTSTRAP] Bootstrap completed successfully - application is running')
+		
+		// Register signal handlers (but don't let them cause silent exits)
+		process.on('SIGTERM', () => {
+			console.error('[SIGTERM] Signal received, initiating graceful shutdown...')
+			logger.info('SIGTERM received, initiating graceful shutdown...')
+			app.close().then(() => {
+				console.error('[SIGTERM] Application closed gracefully')
+				logger.info('Application closed gracefully')
+				process.exit(0)
+			}).catch((error) => {
+				console.error('[SIGTERM] Error during graceful shutdown:', error)
+				logger.error('Error during graceful shutdown', {
+					error: error instanceof Error ? error.message : String(error),
+				})
+				process.exit(1)
+			})
+		})
+
+		process.on('SIGINT', () => {
+			console.error('[SIGINT] Signal received, initiating graceful shutdown...')
+			logger.info('SIGINT received, initiating graceful shutdown...')
+			app.close().then(() => {
+				console.error('[SIGINT] Application closed gracefully')
+				logger.info('Application closed gracefully')
+				process.exit(0)
+			}).catch((error) => {
+				console.error('[SIGINT] Error during graceful shutdown:', error)
+				logger.error('Error during graceful shutdown', {
+					error: error instanceof Error ? error.message : String(error),
+				})
+				process.exit(1)
+			})
+		})
+
+	} catch (bootstrapError) {
+		console.error('[BOOTSTRAP] Bootstrap function FAILED with error:', bootstrapError)
+		if (bootstrapError instanceof Error) {
+			console.error('[BOOTSTRAP] Bootstrap error message:', bootstrapError.message)
+			console.error('[BOOTSTRAP] Bootstrap error stack:', bootstrapError.stack)
+		}
+		throw bootstrapError
 	}
-
-	// Register global exception filter (handles all exceptions including database errors)
-	app.useGlobalFilters(new ProblemDetailsFilter(logger))
-
-	// Setup Swagger/OpenAPI documentation
-	const swaggerConfig = new DocumentBuilder()
-		.setTitle('Agent Service API')
-		.setDescription('REST API for managing agents, companies, regions, and related entities')
-		.setVersion('1.0')
-		.addTag('countries', 'Country management endpoints')
-		.addTag('companies', 'Company management endpoints')
-		.addTag('regions', 'Region management endpoints')
-		.build()
-
-	const document = SwaggerModule.createDocument(app, swaggerConfig, {
-		operationIdFactory: (controllerKey: string, methodKey: string) => methodKey,
-	})
-	SwaggerModule.setup('api', app, document)
-	
-	// NOTE: Global ValidationPipe removed in favor of Zod-first architecture
-	// 
-	// Previously used: app.useGlobalPipes(new ValidationPipe({ whitelist: true, ... }))
-	// This required class-validator and class-transformer packages.
-	//
-	// Current approach: Use ZodValidationPipe on individual routes with schemas from @exprealty/shared-domain
-	// Benefits:
-	// - Single source of truth for validation (shared-domain package)
-	// - Compile-time type safety (Zod inferred types)
-	// - No duplicate validation logic between DTO decorators and domain schemas
-	// - Smaller bundle size (no class-validator/class-transformer dependencies)
-	//
-	// Example:
-	//   @Post()
-	//   @UsePipes(new ZodValidationPipe(CreateCountryInputSchema))
-	//   async create(@Body() dto: CreateCountryDto) { ... }
-	//
-	// For query parameters with type coercion:
-	//   @Get()
-	//   @UsePipes(new ZodValidationPipe(PaginationQuerySchema))
-	//   async findAll(@Query() query: PaginationQuery) { ... }
-
-	// Start server
-	await app.listen(config.PORT)
-	logger.info(`Agent service listening on port ${config.PORT}`, {
-		port: config.PORT,
-		environment: config.NODE_ENV,
-	})
-
-	app.enableShutdownHooks()
-
-	// Handle unhandled promise rejections
-	process.on('unhandledRejection', (reason: unknown, promise: Promise<unknown>) => {
-		logger.error('Unhandled Promise Rejection', {
-			reason: reason instanceof Error ? reason.message : String(reason),
-			stack: reason instanceof Error ? reason.stack : undefined,
-		})
-	})
-
-	// Handle uncaught exceptions
-	process.on('uncaughtException', (error: Error) => {
-		logger.error('Uncaught Exception', {
-			error: error.message,
-			stack: error.stack,
-		})
-		// Don't exit immediately - let NestJS handle graceful shutdown
-	})
-
-	// Handle SIGTERM (ECS sends this when stopping tasks)
-	process.on('SIGTERM', () => {
-		console.log('[SIGTERM] Signal received, initiating graceful shutdown...')
-		logger.info('SIGTERM received, initiating graceful shutdown...')
-		app.close().then(() => {
-			console.log('[SIGTERM] Application closed gracefully')
-			logger.info('Application closed gracefully')
-			process.exit(0)
-		}).catch((error) => {
-			console.error('[SIGTERM] Error during graceful shutdown:', error)
-			logger.error('Error during graceful shutdown', {
-				error: error instanceof Error ? error.message : String(error),
-			})
-			process.exit(1)
-		})
-	})
-
-	// Handle SIGINT (Ctrl+C)
-	process.on('SIGINT', () => {
-		console.log('[SIGINT] Signal received, initiating graceful shutdown...')
-		logger.info('SIGINT received, initiating graceful shutdown...')
-		app.close().then(() => {
-			console.log('[SIGINT] Application closed gracefully')
-			logger.info('Application closed gracefully')
-			process.exit(0)
-		}).catch((error) => {
-			console.error('[SIGINT] Error during graceful shutdown:', error)
-			logger.error('Error during graceful shutdown', {
-				error: error instanceof Error ? error.message : String(error),
-			})
-			process.exit(1)
-		})
-	})
 }
 
-// Ensure bootstrap runs and doesn't exit
-bootstrap().catch((error) => {
-	console.error('Failed to start application:', error)
-	process.exit(1)
+// ============================================================================
+// ENTRY POINT
+// ============================================================================
+
+console.error('[MAIN] Calling bootstrap()...')
+
+// Ensure bootstrap doesn't exit silently
+const bootstrapPromise = bootstrap().catch((error) => {
+	console.error('[MAIN] Bootstrap promise rejected:', error)
+	if (error instanceof Error) {
+		console.error('[MAIN] Error message:', error.message)
+		console.error('[MAIN] Error stack:', error.stack)
+	} else {
+		console.error('[MAIN] Error (non-Error object):', JSON.stringify(error, null, 2))
+	}
+	console.error('[MAIN] Process will exit with code 1')
+	
+	// Force flush stderr before exit
+	process.stderr.write(`[MAIN] Fatal error during bootstrap - exiting\n`, () => {
+		process.exit(1)
+	})
 })
+
+console.error('[MAIN] Bootstrap promise created, waiting for async execution...')
+
+// Keep process alive - prevent silent exit
+// This ensures the process doesn't exit if bootstrap completes but something else fails
+setTimeout(() => {
+	console.error('[MAIN] Process still alive after 5 seconds - checking bootstrap status...')
+	bootstrapPromise.then(() => {
+		console.error('[MAIN] Bootstrap completed successfully')
+	}).catch(() => {
+		console.error('[MAIN] Bootstrap failed (error already logged above)')
+	})
+}, 5000)
