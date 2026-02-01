@@ -109,9 +109,12 @@ export class KafkaMessageProcessingService {
 		// Use queryRunner for transaction support
 		const queryRunner = this.dataSource.createQueryRunner();
 		await queryRunner.connect();
-		await queryRunner.startTransaction();
-
+		
+		let transactionStarted = false;
+		
 		try {
+			await queryRunner.startTransaction();
+			transactionStarted = true;
 			// For producer records, if offset is '0' or missing, it means Kafka metadata wasn't extracted properly
 			// Use a timestamp-based numeric offset to ensure uniqueness
 			// This is a temporary offset that will be replaced when the consumer processes the message
@@ -154,6 +157,7 @@ export class KafkaMessageProcessingService {
 			);
 
 			await queryRunner.commitTransaction();
+			transactionStarted = false; // Transaction committed, no need to rollback
 
 			const record = result?.[0];
 			if (record) {
@@ -185,7 +189,20 @@ export class KafkaMessageProcessingService {
 				return true; // Still return true since the record exists/updated
 			}
 		} catch (error) {
-			await queryRunner.rollbackTransaction();
+			// Only rollback if transaction was successfully started
+			if (transactionStarted) {
+				try {
+					await queryRunner.rollbackTransaction();
+				} catch (rollbackError) {
+					// Transaction might already be rolled back or closed
+					this.logger.debug('Rollback failed (transaction may already be closed)', {
+						topic: data.topic,
+						partition: data.partition,
+						offset: data.offset,
+						error: rollbackError instanceof Error ? rollbackError.message : 'Unknown error',
+					});
+				}
+			}
 			// Log error but don't throw - this must not block the producer
 			// Use error level to make it more visible
 			this.logger.error('Failed to create SENT Kafka message processing record (non-blocking)', {
@@ -229,9 +246,12 @@ export class KafkaMessageProcessingService {
 		// Use queryRunner for transaction support
 		const queryRunner = this.dataSource.createQueryRunner();
 		await queryRunner.connect();
-		await queryRunner.startTransaction();
-
+		
+		let transactionStarted = false;
+		
 		try {
+			await queryRunner.startTransaction();
+			transactionStarted = true;
 			// Check if record exists before insert to determine if it's new or a retry
 			const existingRecord = await queryRunner.query(
 				`SELECT id, attempt_count, status FROM core.kafka_message_processing WHERE topic = $1 AND partition = $2 AND "offset" = $3`,
@@ -279,6 +299,7 @@ export class KafkaMessageProcessingService {
 			);
 
 			await queryRunner.commitTransaction();
+			transactionStarted = false; // Transaction committed, no need to rollback
 
 			const record = result?.[0];
 			const attemptCount = record?.attempt_count || 1;
@@ -321,7 +342,20 @@ export class KafkaMessageProcessingService {
 
 			return true;
 		} catch (error) {
-			await queryRunner.rollbackTransaction();
+			// Only rollback if transaction was successfully started
+			if (transactionStarted) {
+				try {
+					await queryRunner.rollbackTransaction();
+				} catch (rollbackError) {
+					// Transaction might already be rolled back or closed
+					this.logger.debug('Rollback failed (transaction may already be closed)', {
+						topic: data.topic,
+						partition: data.partition,
+						offset: data.offset,
+						error: rollbackError instanceof Error ? rollbackError.message : 'Unknown error',
+					});
+				}
+			}
 			// Log error but don't throw - this must not block the consumer
 			this.logger.warn('Failed to lookup-or-update SENT Kafka message processing record (non-blocking)', {
 				topic: data.topic,
@@ -358,9 +392,13 @@ export class KafkaMessageProcessingService {
 		// Use queryRunner for transaction support
 		const queryRunner = this.dataSource.createQueryRunner();
 		await queryRunner.connect();
-		await queryRunner.startTransaction();
-
+		
+		let transactionStarted = false;
+		
 		try {
+			await queryRunner.startTransaction();
+			transactionStarted = true;
+			
 			// First, find the record by unique constraint to get the primary key and metadata
 			const findResult = await queryRunner.query(
 				`
@@ -372,7 +410,19 @@ export class KafkaMessageProcessingService {
 			);
 
 			if (!findResult || findResult.length === 0) {
-				await queryRunner.rollbackTransaction();
+				if (transactionStarted) {
+					try {
+						await queryRunner.rollbackTransaction();
+					} catch (rollbackError) {
+						// Transaction might already be rolled back or closed
+						this.logger.debug('Rollback failed (transaction may already be closed)', {
+							topic,
+							partition,
+							offset,
+							error: rollbackError instanceof Error ? rollbackError.message : 'Unknown error',
+						});
+					}
+				}
 				this.logger.warn('Kafka message processing record not found for markAsProcessed', {
 					topic,
 					partition,
@@ -402,6 +452,7 @@ export class KafkaMessageProcessingService {
 			);
 
 			await queryRunner.commitTransaction();
+			transactionStarted = false; // Transaction committed, no need to rollback
 
 			const wasUpdated = (updateResult?.length ?? 0) > 0;
 
@@ -430,7 +481,20 @@ export class KafkaMessageProcessingService {
 
 			return wasUpdated;
 		} catch (error) {
-			await queryRunner.rollbackTransaction();
+			// Only rollback if transaction was successfully started
+			if (transactionStarted) {
+				try {
+					await queryRunner.rollbackTransaction();
+				} catch (rollbackError) {
+					// Transaction might already be rolled back or closed
+					this.logger.debug('Rollback failed (transaction may already be closed)', {
+						topic,
+						partition,
+						offset,
+						error: rollbackError instanceof Error ? rollbackError.message : 'Unknown error',
+					});
+				}
+			}
 			// Log error but don't throw - this must not block the producer
 			this.logger.warn('Failed to mark Kafka message processing record as processed (non-blocking)', {
 				topic,
@@ -471,9 +535,12 @@ export class KafkaMessageProcessingService {
 		// Use queryRunner for transaction support
 		const queryRunner = this.dataSource.createQueryRunner();
 		await queryRunner.connect();
-		await queryRunner.startTransaction();
-
+		
+		let transactionStarted = false;
+		
 		try {
+			await queryRunner.startTransaction();
+			transactionStarted = true;
 			// First, find the record by unique constraint to get the primary key and metadata
 			const findResult = await queryRunner.query(
 				`
@@ -485,7 +552,19 @@ export class KafkaMessageProcessingService {
 			);
 
 			if (!findResult || findResult.length === 0) {
-				await queryRunner.rollbackTransaction();
+				if (transactionStarted) {
+					try {
+						await queryRunner.rollbackTransaction();
+					} catch (rollbackError) {
+						// Transaction might already be rolled back or closed
+						this.logger.debug('Rollback failed (transaction may already be closed)', {
+							topic,
+							partition,
+							offset,
+							error: rollbackError instanceof Error ? rollbackError.message : 'Unknown error',
+						});
+					}
+				}
 				this.logger.warn('Kafka message processing record not found for markAsError', {
 					topic,
 					partition,
@@ -552,6 +631,7 @@ export class KafkaMessageProcessingService {
 			);
 
 			await queryRunner.commitTransaction();
+			transactionStarted = false; // Transaction committed, no need to rollback
 
 			const wasUpdated = (updateResult?.length ?? 0) > 0;
 
@@ -584,7 +664,20 @@ export class KafkaMessageProcessingService {
 
 			return wasUpdated;
 		} catch (error) {
-			await queryRunner.rollbackTransaction();
+			// Only rollback if transaction was successfully started
+			if (transactionStarted) {
+				try {
+					await queryRunner.rollbackTransaction();
+				} catch (rollbackError) {
+					// Transaction might already be rolled back or closed
+					this.logger.debug('Rollback failed (transaction may already be closed)', {
+						topic,
+						partition,
+						offset,
+						error: rollbackError instanceof Error ? rollbackError.message : 'Unknown error',
+					});
+				}
+			}
 			// Log error but don't throw - this must not block the producer
 			this.logger.warn('Failed to mark Kafka message processing record as error (non-blocking)', {
 				topic,
@@ -620,9 +713,12 @@ export class KafkaMessageProcessingService {
 		// Use queryRunner for transaction support
 		const queryRunner = this.dataSource.createQueryRunner();
 		await queryRunner.connect();
-		await queryRunner.startTransaction();
-
+		
+		let transactionStarted = false;
+		
 		try {
+			await queryRunner.startTransaction();
+			transactionStarted = true;
 			// First, find the record by unique constraint to get the primary key and metadata
 			const findResult = await queryRunner.query(
 				`
@@ -634,7 +730,19 @@ export class KafkaMessageProcessingService {
 			);
 
 			if (!findResult || findResult.length === 0) {
-				await queryRunner.rollbackTransaction();
+				if (transactionStarted) {
+					try {
+						await queryRunner.rollbackTransaction();
+					} catch (rollbackError) {
+						// Transaction might already be rolled back or closed
+						this.logger.debug('Rollback failed (transaction may already be closed)', {
+							topic,
+							partition,
+							offset,
+							error: rollbackError instanceof Error ? rollbackError.message : 'Unknown error',
+						});
+					}
+				}
 				this.logger.warn('Kafka message processing record not found for markAsDeadLettered', {
 					topic,
 					partition,
@@ -662,6 +770,7 @@ export class KafkaMessageProcessingService {
 			);
 
 			await queryRunner.commitTransaction();
+			transactionStarted = false; // Transaction committed, no need to rollback
 
 			const wasUpdated = (updateResult?.length ?? 0) > 0;
 
@@ -687,7 +796,20 @@ export class KafkaMessageProcessingService {
 
 			return wasUpdated;
 		} catch (error) {
-			await queryRunner.rollbackTransaction();
+			// Only rollback if transaction was successfully started
+			if (transactionStarted) {
+				try {
+					await queryRunner.rollbackTransaction();
+				} catch (rollbackError) {
+					// Transaction might already be rolled back or closed
+					this.logger.debug('Rollback failed (transaction may already be closed)', {
+						topic,
+						partition,
+						offset,
+						error: rollbackError instanceof Error ? rollbackError.message : 'Unknown error',
+					});
+				}
+			}
 			// Log error but don't throw - this must not block the producer
 			this.logger.warn('Failed to mark Kafka message processing record as dead lettered (non-blocking)', {
 				topic,
@@ -773,14 +895,16 @@ export class KafkaMessageProcessingService {
 		// This ensures status validation and retry initiation are atomic
 		const queryRunner = this.dataSource.createQueryRunner();
 		await queryRunner.connect();
-		await queryRunner.startTransaction();
-
+		
+		let transactionStarted = false;
 		let updatedMessage: KafkaMessageProcessingEntity | null = null;
 		let transactionCommitted = false;
 		// Flag to track if retry was accepted - once true, endpoint MUST return 200
 		let retryAccepted = false;
 
 		try {
+			await queryRunner.startTransaction();
+			transactionStarted = true;
 			// Atomic status check + lock + increment in single transaction
 			// SELECT FOR UPDATE locks the row, preventing concurrent retries
 			const lockResult = await queryRunner.query(
@@ -797,7 +921,17 @@ export class KafkaMessageProcessingService {
 			);
 
 			if (!lockResult || lockResult.length === 0) {
-				await queryRunner.rollbackTransaction();
+				if (transactionStarted) {
+					try {
+						await queryRunner.rollbackTransaction();
+					} catch (rollbackError) {
+						// Transaction might already be rolled back or closed
+						this.logger.debug('Rollback failed (transaction may already be closed)', {
+							messageId,
+							error: rollbackError instanceof Error ? rollbackError.message : 'Unknown error',
+						});
+					}
+				}
 				throw new NotFoundException({
 					message: `Kafka message with ID '${messageId}' not found`,
 					i18nType: 'kafka.message.not_found',
@@ -810,7 +944,17 @@ export class KafkaMessageProcessingService {
 			// PostgreSQL returns column names in lowercase by default
 			const topicFromLock = lockedMessage.topic || lockedMessage.TOPIC || (lockedMessage as any)?.['topic'] || (lockedMessage as any)?.['TOPIC'];
 			if (!topicFromLock) {
-				await queryRunner.rollbackTransaction();
+				if (transactionStarted) {
+					try {
+						await queryRunner.rollbackTransaction();
+					} catch (rollbackError) {
+						// Transaction might already be rolled back or closed
+						this.logger.debug('Rollback failed (transaction may already be closed)', {
+							messageId,
+							error: rollbackError instanceof Error ? rollbackError.message : 'Unknown error',
+						});
+					}
+				}
 				this.logger.error('Topic is missing from locked message result', {
 					messageId,
 					lockedMessageKeys: Object.keys(lockedMessage || {}),
@@ -830,7 +974,17 @@ export class KafkaMessageProcessingService {
 			// Only reject if status is truly invalid (null/undefined/empty)
 			// This fixes race conditions where status may be PROCESSED when retry is requested
 			if (!currentStatus) {
-				await queryRunner.rollbackTransaction();
+				if (transactionStarted) {
+					try {
+						await queryRunner.rollbackTransaction();
+					} catch (rollbackError) {
+						// Transaction might already be rolled back or closed
+						this.logger.debug('Rollback failed (transaction may already be closed)', {
+							messageId,
+							error: rollbackError instanceof Error ? rollbackError.message : 'Unknown error',
+						});
+					}
+				}
 				this.logger.error('Retry rejected: message status is invalid (null/undefined)', {
 					messageId,
 					currentStatusRaw,
@@ -877,6 +1031,7 @@ export class KafkaMessageProcessingService {
 
 			await queryRunner.commitTransaction();
 			transactionCommitted = true;
+			transactionStarted = false; // Transaction committed, no need to rollback
 
 			// Use repository to fetch the updated message - TypeORM handles JSONB correctly
 			const updatedEntity = await this.repository.findOne({
@@ -911,13 +1066,13 @@ export class KafkaMessageProcessingService {
 			
 			updatedMessage = updatedEntity;
 		} catch (error) {
-			// Only rollback if transaction hasn't been committed yet
-			if (!transactionCommitted) {
+			// Only rollback if transaction was successfully started and hasn't been committed yet
+			if (transactionStarted && !transactionCommitted) {
 				try {
 					await queryRunner.rollbackTransaction();
 				} catch (rollbackError) {
-					// Ignore rollback errors - transaction may already be rolled back
-					this.logger.warn('Failed to rollback transaction (may already be rolled back)', {
+					// Transaction might already be rolled back or closed
+					this.logger.debug('Rollback failed (transaction may already be closed)', {
 						messageId,
 						error: rollbackError instanceof Error ? rollbackError.message : 'Unknown error',
 					});
