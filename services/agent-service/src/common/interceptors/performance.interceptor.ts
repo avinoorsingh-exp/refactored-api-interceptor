@@ -93,9 +93,19 @@ export class PerformanceInterceptor implements NestInterceptor {
           performanceMetadata.durationMs = duration;
           performanceMetadata.statusCode = response.statusCode;
 
-          // Add performance headers
-          response.setHeader('X-Response-Time', `${duration}ms`);
-          response.setHeader('X-Query-Timestamp', timestamp);
+          // Add performance headers (only if response hasn't been sent yet)
+          // Some endpoints (like retry) manually send responses with @Res({ passthrough: false })
+          if (!response.headersSent && !response.finished) {
+            try {
+              response.setHeader('X-Response-Time', `${duration}ms`);
+              response.setHeader('X-Query-Timestamp', timestamp);
+            } catch (headerError) {
+              // Ignore header errors if response was already sent
+              this.logger.debug('Could not set response headers (response already sent)', {
+                error: (headerError as Error).message,
+              });
+            }
+          }
 
           // Log slow queries
           if (duration >= this.options.slowQueryThresholdMs!) {
@@ -134,9 +144,18 @@ export class PerformanceInterceptor implements NestInterceptor {
           performanceMetadata.durationMs = duration;
           performanceMetadata.statusCode = error.status || 500;
 
-          // Add headers even for errors
-          response.setHeader('X-Response-Time', `${duration}ms`);
-          response.setHeader('X-Query-Timestamp', timestamp);
+          // Add headers even for errors (only if response hasn't been sent yet)
+          if (!response.headersSent && !response.finished) {
+            try {
+              response.setHeader('X-Response-Time', `${duration}ms`);
+              response.setHeader('X-Query-Timestamp', timestamp);
+            } catch (headerError) {
+              // Ignore header errors if response was already sent
+              this.logger.debug('Could not set response headers on error (response already sent)', {
+                error: (headerError as Error).message,
+              });
+            }
+          }
 
           // Log error with performance data
           this.logger.error('Query failed', {

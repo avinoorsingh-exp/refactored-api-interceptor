@@ -207,10 +207,21 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
           this.queryBuffer.delete(correlationId);
           this.cleanupQueryCapture();
 
-          // Add headers
-          response.setHeader('X-Response-Time', `${duration}ms`);
-          response.setHeader('X-Query-Timestamp', timestamp);
-          response.setHeader('X-Correlation-ID', correlationId);
+          // Add headers (only if response hasn't been sent yet)
+          // Some endpoints (like retry) manually send responses with @Res({ passthrough: false })
+          if (!response.headersSent && !response.finished) {
+            try {
+              response.setHeader('X-Response-Time', `${duration}ms`);
+              response.setHeader('X-Query-Timestamp', timestamp);
+              response.setHeader('X-Correlation-ID', correlationId);
+            } catch (headerError) {
+              // Ignore header errors if response was already sent
+              this.logger.debug('Could not set response headers (response already sent)', {
+                correlationId,
+                error: (headerError as Error).message,
+              });
+            }
+          }
 
           // Enhance metadata with query details
           await this.enhanceMetadata(queryMetadata, queries, duration, queryContext);
@@ -237,9 +248,20 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
           this.queryBuffer.delete(correlationId);
           this.cleanupQueryCapture();
 
-          response.setHeader('X-Response-Time', `${duration}ms`);
-          response.setHeader('X-Query-Timestamp', timestamp);
-          response.setHeader('X-Correlation-ID', correlationId);
+          // Add headers (only if response hasn't been sent yet)
+          if (!response.headersSent && !response.finished) {
+            try {
+              response.setHeader('X-Response-Time', `${duration}ms`);
+              response.setHeader('X-Query-Timestamp', timestamp);
+              response.setHeader('X-Correlation-ID', correlationId);
+            } catch (headerError) {
+              // Ignore header errors if response was already sent
+              this.logger.debug('Could not set response headers on error (response already sent)', {
+                correlationId,
+                error: (headerError as Error).message,
+              });
+            }
+          }
 
           // Enhance metadata for error logging
           await this.enhanceMetadata(queryMetadata, queries, duration, queryContext);
