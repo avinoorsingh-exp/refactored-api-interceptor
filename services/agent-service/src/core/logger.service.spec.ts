@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { LoggerService } from './logger.service'
 import { ConfigService } from './config.service'
+import { AsyncContextStorage, RequestContext } from '@exprealty/cache'
 
 // Mock the external logger module
 jest.mock('@exprealty/logger', () => ({
@@ -140,6 +141,55 @@ describe('LoggerService', () => {
 			service.setContext('SecondContext')
 			service.info('Test')
 			expect(mockLogger.info).toHaveBeenCalledWith('Test', { context: 'SecondContext' })
+		})
+
+		it('should set context in AsyncContextStorage when available', () => {
+			const mockContext: RequestContext = {
+				correlationId: 'test-123',
+				timestamp: Date.now(),
+			}
+
+			AsyncContextStorage.run(mockContext, () => {
+				service.setContext('AsyncService')
+				service.info('Test')
+				
+				// Verify context was set in AsyncContextStorage
+				const loggerContext = AsyncContextStorage.getLoggerContext()
+				expect(loggerContext?.serviceName).toBe('AsyncService')
+				
+				// Verify log was called with correct context
+				expect(mockLogger.info).toHaveBeenCalledWith('Test', { context: 'AsyncService' })
+			})
+		})
+
+		it('should fallback to local storage when not in async context', () => {
+			// Not in async context
+			service.setContext('LocalService')
+			service.info('Test')
+			
+			// Should use local storage
+			expect(mockLogger.info).toHaveBeenCalledWith('Test', { context: 'LocalService' })
+		})
+
+		it('should preserve sourceType when setting context in async storage', () => {
+			const mockContext: RequestContext = {
+				correlationId: 'test-456',
+				timestamp: Date.now(),
+				requestPath: '/api/test',
+				method: 'GET',
+				loggerContext: {
+					sourceType: 'http',
+				},
+			}
+
+			AsyncContextStorage.run(mockContext, () => {
+				service.setContext('HttpService')
+				const loggerContext = AsyncContextStorage.getLoggerContext()
+				
+				// Should preserve sourceType
+				expect(loggerContext?.sourceType).toBe('http')
+				expect(loggerContext?.serviceName).toBe('HttpService')
+			})
 		})
 	})
 

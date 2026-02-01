@@ -3,6 +3,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common'
 import { createLogger, type Logger as WinstonLogger } from '@exprealty/logger'
 import { MetricsService, type ExporterProtocol } from '@exprealty/logger/metrics'
 import { z } from 'zod'
+import { AsyncContextStorage } from '@exprealty/cache'
 
 import {
   ServiceCallEventSchema,
@@ -99,18 +100,60 @@ export class LoggerService implements OnModuleInit {
 
   /**
    * Set the context (e.g., class name) for subsequent log messages.
+   * 
+   * Backward compatible: Writes to AsyncContextStorage when available,
+   * otherwise falls back to local instance storage.
    */
   setContext(context: string): void {
     try {
-      this.context = context
+      // Try to set in AsyncContextStorage first (request-scoped)
+      const asyncContext = AsyncContextStorage.getStore()
+      if (asyncContext) {
+        // Set logger context in async storage
+        if (!asyncContext.loggerContext) {
+          asyncContext.loggerContext = {}
+        }
+        asyncContext.loggerContext.serviceName = context
+        // Infer source type from context if not set
+        if (!asyncContext.loggerContext.sourceType) {
+          // Default to 'system' if not HTTP (HTTP requests have requestPath)
+          asyncContext.loggerContext.sourceType = asyncContext.requestPath ? 'http' : 'system'
+        }
+      } else {
+        // Fallback to local instance storage (for code outside async context)
+        this.context = context
+      }
     } catch {
-      // Fail silently
+      // Fail silently - logging should never break the app
+    }
+  }
+
+  /**
+   * Get the current logger context from AsyncContextStorage or fallback to local.
+   * Returns the service name for backward compatibility.
+   */
+  private getLoggerContext(): string | undefined {
+    try {
+      // First try AsyncContextStorage (request-scoped, async-safe)
+      const loggerContext = AsyncContextStorage.getLoggerContext()
+      if (loggerContext?.serviceName) {
+        return loggerContext.serviceName
+      }
+      
+      // Fallback to local instance storage (for code outside async context)
+      return this.context
+    } catch {
+      return this.context
     }
   }
 
   private withContext(meta?: Record<string, unknown>): Record<string, unknown> {
     try {
-      return this.context ? { context: this.context, ...meta } : { ...meta }
+      const contextName = this.getLoggerContext()
+      if (contextName) {
+        return { context: contextName, ...meta }
+      }
+      return { ...meta }
     } catch {
       return meta || {}
     }
