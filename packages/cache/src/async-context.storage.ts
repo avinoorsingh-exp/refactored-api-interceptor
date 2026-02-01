@@ -2,6 +2,33 @@ import { AsyncLocalStorage } from 'async_hooks'
 import { randomUUID } from 'crypto'
 
 /**
+ * Logger context for request-scoped logging.
+ * Provides service/class name and source information for log attribution.
+ */
+export interface LoggerContext {
+	/**
+	 * Service or class name (e.g., 'KafkaRuntimeManager', 'AgentService')
+	 */
+	serviceName?: string
+	/**
+	 * Source type: 'http', 'kafka', 'system', 'job', etc.
+	 */
+	sourceType?: string
+	/**
+	 * For Kafka messages: topic name
+	 */
+	kafkaTopic?: string
+	/**
+	 * For Kafka messages: partition number
+	 */
+	kafkaPartition?: number
+	/**
+	 * For Kafka messages: offset
+	 */
+	kafkaOffset?: string
+}
+
+/**
  * Request context stored in AsyncLocalStorage
  * Contains correlation ID and optional request metadata
  */
@@ -12,6 +39,11 @@ export interface RequestContext {
 	method?: string
 	ip?: string
 	timestamp: number
+	/**
+	 * Logger context for request-scoped logging.
+	 * Set once at async boundary and read by LoggerService.
+	 */
+	loggerContext?: LoggerContext
 }
 
 /**
@@ -114,6 +146,25 @@ export class AsyncContextStorage {
 		const store = this.getStore()
 		if (store) {
 			Object.assign(store, updates)
+		}
+	}
+
+	/**
+	 * Get the logger context from the current request context
+	 * @returns The logger context or undefined if not in a context
+	 */
+	static getLoggerContext(): LoggerContext | undefined {
+		return this.getStore()?.loggerContext
+	}
+
+	/**
+	 * Set the logger context in the current request context
+	 * @param loggerContext - The logger context to set
+	 */
+	static setLoggerContext(loggerContext: LoggerContext): void {
+		const store = this.getStore()
+		if (store) {
+			store.loggerContext = loggerContext
 		}
 	}
 }

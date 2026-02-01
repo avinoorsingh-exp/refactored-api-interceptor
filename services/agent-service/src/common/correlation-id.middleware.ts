@@ -1,6 +1,6 @@
 import { Injectable, NestMiddleware } from '@nestjs/common'
 import { Request, Response, NextFunction } from 'express'
-import { CorrelationIdHelper, CORRELATION_ID_HEADER } from '@exprealty/cache'
+import { CorrelationIdHelper, CORRELATION_ID_HEADER, AsyncContextStorage, RequestContext } from '@exprealty/cache'
 
 /**
  * HTTP Middleware to extract/generate correlation ID and store in AsyncLocalStorage.
@@ -22,14 +22,20 @@ export class CorrelationIdMiddleware implements NestMiddleware {
 		res.setHeader(CORRELATION_ID_HEADER, correlationId)
 
 		// Run the rest of the request in the correlation context
-		CorrelationIdHelper.runInContext(
+		// Set logger context for HTTP requests (source type will be 'http')
+		const context: RequestContext = {
 			correlationId,
-			{
-				requestPath: req.path,
-				method: req.method,
-				ip: req.ip,
+			timestamp: Date.now(),
+			requestPath: req.path,
+			method: req.method,
+			ip: req.ip,
+			loggerContext: {
+				sourceType: 'http',
+				// Service name will be set by individual controllers/services via setContext()
+				// This ensures each controller can set its own context
 			},
-			() => { next(); },
-		)
+		};
+		
+		AsyncContextStorage.run(context, () => { next(); })
 	}
 }

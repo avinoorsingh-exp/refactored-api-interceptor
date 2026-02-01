@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Consumer, Producer, KafkaMessage } from 'kafkajs';
 import { LoggerService } from '../../core/logger.service.js';
 import { KafkaClientService } from './kafka-client.service.js';
+import { AsyncContextStorage, CorrelationIdHelper, RequestContext } from '@exprealty/cache';
 
 /**
  * Runtime status for a Kafka service.
@@ -128,6 +129,13 @@ export class KafkaRuntimeManager {
 	 */
 	private readonly groupConsumers = new Map<string, GroupConsumerRegistry>();
 
+	/**
+	 * Locks for consumer group creation to prevent race conditions when services start in parallel.
+	 * Key: groupId
+	 * Value: Promise that resolves when the group is ready
+	 */
+	private readonly groupCreationLocks = new Map<string, Promise<GroupConsumerRegistry>>();
+
 	private readonly logger: LoggerService;
 	private readonly kafkaClientService: KafkaClientService;
 
@@ -232,14 +240,27 @@ export class KafkaRuntimeManager {
 				throw new Error(`Consumer service ${id} must have a groupId`);
 			}
 
-			// Check if a consumer with this groupId already exists
+			// Check if a consumer with this groupId already exists or is being created
 			this.logger.info(`Checking for existing consumer group`, {
 				serviceId: id,
 				groupId,
 				topic: runtime.topic,
 				existingGroupIds: Array.from(this.groupConsumers.keys()),
 				registrySize: this.groupConsumers.size,
+				activeLocks: Array.from(this.groupCreationLocks.keys()),
 			});
+			
+			// Check if group is being created (race condition protection)
+			const creationLock = this.groupCreationLocks.get(groupId);
+			if (creationLock) {
+				// Wait for the group to be created, then attach
+				this.logger.info(`Consumer group is being created by another service - waiting for creation to complete`, {
+					serviceId: id,
+					groupId,
+					topic: runtime.topic,
+				});
+				await creationLock;
+			}
 			
 			const existingGroup = this.groupConsumers.get(groupId);
 
@@ -283,13 +304,24 @@ export class KafkaRuntimeManager {
 
 				// Register message handler for this topic
 				// This is what actually enables message processing for this service
+				// CRITICAL: Always register/re-register the handler to ensure it's present
+				// This handles cases where the handler might have been lost or not registered
 				const handler = await this.createMessageHandler(service, runtime.topic);
+				if (!handler) {
+					throw new Error(`Failed to create message handler for topic ${runtime.topic}`);
+				}
+				
+				// Always set the handler (even if one exists, replace it to ensure it's correct)
+				const hadExistingHandler = existingGroup.messageHandlers.has(runtime.topic);
 				existingGroup.messageHandlers.set(runtime.topic, handler);
 				
 				this.logger.info(`Registered message handler for topic`, {
 					groupId,
 					topic: runtime.topic,
+					serviceId: id,
 					totalHandlers: existingGroup.messageHandlers.size,
+					registeredTopics: Array.from(existingGroup.messageHandlers.keys()),
+					hadExistingHandler,
 				});
 
 				// Update service runtime to reflect attachment
@@ -307,65 +339,83 @@ export class KafkaRuntimeManager {
 				});
 			} else {
 				// Create new consumer group - this is the first service with this groupId
-				this.logger.info(`Creating new consumer group`, {
-					serviceId: id,
-					groupId,
-					topic: runtime.topic,
-				});
-
-				const instance = await service.start() as Consumer;
+				// Use a lock to prevent race conditions when multiple services start in parallel
+				let creationPromise = this.groupCreationLocks.get(groupId);
 				
-				// CRITICAL: Subscribe to ALL topics that might be used by this groupId
-				// This ensures we don't have issues with dynamic subscriptions after consumer.run()
-				// Find all registered services with the same groupId to subscribe upfront
-				const allTopicsForGroup = Array.from(this.registry.values())
-					.filter(r => r.groupId === groupId && r.type === 'consumer')
-					.map(r => r.topic);
-				
-				// Remove duplicates and ensure current topic is included
-				const uniqueTopics = Array.from(new Set([...allTopicsForGroup, runtime.topic]));
-				
-				// Subscribe to all topics at once BEFORE calling consumer.run()
-				if (uniqueTopics.length > 0) {
-					await instance.subscribe({ 
-						topics: uniqueTopics,  // Subscribe to all topics upfront
-						fromBeginning: false 
-					});
-					this.logger.info(`Subscribed consumer to all topics for group`, {
-						groupId,
-						topics: uniqueTopics,
+				if (!creationPromise) {
+					// We're the first one - create the lock and the group
+					creationPromise = this.createConsumerGroup(id, service, runtime, groupId);
+					this.groupCreationLocks.set(groupId, creationPromise);
+					
+					// Clean up the lock after creation completes
+					creationPromise.finally(() => {
+						this.groupCreationLocks.delete(groupId);
 					});
 				}
 				
-				// Create group registry entry with all topics
-				const handler = await this.createMessageHandler(service, runtime.topic);
-				const groupRegistry: GroupConsumerRegistry = {
-					consumerInstance: instance,
-					groupId,
-					topics: new Set(uniqueTopics),  // Track all subscribed topics
-					services: new Set([id]),
-					messageHandlers: new Map([[runtime.topic, handler]]),
-					status: KafkaServiceStatus.RUNNING,
-					startedAt: new Date(),
-				};
-
-				this.groupConsumers.set(groupId, groupRegistry);
-
-				// Update service runtime
-				runtime.instance = instance;
-				runtime.status = KafkaServiceStatus.RUNNING;
-				runtime.startedAt = groupRegistry.startedAt;
+				// Wait for group creation (either ours or another service's)
+				await creationPromise;
+				
+				// After creation, we should attach (the group should exist now)
+				const createdGroup = this.groupConsumers.get(groupId);
+				if (!createdGroup) {
+					throw new Error(`Consumer group ${groupId} was not created successfully`);
+				}
+				
+				// Always ensure this service is attached and handler is registered
+				// Even if we created the group, we might not have registered the handler yet
+				if (!createdGroup.services.has(id)) {
+					// Add service to the group
+					createdGroup.services.add(id);
+					this.logger.info(`Added service to consumer group`, {
+						serviceId: id,
+						groupId,
+						topic: runtime.topic,
+					});
+				}
+				
+				// CRITICAL: Always ensure handler is registered, even if service is already in the group
+				// This handles the case where the group was created but handler wasn't registered
+				if (!createdGroup.messageHandlers.has(runtime.topic)) {
+					this.logger.info(`Registering message handler for topic (was missing)`, {
+						serviceId: id,
+						groupId,
+						topic: runtime.topic,
+						existingHandlers: Array.from(createdGroup.messageHandlers.keys()),
+					});
+					
+					const handler = await this.createMessageHandler(service, runtime.topic);
+					createdGroup.messageHandlers.set(runtime.topic, handler);
+					
+					this.logger.info(`Registered message handler for topic after group creation`, {
+						groupId,
+						topic: runtime.topic,
+						serviceId: id,
+						totalHandlers: createdGroup.messageHandlers.size,
+						registeredTopics: Array.from(createdGroup.messageHandlers.keys()),
+					});
+				} else {
+					this.logger.info(`Message handler already registered for topic`, {
+						groupId,
+						topic: runtime.topic,
+						serviceId: id,
+						registeredTopics: Array.from(createdGroup.messageHandlers.keys()),
+					});
+				}
+				
+				// Update service runtime to reflect attachment
+				runtime.instance = createdGroup.consumerInstance;
+				runtime.status = createdGroup.services.size === 1 ? KafkaServiceStatus.RUNNING : KafkaServiceStatus.ATTACHED;
+				runtime.startedAt = createdGroup.startedAt;
 				runtime.error = undefined;
-
-				// Set up message routing for the shared consumer
-				// This calls consumer.run() AFTER all topics are subscribed
-				this.setupMessageRouting(groupRegistry);
-
-				this.logger.info(`Consumer group created successfully`, {
+				
+				this.logger.info(`Service attached to consumer group after creation`, {
 					serviceId: id,
 					groupId,
 					topic: runtime.topic,
-					allTopics: uniqueTopics,
+					totalServices: createdGroup.services.size,
+					totalTopics: createdGroup.topics.size,
+					registeredHandlers: Array.from(createdGroup.messageHandlers.keys()),
 				});
 			}
 		} catch (error) {
@@ -383,6 +433,81 @@ export class KafkaRuntimeManager {
 
 			throw error;
 		}
+	}
+
+	/**
+	 * Create a new consumer group (internal helper to prevent race conditions).
+	 * This is called with a lock to ensure only one service creates the group.
+	 */
+	private async createConsumerGroup(
+		id: string,
+		service: RegisterableKafkaService,
+		runtime: KafkaServiceRuntime,
+		groupId: string,
+	): Promise<GroupConsumerRegistry> {
+		this.logger.info(`Creating new consumer group`, {
+			serviceId: id,
+			groupId,
+			topic: runtime.topic,
+		});
+
+		const instance = await service.start() as Consumer;
+		
+		// CRITICAL: Subscribe to ALL topics that might be used by this groupId
+		// This ensures we don't have issues with dynamic subscriptions after consumer.run()
+		// Find all registered services with the same groupId to subscribe upfront
+		const allTopicsForGroup = Array.from(this.registry.values())
+			.filter(r => r.groupId === groupId && r.type === 'consumer')
+			.map(r => r.topic);
+		
+		// Remove duplicates and ensure current topic is included
+		const uniqueTopics = Array.from(new Set([...allTopicsForGroup, runtime.topic]));
+		
+		// Subscribe to all topics at once BEFORE calling consumer.run()
+		if (uniqueTopics.length > 0) {
+			await instance.subscribe({ 
+				topics: uniqueTopics,  // Subscribe to all topics upfront
+				fromBeginning: false 
+			});
+			this.logger.info(`Subscribed consumer to all topics for group`, {
+				groupId,
+				topics: uniqueTopics,
+			});
+		}
+		
+		// Create group registry entry with all topics
+		const handler = await this.createMessageHandler(service, runtime.topic);
+		const groupRegistry: GroupConsumerRegistry = {
+			consumerInstance: instance,
+			groupId,
+			topics: new Set(uniqueTopics),  // Track all subscribed topics
+			services: new Set([id]),
+			messageHandlers: new Map([[runtime.topic, handler]]),
+			status: KafkaServiceStatus.RUNNING,
+			startedAt: new Date(),
+		};
+
+		this.groupConsumers.set(groupId, groupRegistry);
+
+		// Update service runtime
+		runtime.instance = instance;
+		runtime.status = KafkaServiceStatus.RUNNING;
+		runtime.startedAt = groupRegistry.startedAt;
+		runtime.error = undefined;
+
+		// Set up message routing for the shared consumer
+		// This calls consumer.run() AFTER all topics are subscribed
+		this.setupMessageRouting(groupRegistry);
+
+		this.logger.info(`Consumer group created successfully`, {
+			serviceId: id,
+			groupId,
+			topic: runtime.topic,
+			allTopics: uniqueTopics,
+			registeredHandlers: Array.from(groupRegistry.messageHandlers.keys()),
+		});
+		
+		return groupRegistry;
 	}
 
 	/**
@@ -516,44 +641,66 @@ export class KafkaRuntimeManager {
 		
 		// Create a router that dispatches messages to the correct handler
 		const router: MessageHandler = async (payload: { topic: string; partition: number; message: KafkaMessage }) => {
-			try {
-				this.logger.debug('Message router received message', {
-					groupId: groupRegistry.groupId,
-					topic: payload.topic,
-					partition: payload.partition,
-					offset: payload.message.offset,
-					registeredHandlers: Array.from(groupRegistry.messageHandlers.keys()),
-					subscribedTopics: Array.from(groupRegistry.topics),
-				});
-				
-				const handler = groupRegistry.messageHandlers.get(payload.topic);
-				if (handler) {
-					this.logger.debug('Calling handler for topic', {
+			// Wrap each message in its own async context to ensure logger context isolation
+			// Each message gets its own correlation ID and logger context
+			const correlationId = CorrelationIdHelper.generateCorrelationId();
+			
+			// Get the service name from the handler's topic (for logger context)
+			const handler = groupRegistry.messageHandlers.get(payload.topic);
+			const serviceName = this.getServiceNameForTopic(payload.topic);
+			
+			// Create async context for this message with logger context
+			const context: RequestContext = {
+				correlationId,
+				timestamp: Date.now(),
+				loggerContext: {
+					serviceName,
+					sourceType: 'kafka',
+					kafkaTopic: payload.topic,
+					kafkaPartition: payload.partition,
+					kafkaOffset: payload.message.offset,
+				},
+			};
+			
+			await AsyncContextStorage.run(context, async () => {
+				try {
+					this.logger.debug('Message router received message', {
 						groupId: groupRegistry.groupId,
 						topic: payload.topic,
-					});
-					await handler(payload);
-				} else {
-					this.logger.warn('Message received for topic with no registered handler', {
-						groupId: groupRegistry.groupId,
-						topic: payload.topic,
-						registeredTopics: Array.from(groupRegistry.messageHandlers.keys()),
+						partition: payload.partition,
+						offset: payload.message.offset,
+						registeredHandlers: Array.from(groupRegistry.messageHandlers.keys()),
 						subscribedTopics: Array.from(groupRegistry.topics),
 					});
+					
+					if (handler) {
+						this.logger.debug('Calling handler for topic', {
+							groupId: groupRegistry.groupId,
+							topic: payload.topic,
+						});
+						await handler(payload);
+					} else {
+						this.logger.warn('Message received for topic with no registered handler', {
+							groupId: groupRegistry.groupId,
+							topic: payload.topic,
+							registeredTopics: Array.from(groupRegistry.messageHandlers.keys()),
+							subscribedTopics: Array.from(groupRegistry.topics),
+						});
+					}
+				} catch (error) {
+					// Catch any unhandled errors in message processing to prevent consumer crash
+					this.logger.error('Error in message router - handler threw unhandled exception', {
+						groupId: groupRegistry.groupId,
+						topic: payload.topic,
+						partition: payload.partition,
+						offset: payload.message.offset,
+						error: error instanceof Error ? error.message : 'Unknown error',
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+					// Re-throw to let KafkaJS handle it (it will log and continue)
+					throw error;
 				}
-			} catch (error) {
-				// Catch any unhandled errors in message processing to prevent consumer crash
-				this.logger.error('Error in message router - handler threw unhandled exception', {
-					groupId: groupRegistry.groupId,
-					topic: payload.topic,
-					partition: payload.partition,
-					offset: payload.message.offset,
-					error: error instanceof Error ? error.message : 'Unknown error',
-					stack: error instanceof Error ? error.stack : undefined,
-				});
-				// Re-throw to let KafkaJS handle it (it will log and continue)
-				throw error;
-			}
+			});
 		};
 
 		// Start the consumer with the router
@@ -762,6 +909,24 @@ export class KafkaRuntimeManager {
 	 */
 	getAllRuntimes(): KafkaServiceRuntime[] {
 		return Array.from(this.registry.values());
+	}
+
+	/**
+	 * Get service name for a topic (for logger context).
+	 * Maps topic to the registered service's ID.
+	 * 
+	 * @param topic - Kafka topic name
+	 * @returns Service name or 'KafkaRuntimeManager' as fallback
+	 */
+	private getServiceNameForTopic(topic: string): string {
+		// Find the service that handles this topic
+		for (const runtime of this.registry.values()) {
+			if (runtime.topic === topic) {
+				return runtime.id;
+			}
+		}
+		// Fallback to runtime manager name
+		return 'KafkaRuntimeManager';
 	}
 
 	/**
