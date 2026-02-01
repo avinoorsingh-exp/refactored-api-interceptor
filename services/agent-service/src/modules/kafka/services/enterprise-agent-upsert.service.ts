@@ -217,25 +217,53 @@ export class EnterpriseAgentUpsertService {
 		await manager.delete(AgentAddressEntity, { agentId });
 
 		for (const addrData of addresses) {
-			// Lookup state if stateCode provided
-			let stateId: string | undefined;
-			if (addrData.stateCode) {
-				const state = await this.statesRepository.findByCode(addrData.stateCode);
-				stateId = state?.id;
+			// Lookup country if countryAlpha2 provided (countryId is required)
+			let countryId: number | undefined;
+			if (addrData.countryAlpha2) {
+				const country = await this.countriesRepository.findByCode(addrData.countryAlpha2);
+				if (!country) {
+					this.logger.warn('Country not found for address, skipping address', {
+						agentId,
+						countryAlpha2: addrData.countryAlpha2,
+						line1: addrData.line1,
+						city: addrData.city,
+					});
+					continue; // Skip this address if country not found
+				}
+				countryId = country.id;
+			} else {
+				// If no countryAlpha2 provided, try to derive from state
+				if (addrData.stateCode) {
+					const state = await this.statesRepository.findByCode(addrData.stateCode);
+					if (state?.country?.id) {
+						countryId = state.country.id;
+					}
+				}
+				
+				// If still no countryId, we can't create the address (countryId is required)
+				if (!countryId) {
+					this.logger.warn('Cannot determine countryId for address, skipping address', {
+						agentId,
+						stateCode: addrData.stateCode,
+						line1: addrData.line1,
+						city: addrData.city,
+					});
+					continue; // Skip this address if we can't determine country
+				}
 			}
 
-			// Note: AddressEntity doesn't have countryId - country is derived from state
-			// If countryAlpha2 is provided but state is not, we could validate consistency
-			// but for now we'll just use stateId if available
-
 			// Find or create address
+			// AddressEntity uses stateCode (string), not stateId
 			const addressQuery: any = {
 				line1: addrData.line1,
 				city: addrData.city,
 				postalCode: addrData.postalCode,
+				countryId: countryId, // Include countryId in query for uniqueness
 			};
-			if (stateId) {
-				addressQuery.stateId = stateId;
+			
+			// Use stateCode if provided (not stateId)
+			if (addrData.stateCode) {
+				addressQuery.stateCode = addrData.stateCode;
 			}
 
 			let address = await manager.findOne(AddressEntity, {
@@ -254,7 +282,8 @@ export class EnterpriseAgentUpsertService {
 					label: addrData.label,
 					type: addrData.type,
 					role: addrData.role,
-					stateId: stateId,
+					stateCode: addrData.stateCode, // Use stateCode, not stateId
+					countryId: countryId, // Ensure countryId is set
 					modifiedBy: 'Enterprise',
 				});
 				address = await manager.save(AddressEntity, address);
@@ -270,7 +299,8 @@ export class EnterpriseAgentUpsertService {
 					label: addrData.label,
 					type: addrData.type,
 					role: addrData.role,
-					stateId: stateId,
+					stateCode: addrData.stateCode, // Use stateCode, not stateId
+					countryId: countryId, // Required field
 					modifiedBy: 'Enterprise',
 				});
 				address = await manager.save(AddressEntity, address);

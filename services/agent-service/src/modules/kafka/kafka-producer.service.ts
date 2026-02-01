@@ -200,15 +200,24 @@ export class KafkaProducerService implements RegisterableKafkaService {
 		}
 
 		try {
+			// Build message object - only include key if provided
+			const message: { value: string; key?: string; headers?: Record<string, string> } = {
+				value: messageValue,
+			};
+			
+			// Only include key if it's provided and not empty
+			if (key !== undefined && key !== null && key !== '') {
+				message.key = key;
+			}
+			
+			// Only include headers if provided
+			if (headers) {
+				message.headers = headers;
+			}
+			
 			const result = await this.producer.send({
 				topic,
-				messages: [
-					{
-						key: key,
-						value: messageValue,
-						headers,
-					},
-				],
+				messages: [message],
 			});
 
 			// Extract partition and offset from the send result

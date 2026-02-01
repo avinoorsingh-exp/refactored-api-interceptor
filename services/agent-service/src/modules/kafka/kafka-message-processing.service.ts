@@ -389,40 +389,17 @@ export class KafkaMessageProcessingService {
 		partition: number,
 		offset: string,
 	): Promise<boolean> {
-		// Use queryRunner for transaction support
-		const queryRunner = this.dataSource.createQueryRunner();
-		await queryRunner.connect();
-		
-		let transactionStarted = false;
-		
 		try {
-			await queryRunner.startTransaction();
-			transactionStarted = true;
-			
-			// First, find the record by unique constraint to get the primary key and metadata
-			const findResult = await queryRunner.query(
-				`
-				SELECT id, status, consumer_group, service_name FROM core.kafka_message_processing
-				WHERE topic = $1 AND partition = $2 AND "offset" = $3
-				FOR UPDATE
-				`,
-				[topic, partition, offset],
-			);
+			// Find the record to get current status for logging
+			const record = await this.repository.findOne({
+				where: {
+					topic,
+					partition,
+					offset,
+				},
+			});
 
-			if (!findResult || findResult.length === 0) {
-				if (transactionStarted) {
-					try {
-						await queryRunner.rollbackTransaction();
-					} catch (rollbackError) {
-						// Transaction might already be rolled back or closed
-						this.logger.debug('Rollback failed (transaction may already be closed)', {
-							topic,
-							partition,
-							offset,
-							error: rollbackError instanceof Error ? rollbackError.message : 'Unknown error',
-						});
-					}
-				}
+			if (!record) {
 				this.logger.warn('Kafka message processing record not found for markAsProcessed', {
 					topic,
 					partition,
@@ -431,30 +408,21 @@ export class KafkaMessageProcessingService {
 				return false;
 			}
 
-			const record = findResult[0];
-			const id = record.id;
 			const previousStatus = record.status;
-			const consumerGroup = record.consumer_group;
-			const serviceName = record.service_name;
+			const consumerGroup = record.consumerGroup;
+			const serviceName = record.serviceName;
 
-			// Update by primary key for optimal performance and to prevent race conditions
-			const updateResult = await queryRunner.query(
-				`
-				UPDATE core.kafka_message_processing
-				SET 
-					status = $1,
-					processed_at = NOW(),
-					updated_at = NOW()
-				WHERE id = $2
-				RETURNING id
-				`,
-				[KafkaMessageStatus.PROCESSED, id],
+			// Simple UPDATE - no transaction needed for straightforward status change
+			const updateResult = await this.repository.update(
+				{ id: record.id },
+				{
+					status: KafkaMessageStatus.PROCESSED,
+					processedAt: new Date(),
+					updatedAt: new Date(),
+				},
 			);
 
-			await queryRunner.commitTransaction();
-			transactionStarted = false; // Transaction committed, no need to rollback
-
-			const wasUpdated = (updateResult?.length ?? 0) > 0;
+			const wasUpdated = (updateResult.affected ?? 0) > 0;
 
 			if (wasUpdated) {
 				// Structured log: Status transition (SENT → PROCESSED)
@@ -463,7 +431,7 @@ export class KafkaMessageProcessingService {
 					topic,
 					partition,
 					offset,
-					id,
+					id: record.id,
 					previousStatus: previousStatus || KafkaMessageStatus.SENT,
 					newStatus: KafkaMessageStatus.PROCESSED,
 					transition: `${previousStatus || KafkaMessageStatus.SENT} → ${KafkaMessageStatus.PROCESSED}`,
@@ -481,21 +449,7 @@ export class KafkaMessageProcessingService {
 
 			return wasUpdated;
 		} catch (error) {
-			// Only rollback if transaction was successfully started
-			if (transactionStarted) {
-				try {
-					await queryRunner.rollbackTransaction();
-				} catch (rollbackError) {
-					// Transaction might already be rolled back or closed
-					this.logger.debug('Rollback failed (transaction may already be closed)', {
-						topic,
-						partition,
-						offset,
-						error: rollbackError instanceof Error ? rollbackError.message : 'Unknown error',
-					});
-				}
-			}
-			// Log error but don't throw - this must not block the producer
+			// Log error but don't throw - this must not block the consumer
 			this.logger.warn('Failed to mark Kafka message processing record as processed (non-blocking)', {
 				topic,
 				partition,
@@ -504,8 +458,6 @@ export class KafkaMessageProcessingService {
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 			return false;
-		} finally {
-			await queryRunner.release();
 		}
 	}
 
