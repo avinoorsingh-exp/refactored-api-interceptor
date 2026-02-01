@@ -299,21 +299,15 @@ export class GlobalAdsAgentCreatedConsumer implements RegisterableKafkaService {
 	/**
 	 * Process agent create message
 	 * 
-	 * Placeholder implementation - translation logic to be added later.
+	 * For non-Enterprise consumers, this is a no-op since we only translate and track messages.
+	 * Translation already happened in handleMessage, so we just log completion.
 	 */
 	private async processAgentCreate(message: unknown): Promise<void> {
-		try {
-			const translated = this.translateKafkaMessageToUpsertData(message as any);
-			this.logger.info('Translated Kafka message to upsert format', {
-				translated: translated,
-			});
-		} catch (error) {
-			this.logger.error('Error translating Kafka message', {
-				error: error instanceof Error ? error.message : 'Unknown error',
-				stack: error instanceof Error ? error.stack : undefined,
-			});
-			throw error;
-		}
+		// Translation already happened in handleMessage
+		// No database upserts for non-Enterprise consumers
+		this.logger.debug('Message processing complete (translation-only consumer)', {
+			hasMessage: !!message,
+		});
 	}
 
 	/**
