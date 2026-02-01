@@ -1,16 +1,17 @@
 import { Injectable, OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { KafkaServiceEntity, KafkaServiceType } from '@exprealty/database';
 import { KafkaRuntimeManager } from './kafka-runtime-manager.service.js';
-import { EnterpriseAgentUpdatedConsumer } from './consumers/enterprise-agent-updated.consumer.js';
-import { AuAgentDetailsAgentUpdatedConsumer } from './consumers/au-agent-details-agent-updated.consumer.js';
-import { UkAgentDetailsAgentUpdatedConsumer } from './consumers/uk-agent-details-agent-updated.consumer.js';
-import { GlobalAdsAgentCreatedConsumer } from './consumers/global-ads-agent-created.consumer.js';
-import { GlobalAdsAgentUpdatedConsumer } from './consumers/global-ads-agent-updated.consumer.js';
-import { KafkaProducerService } from './kafka-producer.service.js';
+import type { KafkaProducerService } from './kafka-producer.service.js';
 import { ConfigService } from '../../core/config.service.js';
 import { LoggerService } from '../../core/logger.service.js';
+import type { EnterpriseAgentUpdatedConsumer } from './consumers/enterprise-agent-updated.consumer.js';
+import type { AuAgentDetailsAgentUpdatedConsumer } from './consumers/au-agent-details-agent-updated.consumer.js';
+import type { UkAgentDetailsAgentUpdatedConsumer } from './consumers/uk-agent-details-agent-updated.consumer.js';
+import type { GlobalAdsAgentCreatedConsumer } from './consumers/global-ads-agent-created.consumer.js';
+import type { GlobalAdsAgentUpdatedConsumer } from './consumers/global-ads-agent-updated.consumer.js';
 
 /**
  * Kafka Bootstrap Service
@@ -22,22 +23,35 @@ import { LoggerService } from '../../core/logger.service.js';
 export class KafkaBootstrapService implements OnApplicationBootstrap, OnApplicationShutdown {
 	private readonly logger: LoggerService;
 	private readonly serviceMap = new Map<string, { service: any; entity: KafkaServiceEntity }>();
+	private readonly consumerCache = new Map<string, any>();
+	private _kafkaProducerService: KafkaProducerService | null = null;
 
 	constructor(
 		@InjectRepository(KafkaServiceEntity)
 		private readonly kafkaServiceRepo: Repository<KafkaServiceEntity>,
 		private readonly kafkaRuntimeManager: KafkaRuntimeManager,
-		private readonly enterpriseAgentUpdatedConsumer: EnterpriseAgentUpdatedConsumer,
-		private readonly auAgentDetailsAgentUpdatedConsumer: AuAgentDetailsAgentUpdatedConsumer,
-		private readonly ukAgentDetailsAgentUpdatedConsumer: UkAgentDetailsAgentUpdatedConsumer,
-		private readonly globalAdsAgentCreatedConsumer: GlobalAdsAgentCreatedConsumer,
-		private readonly globalAdsAgentUpdatedConsumer: GlobalAdsAgentUpdatedConsumer,
-		private readonly kafkaProducerService: KafkaProducerService,
 		private readonly configService: ConfigService,
+		private readonly moduleRef: ModuleRef,
 		loggerService: LoggerService,
 	) {
 		this.logger = loggerService;
 		this.logger.setContext('KafkaBootstrapService');
+	}
+
+	/**
+	 * Get KafkaProducerService instance asynchronously via ModuleRef.
+	 * This breaks the circular dependency by loading the class at runtime.
+	 * Uses cached instance after first resolution.
+	 */
+	private async getKafkaProducerServiceAsync(): Promise<KafkaProducerService> {
+		if (this._kafkaProducerService) {
+			return this._kafkaProducerService;
+		}
+
+		// Dynamic import to avoid circular dependency at module load time
+		const { KafkaProducerService } = await import('./kafka-producer.service.js');
+		this._kafkaProducerService = this.moduleRef.get(KafkaProducerService, { strict: false });
+		return this._kafkaProducerService;
 	}
 
 	async onApplicationBootstrap(): Promise<void> {
@@ -104,7 +118,7 @@ export class KafkaBootstrapService implements OnApplicationBootstrap, OnApplicat
 		});
 
 		// Build service map: map database entities to service instances
-		this.buildServiceMap(serviceDefinitions);
+		await this.buildServiceMap(serviceDefinitions);
 
 		// Register all services with runtime manager (using service.getId(), not entity.id)
 		for (const entry of this.serviceMap.values()) {
@@ -133,13 +147,15 @@ export class KafkaBootstrapService implements OnApplicationBootstrap, OnApplicat
 		this.logger.info('Kafka services bootstrap completed');
 	}
 
+
 	/**
 	 * Build service map from database entities.
 	 * Maps each entity to its corresponding service instance.
+	 * Uses lazy resolution via ModuleRef to break circular dependencies.
 	 * 
 	 * @param clear - If true, clears existing service map before building. Default: true.
 	 */
-	private buildServiceMap(entities: KafkaServiceEntity[], clear: boolean = true): void {
+	private async buildServiceMap(entities: KafkaServiceEntity[], clear: boolean = true): Promise<void> {
 		if (clear) {
 			this.serviceMap.clear();
 		}
@@ -153,18 +169,9 @@ export class KafkaBootstrapService implements OnApplicationBootstrap, OnApplicat
 			let service: any;
 
 			if (entity.type === KafkaServiceType.CONSUMER) {
-				// Map consumer entities to consumer service instances
-				if (entity.topic === 'Enterprise_AgentUpdated_V2') {
-					service = this.enterpriseAgentUpdatedConsumer;
-				} else if (entity.topic === 'AU_AgentDetails_AgentUpdated_V2') {
-					service = this.auAgentDetailsAgentUpdatedConsumer;
-				} else if (entity.topic === 'UK_AgentDetails_AgentUpdated_V2') {
-					service = this.ukAgentDetailsAgentUpdatedConsumer;
-				} else if (entity.topic === 'Global_ADS_AgentCreated_V2') {
-					service = this.globalAdsAgentCreatedConsumer;
-				} else if (entity.topic === 'Global_ADS_AgentUpdated_V2') {
-					service = this.globalAdsAgentUpdatedConsumer;
-				} else {
+				// Resolve consumer services lazily using ModuleRef to break circular dependency
+				service = await this.getConsumerByTopic(entity.topic);
+				if (!service) {
 					this.logger.warn(`Unknown consumer topic: ${entity.topic}`, {
 						id: entity.id,
 						topic: entity.topic,
@@ -172,8 +179,8 @@ export class KafkaBootstrapService implements OnApplicationBootstrap, OnApplicat
 					continue;
 				}
 			} else if (entity.type === KafkaServiceType.PRODUCER) {
-				// Map producer entities to producer service instance
-				service = this.kafkaProducerService;
+				// Map producer entities to producer service instance (lazy resolution)
+				service = await this.getKafkaProducerServiceAsync();
 			} else {
 				this.logger.warn(`Unknown service type: ${entity.type}`, {
 					id: entity.id,
@@ -185,6 +192,81 @@ export class KafkaBootstrapService implements OnApplicationBootstrap, OnApplicat
 			// Use entity ID as the key (not service.getId() which might differ)
 			this.serviceMap.set(entity.id, { service, entity });
 		}
+	}
+
+	/**
+	 * Get consumer service instance by topic using lazy dynamic imports.
+	 * Uses ModuleRef to resolve consumer instances after classes are loaded.
+	 * This breaks the circular dependency by loading consumer classes at runtime.
+	 * 
+	 * @param topic - Kafka topic name
+	 * @returns Consumer service instance or undefined if not found
+	 */
+	private async getConsumerByTopic(topic: string): Promise<any> {
+		// Check cache first
+		if (this.consumerCache.has(topic)) {
+			return this.consumerCache.get(topic);
+		}
+
+		// Load consumer classes if not already loaded
+		await this.loadConsumerClasses();
+
+		try {
+			const consumerClasses = this._consumerClasses!;
+			const ConsumerClass = consumerClasses.get(topic);
+			
+			if (!ConsumerClass) {
+				return undefined;
+			}
+
+			const consumer = this.moduleRef.get(ConsumerClass, { strict: false });
+			if (consumer) {
+				this.consumerCache.set(topic, consumer);
+			}
+			return consumer;
+		} catch (error) {
+			this.logger.warn(`Failed to resolve consumer for topic: ${topic}`, {
+				topic,
+				error: error instanceof Error ? error.message : 'Unknown error',
+			});
+			return undefined;
+		}
+	}
+
+	// Lazy-loaded consumer classes - populated on first access using dynamic imports
+	private _consumerClasses: Map<string, any> | null = null;
+	
+	/**
+	 * Load consumer classes using dynamic imports to avoid circular dependency.
+	 * This is called lazily when first needed, not at module load time.
+	 */
+	private async loadConsumerClasses(): Promise<void> {
+		if (this._consumerClasses) {
+			return;
+		}
+
+		// Dynamic imports to avoid circular dependency at module load time
+		const [
+			{ EnterpriseAgentUpdatedConsumer },
+			{ AuAgentDetailsAgentUpdatedConsumer },
+			{ UkAgentDetailsAgentUpdatedConsumer },
+			{ GlobalAdsAgentCreatedConsumer },
+			{ GlobalAdsAgentUpdatedConsumer },
+		] = await Promise.all([
+			import('./consumers/enterprise-agent-updated.consumer.js'),
+			import('./consumers/au-agent-details-agent-updated.consumer.js'),
+			import('./consumers/uk-agent-details-agent-updated.consumer.js'),
+			import('./consumers/global-ads-agent-created.consumer.js'),
+			import('./consumers/global-ads-agent-updated.consumer.js'),
+		]);
+
+		this._consumerClasses = new Map<string, any>([
+			['Enterprise_AgentUpdated_V2', EnterpriseAgentUpdatedConsumer],
+			['AU_AgentDetails_AgentUpdated_V2', AuAgentDetailsAgentUpdatedConsumer],
+			['UK_AgentDetails_AgentUpdated_V2', UkAgentDetailsAgentUpdatedConsumer],
+			['Global_ADS_AgentCreated_V2', GlobalAdsAgentCreatedConsumer],
+			['Global_ADS_AgentUpdated_V2', GlobalAdsAgentUpdatedConsumer],
+		]);
 	}
 
 	/**
@@ -221,13 +303,52 @@ export class KafkaBootstrapService implements OnApplicationBootstrap, OnApplicat
 	}
 
 	/**
+	 * Get service instance by topic name.
+	 * Used to find consumer services for message retry.
+	 * 
+	 * First checks the serviceMap (services registered from database).
+	 * If not found, attempts to resolve the consumer directly from the topic name.
+	 * This allows retry to work even if the service isn't registered in the database.
+	 * 
+	 * @param topic - Kafka topic name
+	 * @returns The service entry if found, undefined otherwise
+	 */
+	async getServiceByTopic(topic: string): Promise<{ service: any; entity: KafkaServiceEntity } | undefined> {
+		// First, check serviceMap (services registered from database)
+		for (const entry of this.serviceMap.values()) {
+			if (entry.entity.topic === topic && entry.entity.type === KafkaServiceType.CONSUMER) {
+				return entry;
+			}
+		}
+
+		// If not in serviceMap, try to resolve consumer directly from topic
+		// This allows retry to work even if service isn't registered in database
+		const consumer = await this.getConsumerByTopic(topic);
+		if (consumer) {
+			// Create a mock entity for the service (not persisted, just for retry functionality)
+			const mockEntity: Partial<KafkaServiceEntity> = {
+				id: `retry-${topic}`,
+				topic: topic,
+				type: KafkaServiceType.CONSUMER,
+				enabled: true,
+			};
+			return {
+				service: consumer,
+				entity: mockEntity as KafkaServiceEntity,
+			};
+		}
+
+		return undefined;
+	}
+
+	/**
 	 * Register a service entity that wasn't loaded during bootstrap.
 	 * Used when enabling a service that was disabled at startup.
 	 * 
 	 * @param entity - The Kafka service entity from database
 	 * @returns The service entry if successfully registered, undefined otherwise
 	 */
-	registerServiceEntity(entity: KafkaServiceEntity): { service: any; entity: KafkaServiceEntity } | undefined {
+	async registerServiceEntity(entity: KafkaServiceEntity): Promise<{ service: any; entity: KafkaServiceEntity } | undefined> {
 		// Check if already in service map
 		if (this.serviceMap.has(entity.id)) {
 			return this.serviceMap.get(entity.id);
@@ -235,22 +356,14 @@ export class KafkaBootstrapService implements OnApplicationBootstrap, OnApplicat
 
 		let serviceInstance: any;
 		if (entity.type === KafkaServiceType.CONSUMER) {
-			if (entity.topic === 'Enterprise_AgentUpdated_V2') {
-				serviceInstance = this.enterpriseAgentUpdatedConsumer;
-			} else if (entity.topic === 'AU_AgentDetails_AgentUpdated_V2') {
-				serviceInstance = this.auAgentDetailsAgentUpdatedConsumer;
-			} else if (entity.topic === 'UK_AgentDetails_AgentUpdated_V2') {
-				serviceInstance = this.ukAgentDetailsAgentUpdatedConsumer;
-			} else if (entity.topic === 'Global_ADS_AgentCreated_V2') {
-				serviceInstance = this.globalAdsAgentCreatedConsumer;
-			} else if (entity.topic === 'Global_ADS_AgentUpdated_V2') {
-				serviceInstance = this.globalAdsAgentUpdatedConsumer;
-			} else {
+			// Use lazy resolution via getConsumerByTopic
+			serviceInstance = await this.getConsumerByTopic(entity.topic);
+			if (!serviceInstance) {
 				this.logger.warn(`Unknown consumer topic for dynamic registration: ${entity.topic}`, { entityId: entity.id });
 				return undefined;
 			}
 		} else if (entity.type === KafkaServiceType.PRODUCER) {
-			serviceInstance = this.kafkaProducerService;
+			serviceInstance = await this.getKafkaProducerServiceAsync();
 		} else {
 			this.logger.warn(`Unknown service type for dynamic registration: ${entity.type}`, { entityId: entity.id });
 			return undefined;

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { Consumer, KafkaMessage } from 'kafkajs';
 import { KafkaClientService } from '../kafka-client.service.js';
 import { KafkaMessageProcessingService } from '../kafka-message-processing.service.js';
@@ -27,6 +27,7 @@ export class UkAgentDetailsAgentUpdatedConsumer implements RegisterableKafkaServ
 	constructor(
 		private readonly kafkaClientService: KafkaClientService,
 		private readonly configService: ConfigService,
+		@Inject(forwardRef(() => KafkaMessageProcessingService))
 		private readonly kafkaMessageProcessingService: KafkaMessageProcessingService,
 		loggerService: LoggerService,
 	) {

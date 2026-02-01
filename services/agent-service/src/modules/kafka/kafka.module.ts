@@ -17,8 +17,22 @@ import { KafkaBootstrapService } from './kafka-bootstrap.service.js';
 import { KafkaAdminController } from './kafka-admin.controller.js';
 import { KafkaBulkOperationsController } from './kafka-bulk-operations.controller.js';
 import { KafkaBulkOperationsService } from './services/kafka-bulk-operations.service.js';
+import { EnterpriseAgentUpsertService } from './services/enterprise-agent-upsert.service.js';
 import { AgentModule } from '../agents/agent.module.js';
-import { KafkaMessageProcessingEntity, KafkaServiceEntity } from '@exprealty/database';
+import { StatesModule } from '../states/states.module.js';
+import { CountriesModule } from '../countries/countries.module.js';
+import {
+	KafkaMessageProcessingEntity,
+	KafkaServiceEntity,
+	OfficeEntity,
+	MLSEntity,
+	AddressEntity,
+	AgentOfficeEntity,
+	AgentMLSEntity,
+		AgentAddressEntity,
+		ContactMethodEntity,
+		CompanyEntity,
+	} from '@exprealty/database';
 import { PaginationModule } from '../../common/pagination/pagination.module.js';
 
 /**
@@ -40,8 +54,21 @@ import { PaginationModule } from '../../common/pagination/pagination.module.js';
  */
 @Module({
 	imports: [
-		AgentModule, // Required for IAgentRepository
-		TypeOrmModule.forFeature([KafkaMessageProcessingEntity, KafkaServiceEntity]),
+		AgentModule, // Required for IAgentRepository, IContactMethodRepository, IAgentAddressRepository
+		StatesModule, // Required for IStatesRepository
+		CountriesModule, // Required for ICountriesRepository
+		TypeOrmModule.forFeature([
+			KafkaMessageProcessingEntity,
+			KafkaServiceEntity,
+			OfficeEntity,
+			MLSEntity,
+			AddressEntity,
+			AgentOfficeEntity,
+			AgentMLSEntity,
+			AgentAddressEntity,
+			ContactMethodEntity,
+			CompanyEntity,
+		]),
 		PaginationModule, // Required for PaginationInterceptor
 	],
 	providers: [
@@ -58,6 +85,7 @@ import { PaginationModule } from '../../common/pagination/pagination.module.js';
 		KafkaMessageProcessingService,
 		KafkaMessageCleanupService,
 		KafkaBulkOperationsService,
+		EnterpriseAgentUpsertService,
 	],
 	controllers: [
 		SponsorChangedController,

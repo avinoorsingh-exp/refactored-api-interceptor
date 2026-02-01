@@ -372,7 +372,7 @@ export class KafkaAdminController {
 			this.logger.info(`[${correlationId}] Service ${id} not in service map - registering service instance`, {
 				entityId: id,
 			});
-			serviceEntry = this.kafkaBootstrapService.registerServiceEntity(entity);
+			serviceEntry = await this.kafkaBootstrapService.registerServiceEntity(entity);
 			if (!serviceEntry) {
 				throw new NotFoundException({
 					message: `Kafka service with ID '${id}' could not be registered. Unknown service type or topic.`,

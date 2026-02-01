@@ -34,6 +34,20 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 		const traceId = request.headers['x-request-id'] as string | undefined
 		const instance = request.path
 
+		// DEBUG: Log the exception to identify validation source
+		if (instance.includes('/retry')) {
+			this.logger.error('Exception caught for retry endpoint', {
+				exceptionType: exception?.constructor?.name,
+				exceptionMessage: exception instanceof Error ? exception.message : String(exception),
+				exceptionStack: exception instanceof Error ? exception.stack : undefined,
+				isHttpException: exception instanceof HttpException,
+				httpStatus: exception instanceof HttpException ? exception.getStatus() : undefined,
+				httpResponse: exception instanceof HttpException ? exception.getResponse() : undefined,
+				path: instance,
+				method: request.method,
+			})
+		}
+
 		let problem: ProblemDetails
 
 		// 1. Handle DomainException FIRST (before HttpException check since DomainException extends HttpException)
@@ -92,8 +106,40 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 			const status = exception.getStatus()
 			const exceptionResponse = exception.getResponse()
 
+			// DEBUG: Log all 400 errors to identify validation source
+			if (status === 400 && instance.includes('/retry')) {
+				console.error('[ProblemDetailsFilter] BadRequestException caught for retry endpoint', {
+					status,
+					exceptionResponse: JSON.stringify(exceptionResponse, null, 2),
+					exceptionResponseType: typeof exceptionResponse,
+					hasZodIssues: typeof exceptionResponse === 'object' && exceptionResponse !== null && '_zodIssues' in (exceptionResponse as Record<string, unknown>),
+					exceptionMessage: exception.message,
+					exceptionName: exception.constructor.name,
+					stack: exception.stack,
+					path: instance,
+					exceptionKeys: typeof exceptionResponse === 'object' && exceptionResponse !== null ? Object.keys(exceptionResponse as Record<string, unknown>) : [],
+				})
+				this.logger.error('BadRequestException caught for retry endpoint', {
+					status,
+					exceptionResponse,
+					exceptionResponseType: typeof exceptionResponse,
+					hasZodIssues: typeof exceptionResponse === 'object' && exceptionResponse !== null && '_zodIssues' in (exceptionResponse as Record<string, unknown>),
+					exceptionMessage: exception.message,
+					exceptionName: exception.constructor.name,
+					stack: exception.stack,
+					path: instance,
+				})
+			}
+
 			// Check if it's a validation error (BadRequestException from ZodValidationPipe)
-			if (status === 400 && typeof exceptionResponse === 'object') {
+			// ONLY call handleValidationError if the exception response has actual validation error fields
+			// (_zodIssues or _errors), not just a generic message
+			const hasValidationErrors = typeof exceptionResponse === 'object' && exceptionResponse !== null && (
+				'_zodIssues' in (exceptionResponse as Record<string, unknown>) ||
+				'_errors' in (exceptionResponse as Record<string, unknown>)
+			)
+			
+			if (status === 400 && typeof exceptionResponse === 'object' && hasValidationErrors) {
 				problem = this.handleValidationError(
 					exceptionResponse as Record<string, unknown>,
 					instance,
@@ -157,6 +203,18 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 		instance: string,
 		traceId?: string,
 	): ProblemDetails {
+		// DEBUG: Log the exception response to identify the source
+		if (instance.includes('/retry')) {
+			console.error('[handleValidationError] Exception response for retry endpoint:', JSON.stringify(exceptionResponse, null, 2))
+			console.error('[handleValidationError] Exception response keys:', Object.keys(exceptionResponse))
+			this.logger.error('handleValidationError called for retry endpoint', {
+				exceptionResponse,
+				exceptionResponseKeys: Object.keys(exceptionResponse),
+				instance,
+				traceId,
+			})
+		}
+
 		const invalidParams: InvalidParam[] = []
 		
 		// Extract custom i18n type if provided (e.g., 'agent.country.validation')
@@ -172,9 +230,14 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 		if (zodIssues && Array.isArray(zodIssues)) {
 			// Convert Zod issues to InvalidParam format
 			for (const issue of zodIssues) {
+				// Ensure message is always present - use fallback if missing
+				const errorMessage = issue.message || 
+					(issue.code ? `Validation failed for ${issue.code}` : 'Validation failed') ||
+					'Invalid value';
+				
 				invalidParams.push({
 					name: issue.path.length > 0 ? issue.path.join('.') : 'request',
-					reason: issue.message,
+					reason: errorMessage,
 					in: 'body',
 				})
 			}
@@ -411,11 +474,18 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 		instance: string,
 		traceId?: string,
 	): ProblemDetails {
-		const invalidParams: InvalidParam[] = error.issues.map((issue) => ({
-			name: issue.path.join('.') || 'request',
-			reason: issue.message,
-			in: 'body',
-		}))
+		const invalidParams: InvalidParam[] = error.issues.map((issue) => {
+			// Ensure message is always present - use fallback if missing
+			const errorMessage = issue.message || 
+				(issue.code ? `Validation failed for ${issue.code}` : 'Validation failed') ||
+				'Invalid value';
+			
+			return {
+				name: issue.path.join('.') || 'request',
+				reason: errorMessage,
+				in: 'body',
+			};
+		})
 
 		return Problems.validation(
 			'The request body failed schema validation',

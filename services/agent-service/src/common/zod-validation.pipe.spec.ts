@@ -566,5 +566,53 @@ describe('ZodValidationPipe', () => {
 				expect(response._zodIssues[0].path).toEqual(['tags'])
 			}
 		})
+
+		it('should ensure all Zod issues have message property with fallbacks', () => {
+			const schema = z.object({
+				name: z.string().min(1),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+
+			try {
+				pipe.transform({ name: '' })
+				fail('Should have thrown BadRequestException')
+			} catch (error: any) {
+				expect(error).toBeInstanceOf(BadRequestException)
+				const response = error.getResponse()
+				
+				expect(response._zodIssues).toBeDefined()
+				expect(response._zodIssues.length).toBeGreaterThan(0)
+				
+				// All issues should have a message property
+				response._zodIssues.forEach((issue: any) => {
+					expect(issue.message).toBeDefined()
+					expect(typeof issue.message).toBe('string')
+					expect(issue.message.length).toBeGreaterThan(0)
+				})
+			}
+		})
+
+		it('should use code-based message when original message is missing', () => {
+			// Create a schema that might produce issues without messages
+			const schema = z.object({
+				value: z.string(),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+
+			try {
+				pipe.transform({ value: 123 })
+				fail('Should have thrown BadRequestException')
+			} catch (error: any) {
+				expect(error).toBeInstanceOf(BadRequestException)
+				const response = error.getResponse()
+				
+				expect(response._zodIssues).toBeDefined()
+				const issue = response._zodIssues[0]
+				expect(issue.message).toBeDefined()
+				expect(issue.message).toBe('errors.validation.type.expected_string')
+			}
+		})
 	})
 })
