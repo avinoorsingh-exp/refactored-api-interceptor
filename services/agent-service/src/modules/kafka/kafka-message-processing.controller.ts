@@ -152,7 +152,35 @@ export class KafkaMessageProcessingController {
 			error?: string;
 		}>;
 	}> {
-		return await this.kafkaMessageProcessingService.batchRetryMessages(body.messageIds);
+		try {
+			if (!body || !body.messageIds) {
+				throw new BadRequestException('Request body must contain a messageIds array');
+			}
+
+			if (!Array.isArray(body.messageIds)) {
+				throw new BadRequestException('messageIds must be an array');
+			}
+
+			if (body.messageIds.length === 0) {
+				throw new BadRequestException('At least one messageId must be provided');
+			}
+
+			// Validate that all messageIds are valid UUIDs
+			const invalidIds = body.messageIds.filter(id => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+			if (invalidIds.length > 0) {
+				throw new BadRequestException(`Invalid messageId format: ${invalidIds.join(', ')}. All messageIds must be valid UUIDs.`);
+			}
+
+			return await this.kafkaMessageProcessingService.batchRetryMessages(body.messageIds);
+		} catch (error) {
+			// Re-throw BadRequestException as-is
+			if (error instanceof BadRequestException) {
+				throw error;
+			}
+			// Wrap any other errors in a BadRequestException with details
+			// This prevents 500 errors and provides better error messages
+			throw new BadRequestException(`Failed to process batch retry: ${error instanceof Error ? error.message : String(error)}`);
+		}
 	}
 
 	/**
