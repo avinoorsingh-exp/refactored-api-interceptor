@@ -438,6 +438,18 @@ export class AgentEntity extends AuditableEntity {
 	 */
 	primaryLicense?: LicenseEntity;
 
+	/**
+	 * Licensed states for the agent (array of state abbreviations)
+	 * 
+	 * Virtual property - loaded via custom subquery
+	 * Use ?include=licensedStates to load
+	 * Returns array of unique state codes where agent holds licenses
+	 * 
+	 * @see AgentRepository.loadLicensedStates()
+	 * @see AGENT_PROJECTION_CONFIG.relations.licensedStates
+	 */
+	licensedStates?: string[];
+
     // ========================================
 	// Helper Methods
 	// ========================================

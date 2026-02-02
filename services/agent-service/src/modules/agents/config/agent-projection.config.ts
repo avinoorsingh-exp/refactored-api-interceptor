@@ -48,6 +48,7 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		'activeLocation',
 		'publicProfile',
 		'license',
+		'licensedStates',
 	],
 
 	// Default fields (when no ?fields specified)
@@ -170,6 +171,14 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 			fields: ['id', 'number', 'type', 'isPrimary', 'firstName', 'lastName', 'middleName', 'suffix', 'expirationDate', 'lineOfBusinessId', 'countryId', 'stateCode'],
 			nested: ['country', 'lineOfBusiness'],
 			virtual: true, // Loaded by repository, not ProjectionService
+		},
+		// Virtual relation - loaded via AgentRepository (subquery)
+		// Returns array of unique state codes where agent holds licenses
+		// Lightweight alternative to include=license for grid displays
+		licensedStates: {
+			property: 'licensedStates',
+			fields: [], // Returns string[] directly, not an object
+			virtual: true, // Loaded by repository via subquery
 		},
 	},
 };

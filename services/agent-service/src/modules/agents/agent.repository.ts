@@ -186,6 +186,13 @@ export class AgentTypeOrmRepository
 			result.primaryLicense = entity.primaryLicense;
 		}
 
+		// licensedStates is a simple string array, include as empty array if requested but none found
+		if (requestedIncludes.includes('licensedStates')) {
+			result.licensedStates = entity.licensedStates ?? [];
+		} else if (entity.licensedStates) {
+			result.licensedStates = entity.licensedStates;
+		}
+
 		return result as unknown as Agent;
 	}
 
@@ -373,6 +380,39 @@ export class AgentTypeOrmRepository
 	}
 
 	/**
+	 * Loads licensed states for agents.
+	 * Uses a correlated subquery with array_agg for efficiency.
+	 * Results are loaded separately and merged with entities.
+	 *
+	 * @param agentIds - Array of agent IDs to load licensed states for
+	 * @returns Map of agent ID to array of state codes
+	 */
+	protected async loadLicensedStates(agentIds: string[]): Promise<Map<string, string[]>> {
+		if (agentIds.length === 0) {
+			return new Map();
+		}
+
+		// Use a raw query with array_agg for efficient grouping
+		// This gets all unique state codes per agent in a single query
+		const results = await this.repo.manager.query<{ agent_id: string; state_codes: string[] }[]>(
+			`SELECT 
+				l.agent_id,
+				array_agg(DISTINCT l.state_code) FILTER (WHERE l.state_code IS NOT NULL) as state_codes
+			FROM core.license l
+			WHERE l.agent_id = ANY($1)
+			GROUP BY l.agent_id`,
+			[agentIds],
+		);
+
+		const stateMap = new Map<string, string[]>();
+		for (const row of results) {
+			stateMap.set(row.agent_id, row.state_codes ?? []);
+		}
+
+		return stateMap;
+	}
+
+	/**
 	 * Load addresses with virtual state relations.
 	 * Used when include=address is specified.
 	 * Adds virtual state mapping to addresses already joined by ProjectionService.
@@ -445,6 +485,13 @@ export class AgentTypeOrmRepository
 	 */
 	private hasPrimaryLicenseInclude(include?: string[]): boolean {
 		return include?.includes('primaryLicense') ?? false;
+	}
+
+	/**
+	 * Check if licensedStates is requested in includes.
+	 */
+	private hasLicensedStatesInclude(include?: string[]): boolean {
+		return include?.includes('licensedStates') ?? false;
 	}
 
 	/**
@@ -762,6 +809,7 @@ export class AgentTypeOrmRepository
 	 * Finds agents with pagination, filtering, sorting, and search.
 	 * Handles primary contact and address loading via custom joins.
 	 * Supports relational filtering (email, country) and sorting (primaryEmail).
+	 * Supports licensedStates virtual field via post-query loading.
 	 */
 	async findPage(
 		query: Partial<QueryParams>,
@@ -770,6 +818,7 @@ export class AgentTypeOrmRepository
 		const primaryContactTypes = this.extractPrimaryContactTypes(selection?.include);
 		const hasPrimaryAddress = this.hasPrimaryAddressInclude(selection?.include);
 		const hasPrimaryLicense = this.hasPrimaryLicenseInclude(selection?.include);
+		const hasLicensedStates = this.hasLicensedStatesInclude(selection?.include);
 		const hasAddresses = selection?.include?.includes('address') || false;
 
 		// Parse filter if it's a JSON string (query params come in as strings)
@@ -805,11 +854,29 @@ export class AgentTypeOrmRepository
 			modifiedQuery.sort = JSON.stringify(standardSortConditions) as any;
 		}
 
+		// Helper to post-process results with licensedStates if requested
+		const addLicensedStates = async (result: PageResult<Agent>): Promise<PageResult<Agent>> => {
+			if (!hasLicensedStates || result.items.length === 0) {
+				return result;
+			}
+			
+			const agentIds = result.items.map(a => a.id);
+			const statesMap = await this.loadLicensedStates(agentIds);
+			
+			// Add licensedStates to each agent
+			const itemsWithStates = result.items.map(agent => ({
+				...agent,
+				licensedStates: statesMap.get(agent.id) ?? [],
+			}));
+			
+			return { ...result, items: itemsWithStates };
+		};
+
 		if (needsCustomQuery) {
 			// Check if primaryEmail is already being included (so we don't double-join)
 			const primaryEmailIncluded = primaryContactTypes.includes('email');
 
-			return this.findWithQuery(modifiedQuery, selection, (qb) => {
+			const result = await this.findWithQuery(modifiedQuery, selection, (qb) => {
 				// Add virtual relation joins for includes
 				if (primaryContactTypes.length > 0) {
 					this.loadPrimaryContacts(qb, this.getAlias(), primaryContactTypes);
@@ -850,12 +917,16 @@ export class AgentTypeOrmRepository
 				//Apply UUID search if search query is provided
 				this.applyUuidSearch(qb, modifiedQuery.search);
 			}, { skipDefaultSort: hasRelationalSort });
+
+			return addLicensedStates(result);
 		}
 
-		return this.findWithQuery(modifiedQuery, selection,(qb) => {
+		const result = await this.findWithQuery(modifiedQuery, selection, (qb) => {
 			this.applyFullNameSearch(qb, modifiedQuery.search);
 			this.applyEmailSearch(qb, modifiedQuery.search);
 			this.applyUuidSearch(qb, modifiedQuery.search);
 		});
+
+		return addLicensedStates(result);
 	}
 }
