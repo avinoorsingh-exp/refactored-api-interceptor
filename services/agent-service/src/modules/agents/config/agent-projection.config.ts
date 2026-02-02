@@ -47,6 +47,7 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		'sponsorConfiguration',
 		'activeLocation',
 		'publicProfile',
+		'license',
 	],
 
 	// Default fields (when no ?fields specified)
@@ -137,6 +138,11 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 			property: 'publicProfile',
 			fields: ['id', 'firstName', 'lastName', 'email', 'phone', 'bio'],
 		},
+		license: {
+			property: 'licenses',
+			fields: ['id', 'number', 'type', 'isPrimary', 'firstName', 'lastName', 'middleName', 'suffix', 'expirationDate', 'lineOfBusinessId', 'countryId', 'stateCode'],
+			nested: ['country', 'lineOfBusiness'], // Related entities
+		},
 		// Virtual relations - loaded via AgentRepository.loadPrimaryContacts()
 		// Uses leftJoinAndMapOne with filtered condition on contactMethods
 		primaryEmail: {
@@ -155,6 +161,14 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 			property: 'primaryAddress',
 			fields: ['id', 'type', 'role', 'line1', 'line2', 'city', 'unit', 'postalCode', 'county', 'label', 'countryId', 'stateCode'],
 			nested: ['country', 'state'], // Both loaded by repository virtual join
+			virtual: true, // Loaded by repository, not ProjectionService
+		},
+		// Virtual relation - loaded via AgentRepository.loadPrimaryLicense()
+		// Returns the license with isPrimary = true
+		primaryLicense: {
+			property: 'primaryLicense',
+			fields: ['id', 'number', 'type', 'isPrimary', 'firstName', 'lastName', 'middleName', 'suffix', 'expirationDate', 'lineOfBusinessId', 'countryId', 'stateCode'],
+			nested: ['country', 'lineOfBusiness'],
 			virtual: true, // Loaded by repository, not ProjectionService
 		},
 	},

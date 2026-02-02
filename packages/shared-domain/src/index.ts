@@ -577,6 +577,8 @@ export {
 	type CreateLicenseInput,
 	UpdateLicenseInputSchema,
 	type UpdateLicenseInput,
+	LicenseIdParamSchema,
+	type LicenseIdParam,
 } from './schemas/license.js'
 
 // ============================================================================

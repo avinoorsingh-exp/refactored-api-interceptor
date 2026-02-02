@@ -156,6 +156,7 @@ export class AgentTypeOrmRepository
 		if (entity.sponsorConfiguration) result.sponsorConfiguration = entity.sponsorConfiguration;
 		if (entity.activeLocations) result.activeLocation = entity.activeLocations;
 		if (entity.publicProfile) result.publicProfile = entity.publicProfile;
+		if (entity.licenses) result.license = entity.licenses;
 
 		// Virtual relations - include as null if requested but not found
 		// This ensures consistent API responses when include= is specified
@@ -177,6 +178,12 @@ export class AgentTypeOrmRepository
 			result.primaryAddress = primaryAgentAddress?.address ?? null;
 		} else if (entity.primaryAddress) {
 			result.primaryAddress = entity.primaryAddress;
+		}
+
+		if (requestedIncludes.includes('primaryLicense')) {
+			result.primaryLicense = entity.primaryLicense ?? null;
+		} else if (entity.primaryLicense) {
+			result.primaryLicense = entity.primaryLicense;
 		}
 
 		return result as unknown as Agent;
@@ -336,6 +343,36 @@ export class AgentTypeOrmRepository
 	}
 
 	/**
+	 * Loads the primary license for an agent with nested country and line of business.
+	 * Uses leftJoinAndMapOne to map directly to entity.primaryLicense.
+	 *
+	 * @param qb - Query builder
+	 * @param alias - Base entity alias (usually 'agent')
+	 */
+	protected loadPrimaryLicense<T>(
+		qb: SelectQueryBuilder<T>,
+		alias: string,
+	): void {
+		const licenseAlias = 'primaryLicense';
+		const countryAlias = 'primaryLicenseCountry';
+		const lobAlias = 'primaryLicenseLob';
+
+		// Join licenses where isPrimary = true
+		qb.leftJoinAndMapOne(
+			`${alias}.primaryLicense`,
+			`${alias}.licenses`,
+			licenseAlias,
+			`${licenseAlias}.isPrimary = true`,
+		);
+
+		// Join and select country from license
+		qb.leftJoinAndSelect(`${licenseAlias}.country`, countryAlias);
+
+		// Join and select line of business from license
+		qb.leftJoinAndSelect(`${licenseAlias}.lineOfBusiness`, lobAlias);
+	}
+
+	/**
 	 * Load addresses with virtual state relations.
 	 * Used when include=address is specified.
 	 * Adds virtual state mapping to addresses already joined by ProjectionService.
@@ -387,7 +424,7 @@ export class AgentTypeOrmRepository
 
 		const primaryContactTypes: string[] = [];
 		for (const item of include) {
-			if (item.startsWith('primary') && item !== 'primaryAddress') {
+			if (item.startsWith('primary') && item !== 'primaryAddress' && item !== 'primaryLicense') {
 				// primaryEmail -> email, primaryPhone -> phone
 				const type = item.replace('primary', '').toLowerCase();
 				if (type) primaryContactTypes.push(type);
@@ -401,6 +438,13 @@ export class AgentTypeOrmRepository
 	 */
 	private hasPrimaryAddressInclude(include?: string[]): boolean {
 		return include?.includes('primaryAddress') ?? false;
+	}
+
+	/**
+	 * Check if primaryLicense is requested in includes.
+	 */
+	private hasPrimaryLicenseInclude(include?: string[]): boolean {
+		return include?.includes('primaryLicense') ?? false;
 	}
 
 	/**
@@ -725,6 +769,7 @@ export class AgentTypeOrmRepository
 	): Promise<PageResult<Agent>> {
 		const primaryContactTypes = this.extractPrimaryContactTypes(selection?.include);
 		const hasPrimaryAddress = this.hasPrimaryAddressInclude(selection?.include);
+		const hasPrimaryLicense = this.hasPrimaryLicenseInclude(selection?.include);
 		const hasAddresses = selection?.include?.includes('address') || false;
 
 		// Parse filter if it's a JSON string (query params come in as strings)
@@ -744,6 +789,7 @@ export class AgentTypeOrmRepository
 		const needsCustomQuery =
 			primaryContactTypes.length > 0 ||
 			hasPrimaryAddress ||
+			hasPrimaryLicense ||
 			hasAddresses ||
 			hasRelationalFilters ||
 			hasRelationalSort;
@@ -770,6 +816,9 @@ export class AgentTypeOrmRepository
 				}
 				if (hasPrimaryAddress) {
 					this.loadPrimaryAddress(qb, this.getAlias());
+				}
+				if (hasPrimaryLicense) {
+					this.loadPrimaryLicense(qb, this.getAlias());
 				}
 				if (hasAddresses) {
 					this.loadAddressesWithVirtualState(qb, this.getAlias());

@@ -18,6 +18,7 @@ import type { SponsorConfigurationEntity } from './sponsor-configuration.entity.
 import type { ActiveLocationEntity } from './active-location.entity.js'
 import type { RelationshipEntity } from './relationship.entity.js'
 import type { PublicProfileEntity } from './public-profile.entity.js'
+import type { LicenseEntity } from './license.entity.js'
 
 /**
  * Agent title enum values.
@@ -382,6 +383,14 @@ export class AgentEntity extends AuditableEntity {
 	publicProfile?: PublicProfileEntity
 
 	/**
+	 * One-to-Many relationship with License.
+	 * Agent's professional licenses.
+	 * @public
+	 */
+	@OneToMany('LicenseEntity', 'agent')
+	licenses?: LicenseEntity[]
+
+	/**
 	 * Primary email contact method
 	 * 
 	 * Virtual property - loaded via custom query
@@ -416,6 +425,18 @@ export class AgentEntity extends AuditableEntity {
 	 * @see AGENT_PROJECTION_CONFIG.relations.primaryAddress
 	 */
 	primaryAddress?: AddressEntity;
+
+	/**
+	 * Primary license for the agent
+	 * 
+	 * Virtual property - loaded via custom query
+	 * Use ?include=primaryLicense to load
+	 * Returns the LicenseEntity with isPrimary = true
+	 * 
+	 * @see AgentRepository.loadPrimaryLicense()
+	 * @see AGENT_PROJECTION_CONFIG.relations.primaryLicense
+	 */
+	primaryLicense?: LicenseEntity;
 
     // ========================================
 	// Helper Methods

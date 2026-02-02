@@ -21,6 +21,11 @@ import {
 	LanguageEntity,
 	PayPlanEntity,
 	SocialEntity,
+	LicenseEntity,
+	LicenseEventEntity,
+	CountryEntity,
+	StateEntity,
+	LineOfBusinessEntity,
 } from '@exprealty/database';
 import { AgentController } from './agent.controller.js';
 import { AgentService } from './agent.service.js';
@@ -33,6 +38,9 @@ import { ContactMethodTypeOrmRepository } from './contact-methods/contact-method
 import { AgentAddressController } from './addresses/agent-address.controller.js';
 import { AgentAddressService } from './addresses/agent-address.service.js';
 import { AgentAddressTypeOrmRepository } from './addresses/agent-address.repository.js';
+import { LicenseController } from './licenses/license.controller.js';
+import { LicenseService } from './licenses/license.service.js';
+import { LicenseTypeOrmRepository } from './licenses/license.repository.js';
 import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 
 /**
@@ -89,14 +97,21 @@ import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 			LanguageEntity,
 			PayPlanEntity,
 			SocialEntity,
+			LicenseEntity,
+			LicenseEventEntity,
+			// Reference entities for license validation
+			CountryEntity,
+			StateEntity,
+			LineOfBusinessEntity,
 		]),
 		PaginationModule,
 	],
-	controllers: [AgentController, ContactMethodController, AgentAddressController],
+	controllers: [AgentController, ContactMethodController, AgentAddressController, LicenseController],
 	providers: [
 		AgentService,
 		ContactMethodService,
 		AgentAddressService,
+		LicenseService,
 		ProjectionService,
 		AgentExistsGuard,
 		// Provide the repository adapter under the port token
@@ -112,6 +127,10 @@ import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 			provide: 'IAgentAddressRepository',
 			useClass: AgentAddressTypeOrmRepository,
 		},
+		{
+			provide: 'ILicenseRepository',
+			useClass: LicenseTypeOrmRepository,
+		},
 		// Provide AgentService under AGENT_SERVICE token for AgentExistsGuard
 		{
 			provide: 'AGENT_SERVICE',
@@ -122,6 +141,7 @@ import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 		AgentService,
 		ContactMethodService,
 		AgentAddressService,
+		LicenseService,
 		AgentExistsGuard,
 		// Export IAgentRepository token for use in other modules
 		{
