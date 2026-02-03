@@ -103,22 +103,12 @@ export class ApiRouteStatsAggregationJobHandler implements AdminJobHandler, OnMo
 			startTimeDate.setMinutes(0, 0, 0);
 			endTime.setMinutes(0, 0, 0);
 
-			this.logCapture?.log('info', 'Starting API route stats aggregation (hourly buckets - previous hour)', {
-				startTime: startTimeDate.toISOString(),
-				endTime: endTime.toISOString(),
-				timeBucket: TimeBucket.HOUR,
-			});
-
 			const previousHourBuckets = await this.apiMetricsService.aggregateAllRouteStats(
 				startTimeDate,
 				endTime,
 				TimeBucket.HOUR,
-				this.logCapture,
+				undefined, // Don't pass logCapture to reduce verbosity
 			);
-
-			this.logCapture?.log('info', 'Previous hour bucket aggregation completed', {
-				aggregatedCount: previousHourBuckets,
-			});
 
 			results.hourBuckets += previousHourBuckets;
 
@@ -134,24 +124,14 @@ export class ApiRouteStatsAggregationJobHandler implements AdminJobHandler, OnMo
 			const backfillHourEnd = new Date(startTimeDate);
 			backfillHourEnd.setMinutes(0, 0, 0);
 
-			this.logCapture?.log('info', 'Checking for missing hour buckets in last 48 hours', {
-				startTime: backfillHourStart.toISOString(),
-				endTime: backfillHourEnd.toISOString(),
-			});
-
 			// Aggregate all hours in the last 48 hours
 			// The upsert logic will skip hours that already have buckets, so this is safe
 			const backfillHourBuckets = await this.apiMetricsService.aggregateAllRouteStats(
 				backfillHourStart,
 				backfillHourEnd,
 				TimeBucket.HOUR,
-				this.logCapture,
+				undefined, // Don't pass logCapture to reduce verbosity
 			);
-
-			this.logCapture?.log('info', 'Hour bucket backfill completed', {
-				aggregatedCount: backfillHourBuckets,
-				note: 'This includes both new buckets and updates to existing buckets',
-			});
 
 			// Note: backfillHourBuckets includes all buckets processed (new + existing)
 			// We only count new ones by tracking the previous hour separately
@@ -175,22 +155,12 @@ export class ApiRouteStatsAggregationJobHandler implements AdminJobHandler, OnMo
 				previousDayEnd.setDate(previousDayEnd.getDate() + 1);
 				previousDayEnd.setHours(1, 0, 0, 0); // 1 hour into current day (buffer for late data)
 
-				this.logCapture?.log('info', 'Starting API route stats aggregation (daily buckets - previous day)', {
-					startTime: previousDayStart.toISOString(),
-					endTime: previousDayEnd.toISOString(),
-					timeBucket: TimeBucket.DAY,
-				});
-
 				const previousDayBuckets = await this.apiMetricsService.aggregateAllRouteStats(
 					previousDayStart,
 					previousDayEnd,
 					TimeBucket.DAY,
-					this.logCapture,
+					undefined, // Don't pass logCapture to reduce verbosity
 				);
-
-				this.logCapture?.log('info', 'Previous day bucket aggregation completed', {
-					aggregatedCount: previousDayBuckets,
-				});
 
 				results.dayBuckets += previousDayBuckets;
 
@@ -206,24 +176,14 @@ export class ApiRouteStatsAggregationJobHandler implements AdminJobHandler, OnMo
 				const backfillEnd = new Date(previousDayStart);
 				backfillEnd.setHours(23, 59, 59, 999);
 
-				this.logCapture?.log('info', 'Checking for missing day buckets in last 30 days', {
-					startTime: backfillStart.toISOString(),
-					endTime: backfillEnd.toISOString(),
-				});
-
-				// Aggregate all days in the last 7 days
+				// Aggregate all days in the last 30 days
 				// The upsert logic will skip days that already have buckets, so this is safe
 				const backfillBuckets = await this.apiMetricsService.aggregateAllRouteStats(
 					backfillStart,
 					backfillEnd,
 					TimeBucket.DAY,
-					this.logCapture,
+					undefined, // Don't pass logCapture to reduce verbosity
 				);
-
-				this.logCapture?.log('info', 'Day bucket backfill completed', {
-					aggregatedCount: backfillBuckets,
-					note: 'This includes both new buckets and updates to existing buckets',
-				});
 
 				// Note: backfillBuckets includes all buckets processed (new + existing)
 				// We only count new ones by tracking the previous day separately
@@ -232,12 +192,7 @@ export class ApiRouteStatsAggregationJobHandler implements AdminJobHandler, OnMo
 
 			const executionTime = Date.now() - startTime;
 
-			this.logCapture?.log('info', 'API route stats aggregation completed', {
-				hourBuckets: results.hourBuckets,
-				dayBuckets: results.dayBuckets,
-				executionTimeMs: executionTime,
-			});
-
+			// Store concise summary - only key metrics, no verbose step-by-step logs
 			return {
 				log: JSON.stringify({
 					summary: {
@@ -255,13 +210,7 @@ export class ApiRouteStatsAggregationJobHandler implements AdminJobHandler, OnMo
 			const executionTime = Date.now() - startTime;
 			const errorMessage = error instanceof Error ? error.message : String(error);
 			
-			this.logCapture?.log('error', 'API route stats aggregation failed', {
-				error: errorMessage,
-				hourBuckets: results.hourBuckets,
-				dayBuckets: results.dayBuckets,
-				executionTimeMs: executionTime,
-			});
-
+			// Log error concisely - only essential information
 			this.logger.error('API route stats aggregation job failed', {
 				error: errorMessage,
 				hourBuckets: results.hourBuckets,

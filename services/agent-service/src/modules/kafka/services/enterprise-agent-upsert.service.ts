@@ -47,8 +47,14 @@ export class EnterpriseAgentUpsertService {
 		const startTime = Date.now();
 
 		try {
+			// Normalize legacy payloads before validation
+			// This handles:
+			// 1. agentCompanyId (removed field) - remove if present
+			// 2. Invalid suffix values (empty string, invalid enum values) - remove if invalid
+			const normalized = this.normalizeLegacyPayload(payload);
+			
 			// Validate payload with Zod
-			const validated = EnterpriseAgentUpsertSchema.parse(payload);
+			const validated = EnterpriseAgentUpsertSchema.parse(normalized);
 
 			// Use transaction to ensure atomicity
 			// If ANY operation fails, the entire transaction will roll back and throw an error
@@ -122,6 +128,52 @@ export class EnterpriseAgentUpsertService {
 	}
 
 	/**
+	 * Normalize legacy payloads to handle fields that were removed or changed.
+	 * 
+	 * This handles:
+	 * 1. agentCompanyId - removed field, strip if present
+	 * 2. Invalid suffix values - empty strings or values not in enum, remove if invalid
+	 * 
+	 * This is needed for retries of ERROR messages that were stored with old format.
+	 * New messages are validated during translation, so they won't need normalization.
+	 */
+	private normalizeLegacyPayload(payload: unknown): unknown {
+		if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+			return payload;
+		}
+
+		const normalized = { ...payload } as Record<string, unknown>;
+
+		// Normalize agent object if present
+		if (normalized.agent && typeof normalized.agent === 'object' && !Array.isArray(normalized.agent)) {
+			const agent = { ...normalized.agent } as Record<string, unknown>;
+
+			// Remove agentCompanyId if present (legacy field)
+			if ('agentCompanyId' in agent) {
+				delete agent.agentCompanyId;
+			}
+
+			// Normalize suffix: validate against enum and remove if invalid
+			if ('suffix' in agent) {
+				const validSuffixes = ['Jr', 'Sr', 'II', 'III', 'IV', 'V', 'MD', 'PhD', 'Esq'] as const;
+				const rawSuffix = agent.suffix ? String(agent.suffix).trim() : null;
+				
+				if (rawSuffix && rawSuffix.length > 0 && validSuffixes.includes(rawSuffix as any)) {
+					// Valid suffix - keep it
+					agent.suffix = rawSuffix;
+				} else {
+					// Invalid suffix (empty, null, or not in enum) - remove it
+					delete agent.suffix;
+				}
+			}
+
+			normalized.agent = agent;
+		}
+
+		return normalized;
+	}
+
+	/**
 	 * Upserts agent (finds by id, or creates new if id provided but not found).
 	 * Requires agent.id (UUID) to be present in payload - will not create agents without an ID.
 	 */
@@ -151,7 +203,6 @@ export class EnterpriseAgentUpsertService {
 			anniversaryDate: agentData.anniversaryDate,
 			terminationDate: agentData.terminationDate,
 			isStaff: agentData.isStaff,
-			agentCompanyId: agentData.agentCompanyId,
 			systemId: agentData.systemId,
 			modifiedBy: 'Enterprise',
 		};

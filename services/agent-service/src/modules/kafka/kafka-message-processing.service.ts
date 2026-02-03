@@ -223,15 +223,16 @@ export class KafkaMessageProcessingService {
 	}
 
 	/**
-	 * Lookup or update a SENT record when message is received by consumer, then increment attempt_count.
+	 * Lookup or update a record when message is received by consumer, then increment attempt_count.
 	 * Uses PostgreSQL's ON CONFLICT to ensure idempotency.
 	 * If a record with the same (topic, partition, offset) already exists, it updates it.
 	 * 
 	 * On message receive:
-	 * - Lookup SENT record using topic, partition, offset
+	 * - Lookup existing record using topic, partition, offset
 	 * - Increment attempt_count
 	 * - Set last_attempt_at = now()
-	 * - Status remains SENT (will be updated to PROCESSED/ERROR after processing)
+	 * - If record doesn't exist, create it with initialStatus (defaults to SENT for produced messages, PROCESSED for consumed messages)
+	 * - Status remains unchanged if record exists (will be updated to PROCESSED/ERROR after processing)
 	 * 
 	 * This operation is atomic and wrapped in a transaction.
 	 * The unique constraint on (topic, partition, offset) prevents duplicate rows.
@@ -240,9 +241,13 @@ export class KafkaMessageProcessingService {
 	 * Any errors are logged but not propagated.
 	 * 
 	 * @param data - Message processing data
+	 * @param initialStatus - Status to use when creating a new record (defaults to SENT for produced messages)
 	 * @returns true if operation succeeded, false otherwise
 	 */
-	async lookupOrUpdateSentAndIncrementAttempt(data: CreateKafkaMessageProcessingData): Promise<boolean> {
+	async lookupOrUpdateSentAndIncrementAttempt(
+		data: CreateKafkaMessageProcessingData,
+		initialStatus: KafkaMessageStatus = KafkaMessageStatus.SENT,
+	): Promise<boolean> {
 		// Use queryRunner for transaction support
 		const queryRunner = this.dataSource.createQueryRunner();
 		await queryRunner.connect();
@@ -263,9 +268,8 @@ export class KafkaMessageProcessingService {
 			const previousStatus = existingRecord?.[0]?.status;
 
 			// Use raw SQL with ON CONFLICT to update atomically
-			// Record should already exist with SENT status from producer
 			// If record exists, increment attempt_count, update last_attempt_at, and update payload with translated version
-			// If record doesn't exist (shouldn't happen), create it with SENT status
+			// If record doesn't exist, create it with initialStatus (SENT for produced messages, PROCESSED for consumed messages)
 			const result = await queryRunner.query(
 				`
 				INSERT INTO core.kafka_message_processing (
@@ -290,7 +294,7 @@ export class KafkaMessageProcessingService {
 					data.offset,
 					data.messageKey || null,
 					data.eventId || null,
-					KafkaMessageStatus.SENT,
+					initialStatus,
 					JSON.stringify(data.payload),
 					data.headers ? JSON.stringify(data.headers) : null,
 					data.consumerGroup,
@@ -305,9 +309,14 @@ export class KafkaMessageProcessingService {
 			const attemptCount = record?.attempt_count || 1;
 
 			if (isNewRecord) {
-				// This shouldn't happen - record should exist from producer
-				// But log it if it does
-				this.logger.warn('Kafka message processing record created by consumer (should have been created by producer)', {
+				// For consumed messages (Enterprise, AU, UK, GADs), this is expected behavior
+				// They create records with PROCESSED status
+				// For produced messages, this shouldn't happen - record should exist from producer
+				const logLevel = initialStatus === KafkaMessageStatus.PROCESSED ? 'info' : 'warn';
+				const logMessage = initialStatus === KafkaMessageStatus.PROCESSED
+					? 'Kafka message processing record created by consumer with PROCESSED status'
+					: 'Kafka message processing record created by consumer (should have been created by producer)';
+				this.logger[logLevel](logMessage, {
 					event: 'kafka_message_record_created_by_consumer',
 					topic: data.topic,
 					partition: data.partition,
@@ -317,7 +326,7 @@ export class KafkaMessageProcessingService {
 					consumerGroup: data.consumerGroup,
 					serviceName: data.serviceName,
 					attemptCount: 1,
-					status: KafkaMessageStatus.SENT,
+					status: initialStatus,
 				});
 			} else {
 				// Structured log: Retry attempt increased
@@ -425,7 +434,7 @@ export class KafkaMessageProcessingService {
 			const wasUpdated = (updateResult.affected ?? 0) > 0;
 
 			if (wasUpdated) {
-				// Structured log: Status transition (SENT → PROCESSED)
+				// Structured log: Status transition (SENT/RETRYING → PROCESSED)
 				this.logger.info('Kafka message processing status transition', {
 					event: 'kafka_message_status_transition',
 					topic,
@@ -588,7 +597,7 @@ export class KafkaMessageProcessingService {
 			const wasUpdated = (updateResult?.length ?? 0) > 0;
 
 			if (wasUpdated) {
-				// Structured log: Status transition (SENT → ERROR or PROCESSED → ERROR)
+				// Structured log: Status transition (SENT/PROCESSED/RETRYING → ERROR)
 				this.logger.info('Kafka message processing status transition', {
 					event: 'kafka_message_status_transition',
 					topic,
@@ -922,9 +931,9 @@ export class KafkaMessageProcessingService {
 			// Normalize status to string and trim whitespace, convert to uppercase for comparison
 			const currentStatus = currentStatusRaw ? String(currentStatusRaw).trim().toUpperCase() : null;
 			
-			// Allow retry for all valid statuses (SENT, PROCESSED, ERROR)
+			// Allow retry for all valid statuses (SENT, PROCESSED, ERROR, RETRYING)
 			// Only reject if status is truly invalid (null/undefined/empty)
-			// This fixes race conditions where status may be PROCESSED when retry is requested
+			// This fixes race conditions where status may be PROCESSED or RETRYING when retry is requested
 			if (!currentStatus) {
 				if (transactionStarted) {
 					try {
@@ -949,16 +958,18 @@ export class KafkaMessageProcessingService {
 				});
 			}
 			
-			// Retry is ACCEPTED - process regardless of current status (SENT, PROCESSED, or ERROR)
+			// Retry is ACCEPTED - process regardless of current status (SENT, PROCESSED, ERROR, or RETRYING)
 			// Log the request-start status for debugging (but don't reject based on it)
 			this.logger.info('Retry accepted: processing message regardless of current status', {
 				messageId,
 				requestStartStatus: currentStatus,
 				requestStartStatusRaw: currentStatusRaw,
 				attemptCountBefore: lockedMessage.attempt_count || 0,
-				note: currentStatus !== KafkaMessageStatus.ERROR.toUpperCase() 
-					? 'Retrying message that is not in ERROR state (may be race condition)' 
-					: 'Retrying message in ERROR state',
+				note: currentStatus === KafkaMessageStatus.RETRYING.toUpperCase()
+					? 'Retrying message that is already in RETRYING state (may be concurrent retry)'
+					: currentStatus === KafkaMessageStatus.ERROR.toUpperCase()
+					? 'Retrying message in ERROR state'
+					: 'Retrying message that is not in ERROR state (may be race condition)',
 			});
 			
 			// From this point forward, the retry MUST succeed (return 200) regardless of:
@@ -968,17 +979,19 @@ export class KafkaMessageProcessingService {
 			// No further status validation or exception throwing based on status is allowed
 			retryAccepted = true;
 
-			// Increment attempt_count and update last_attempt_at (while row is locked)
+			// Increment attempt_count, update last_attempt_at, and set status to RETRYING (while row is locked)
+			// Setting status to RETRYING indicates the message is being retried (transitional state)
 			await queryRunner.query(
 				`
 				UPDATE core.kafka_message_processing
 				SET 
 					attempt_count = attempt_count + 1,
 					last_attempt_at = NOW(),
+					status = $1,
 					updated_at = NOW()
-				WHERE id = $1
+				WHERE id = $2
 				`,
-				[messageId],
+				[KafkaMessageStatus.RETRYING, messageId],
 			);
 
 			await queryRunner.commitTransaction();
@@ -1151,7 +1164,22 @@ export class KafkaMessageProcessingService {
 		// Get the consumer service for this topic
 		// This works for all consumer types (Enterprise, Global ADS, UK, AU, etc.)
 		// getServiceByTopic will find the consumer by topic name regardless of consumer type
+		this.logger.info('About to get service by topic', {
+			messageId,
+			topic: updatedMessage.topic,
+			timestamp: Date.now(),
+		});
+		
 		const serviceEntry = await this.kafkaBootstrapService.getServiceByTopic(updatedMessage.topic);
+		
+		this.logger.info('Got service entry', {
+			messageId,
+			topic: updatedMessage.topic,
+			hasServiceEntry: !!serviceEntry,
+			serviceType: serviceEntry?.service?.getType?.(),
+			timestamp: Date.now(),
+		});
+		
 		if (!serviceEntry || serviceEntry.service.getType() !== 'consumer') {
 			throw new BadRequestException({
 				message: `No consumer service found for topic '${updatedMessage.topic}'. Cannot retry message processing.`,
@@ -1160,7 +1188,21 @@ export class KafkaMessageProcessingService {
 		}
 
 		// Get message handler from consumer service
+		this.logger.info('About to get message handler', {
+			messageId,
+			topic: updatedMessage.topic,
+			timestamp: Date.now(),
+		});
+		
 		const messageHandler = serviceEntry.service.getMessageHandler?.();
+		
+		this.logger.info('Got message handler', {
+			messageId,
+			topic: updatedMessage.topic,
+			hasMessageHandler: !!messageHandler,
+			timestamp: Date.now(),
+		});
+		
 		if (!messageHandler) {
 			throw new BadRequestException({
 				message: `Consumer service for topic '${updatedMessage.topic}' does not provide a message handler. Cannot retry message processing.`,
@@ -1169,11 +1211,11 @@ export class KafkaMessageProcessingService {
 		}
 
 		// CRITICAL: Status validation already passed - retry is ACCEPTED
-		// Process the message synchronously and wait for final status to be committed
-		// Return the final committed status (PROCESSED or ERROR) in the response
-		// No post-processing status validation or exception throwing based on status is allowed
+		// Status has been set to RETRYING when retrying
+		// Process the message asynchronously (fire-and-forget) and return immediately
+		// The consumer will update status to PROCESSED on success or ERROR on failure
 		
-		this.logger.info('Retry accepted: processing message and waiting for final status', {
+		this.logger.info('Retry accepted: triggering async processing, returning immediately', {
 			messageId,
 			topic: updatedMessage.topic,
 			partition: updatedMessage.partition,
@@ -1182,304 +1224,51 @@ export class KafkaMessageProcessingService {
 			statusAtAcceptance: updatedMessage.status,
 		});
 
-		// Process message synchronously and wait for final status
-		try {
-			await messageHandler({
-				topic: updatedMessage.topic,
-				partition: updatedMessage.partition,
-				message: mockKafkaMessage,
-			});
-
-			// Processing completed without throwing - this is success
-			// Wait for status updates to propagate (consumer may update status asynchronously)
-			// Poll up to 30 times (3 seconds total) to get the final committed status
-			let finalMessage = await this.findById(messageId);
-			if (!finalMessage) {
-				throw new Error('Message not found after processing');
-			}
-
-			// Poll for status changes to get the most up-to-date committed status
-			for (let i = 0; i < 30; i++) {
-				await new Promise(resolve => setTimeout(resolve, 100));
-				const currentMessage = await this.findById(messageId);
-				if (currentMessage) {
-					finalMessage = currentMessage;
-					// If status is PROCESSED or ERROR, we have the final status
-					if (currentMessage.status === KafkaMessageStatus.PROCESSED || 
-						currentMessage.status === KafkaMessageStatus.ERROR) {
-						break;
-					}
-				}
-			}
-
-			// Add a final short wait to ensure status is fully committed
-			await new Promise(resolve => setTimeout(resolve, 200));
-			const lastCheck = await this.findById(messageId);
-			if (lastCheck) {
-				finalMessage = lastCheck;
-			}
-
-			// IMPORTANT: Since messageHandler completed without throwing, processing should have succeeded.
-			// The consumer's markAsProcessed should have updated the status to PROCESSED.
-			// However, the consumer may have caught an error internally and set status to ERROR with error details.
-			// Check the current status and error details to determine the final state.
-			const currentStatusCheck = await this.dataSource.query(
-				`
-				SELECT status, error_code, error_message, error_stacktrace 
-				FROM core.kafka_message_processing 
-				WHERE id = $1
-				`,
-				[messageId],
-			);
-			
-			if (currentStatusCheck && currentStatusCheck.length > 0) {
-				const currentStatus = currentStatusCheck[0].status;
-				const hasErrorDetails = currentStatusCheck[0].error_code || 
-				                       currentStatusCheck[0].error_message || 
-				                       currentStatusCheck[0].error_stacktrace;
-				
-				if (currentStatus === KafkaMessageStatus.ERROR) {
-					if (hasErrorDetails) {
-						// Consumer set ERROR with error details - preserve them (processing actually failed)
-						// Just update last_attempt_at to reflect the retry attempt
-						await this.dataSource.query(
-							`
-							UPDATE core.kafka_message_processing
-							SET last_attempt_at = NOW(), updated_at = NOW()
-							WHERE id = $1
-							`,
-							[messageId],
-						);
-					} else {
-						// Status is ERROR but no error details - markAsProcessed likely failed (lookup issue)
-						// Update to PROCESSED as a fallback
-						await this.dataSource.query(
-							`
-							UPDATE core.kafka_message_processing
-							SET 
-								status = $1,
-								processed_at = COALESCE(processed_at, NOW()),
-								last_attempt_at = NOW(),
-								updated_at = NOW()
-							WHERE id = $2
-							`,
-							[KafkaMessageStatus.PROCESSED, messageId],
-						);
-					}
-				} else {
-					// Status is already PROCESSED (or something else), just update last_attempt_at
-					await this.dataSource.query(
-						`
-						UPDATE core.kafka_message_processing
-						SET last_attempt_at = NOW(), updated_at = NOW()
-						WHERE id = $1
-						`,
-						[messageId],
-					);
-				}
-			}
-
-			// Get the absolute latest committed status for the response
-			const latestStatusResult = await this.dataSource.query(
-				`
-				SELECT id, topic, partition, "offset", status, message_key, payload, headers, 
-				       event_id, consumer_group, service_name, attempt_count, error_code, 
-				       error_message, error_stacktrace, is_retryable, processed_at, 
-				       last_attempt_at, created_at, updated_at
-				FROM core.kafka_message_processing
-				WHERE id = $1
-				`,
-				[messageId],
-			);
-
-			if (!latestStatusResult || latestStatusResult.length === 0) {
-				throw new Error('Message not found after status update');
-			}
-
-			// Map raw database result to entity format
-			// Helper function to safely parse dates
-			const safeDate = (value: unknown): Date | null => {
-				if (!value) return null;
-				try {
-					const date = new Date(value as string);
-					return isNaN(date.getTime()) ? null : date;
-				} catch {
-					return null;
-				}
-			};
-
-			const raw = latestStatusResult[0];
-			const updatedFinalMessage: KafkaMessageProcessingEntity = {
-				id: raw.id,
-				topic: raw.topic,
-				partition: raw.partition,
-				offset: raw.offset,
-				status: raw.status,
-				messageKey: raw.message_key,
-				payload: raw.payload,
-				headers: raw.headers,
-				eventId: raw.event_id,
-				consumerGroup: raw.consumer_group,
-				serviceName: raw.service_name,
-				attemptCount: raw.attempt_count,
-				errorCode: raw.error_code,
-				errorMessage: raw.error_message,
-				errorStacktrace: raw.error_stacktrace,
-				isRetryable: raw.is_retryable,
-				processedAt: safeDate(raw.processed_at),
-				lastAttemptAt: safeDate(raw.last_attempt_at),
-				createdAt: safeDate(raw.created_at) || new Date(), // Fallback to now if invalid
-				updatedAt: safeDate(raw.updated_at) || new Date(), // Fallback to now if invalid
-			} as KafkaMessageProcessingEntity;
-
-			this.logger.info('Retry processing completed successfully, returning final committed status', {
-				messageId,
-				topic: updatedMessage.topic,
-				partition: updatedMessage.partition,
-				offset: updatedMessage.offset,
-				attemptCount: updatedFinalMessage.attemptCount,
-				finalStatus: updatedFinalMessage.status,
-			});
-
-			// CRITICAL: Return success with final committed status - retry was ACCEPTED (status validated at request start)
-			// The endpoint MUST return 200 here with the final committed status
-			// The response reflects "Retry accepted and completed" with final status (PROCESSED or ERROR)
-			return this.mapEntityToDto(updatedFinalMessage);
-		} catch (error) {
-			// Processing failed - ensure status is set to ERROR and get final committed status
-			// The consumer may have already marked it as ERROR, but we need to ensure it's ERROR
-			// Handle ZodError specially to format validation errors
-			let errorMessage: string;
-			let errorStacktrace: string | null;
-			let errorCode: string;
-			
-			if (error instanceof ZodError) {
-				// This is a ZodError - format validation errors for better readability
-				const issues = error.issues;
-				
-				// Format validation errors into a readable message
-				const formattedErrors = issues.map((issue) => {
-					const fieldPath = issue.path.length > 0 ? issue.path.join('.') : 'root';
-					return `${fieldPath}: ${issue.message}`;
+		// Process message asynchronously (fire-and-forget) to avoid timeout
+		// The consumer will update the status to PROCESSED or ERROR
+		setImmediate(async () => {
+			try {
+				this.logger.info('Starting async message processing for retry', {
+					messageId,
+					topic: updatedMessage.topic,
+					timestamp: Date.now(),
 				});
 				
-				errorMessage = `Validation failed: ${formattedErrors.join('; ')}`;
-				errorCode = 'ZodError';
-				// Store full error details in stacktrace for debugging
-				errorStacktrace = JSON.stringify({
-					type: 'ZodError',
-					issues: issues.map((issue) => ({
-						path: issue.path,
-						message: issue.message,
-						code: issue.code,
-					})),
-					stack: error.stack,
-				}, null, 2);
-			} else {
-				// Regular error handling
-				errorMessage = error instanceof Error ? error.message : String(error);
-				errorStacktrace = error instanceof Error ? error.stack : null;
-				errorCode = error instanceof Error ? error.name : 'Error';
-			}
-			
-			await this.dataSource.query(
-				`
-				UPDATE core.kafka_message_processing
-				SET 
-					last_attempt_at = NOW(), 
-					updated_at = NOW(),
-					status = $1,
-					error_code = $2,
-					error_message = $3,
-					error_stacktrace = $4,
-					is_retryable = true
-				WHERE id = $5 AND status != $1
-				`,
-				[
-					KafkaMessageStatus.ERROR,
-					errorCode,
-					errorMessage,
-					errorStacktrace,
+				await messageHandler({
+					topic: updatedMessage.topic,
+					partition: updatedMessage.partition,
+					message: mockKafkaMessage,
+				});
+				
+				this.logger.info('Async message processing completed successfully', {
 					messageId,
-				],
-			);
-
-			// Wait briefly for the status update to be committed
-			await new Promise(resolve => setTimeout(resolve, 200));
-
-			// Get the final committed status with all error details
-			// Use raw query to ensure we get the latest error_code, error_message, error_stacktrace
-			// (consumer may have also set these, so we want the most recent values)
-			const finalStatusResult = await this.dataSource.query(
-				`
-				SELECT id, topic, partition, "offset", status, message_key, payload, headers, 
-				       event_id, consumer_group, service_name, attempt_count, error_code, 
-				       error_message, error_stacktrace, is_retryable, processed_at, 
-				       last_attempt_at, created_at, updated_at
-				FROM core.kafka_message_processing
-				WHERE id = $1
-				`,
-				[messageId],
-			);
-
-			if (!finalStatusResult || finalStatusResult.length === 0) {
-				throw new Error('Message not found after processing');
+					topic: updatedMessage.topic,
+					timestamp: Date.now(),
+				});
+			} catch (error) {
+				this.logger.error('Async message processing failed', {
+					messageId,
+					topic: updatedMessage.topic,
+					error: error instanceof Error ? error.message : 'Unknown error',
+					stack: error instanceof Error ? error.stack : undefined,
+					timestamp: Date.now(),
+				});
+				// Error is already handled by the consumer (status set to ERROR)
 			}
+		});
 
-			// Map raw database result to entity format
-			const safeDate = (value: unknown): Date | null => {
-				if (!value) return null;
-				try {
-					const date = new Date(value as string);
-					return isNaN(date.getTime()) ? null : date;
-				} catch {
-					return null;
-				}
-			};
+		// Return immediately with current status (RETRYING, as set when retrying)
+		// The consumer will update it to PROCESSED on success or ERROR on failure
+		this.logger.info('Retry accepted, returning immediately with current status', {
+			messageId,
+			topic: updatedMessage.topic,
+			status: updatedMessage.status,
+			attemptCount: updatedMessage.attemptCount,
+		});
 
-			const raw = finalStatusResult[0];
-			const finalMessage: KafkaMessageProcessingEntity = {
-				id: raw.id,
-				topic: raw.topic,
-				partition: raw.partition,
-				offset: raw.offset,
-				status: raw.status,
-				messageKey: raw.message_key,
-				payload: raw.payload,
-				headers: raw.headers,
-				eventId: raw.event_id,
-				consumerGroup: raw.consumer_group,
-				serviceName: raw.service_name,
-				attemptCount: raw.attempt_count,
-				errorCode: raw.error_code,
-				errorMessage: raw.error_message,
-				errorStacktrace: raw.error_stacktrace,
-				isRetryable: raw.is_retryable,
-				processedAt: safeDate(raw.processed_at),
-				lastAttemptAt: safeDate(raw.last_attempt_at),
-				createdAt: safeDate(raw.created_at) || new Date(),
-				updatedAt: safeDate(raw.updated_at) || new Date(),
-			} as KafkaMessageProcessingEntity;
-
-			this.logger.warn('Retry processing failed, returning final ERROR status with error details', {
-				messageId,
-				topic: updatedMessage.topic,
-				partition: updatedMessage.partition,
-				offset: updatedMessage.offset,
-				attemptCount: finalMessage.attemptCount,
-				finalStatus: finalMessage.status,
-				errorCode: finalMessage.errorCode,
-				errorMessage: finalMessage.errorMessage,
-				errorStacktrace: finalMessage.errorStacktrace ? 'Present' : 'Missing',
-				processingError: error instanceof Error ? error.message : 'Unknown error',
-			});
-
-			// CRITICAL: Return success with final ERROR status - retry was ACCEPTED (status validated at request start)
-			// The endpoint MUST return 200 here with the final committed status, even if processing failed
-			// The response reflects "Retry accepted and completed" with final status (ERROR)
-			// Error details (errorCode, errorMessage, errorStacktrace) are included in the response
-			return this.mapEntityToDto(finalMessage);
-		}
+		// Return the message with RETRYING status (as set when retrying)
+		// The consumer will update it asynchronously to PROCESSED or ERROR
+		return this.mapEntityToDto(updatedMessage);
 	}
 
 	/**
@@ -1649,6 +1438,7 @@ export class KafkaMessageProcessingService {
 				const currentMessage = await this.findById(messageId);
 				if (currentMessage) {
 					// If status is PROCESSED or ERROR, we have the final status
+					// If status is still RETRYING, continue waiting (consumer is still processing)
 					if (currentMessage.status === KafkaMessageStatus.PROCESSED || 
 						currentMessage.status === KafkaMessageStatus.ERROR) {
 						break;
@@ -1664,8 +1454,10 @@ export class KafkaMessageProcessingService {
 				[messageId],
 			);
 			
-			if (currentStatusCheck && currentStatusCheck.length > 0 && currentStatusCheck[0].status === KafkaMessageStatus.ERROR) {
-				// Status is still ERROR, so markAsProcessed must have failed - update it directly
+			if (currentStatusCheck && currentStatusCheck.length > 0 && 
+				(currentStatusCheck[0].status === KafkaMessageStatus.ERROR || 
+				 currentStatusCheck[0].status === KafkaMessageStatus.RETRYING)) {
+				// Status is still ERROR or RETRYING, so markAsProcessed must have failed - update it directly
 				await this.dataSource.query(
 					`
 					UPDATE core.kafka_message_processing
@@ -1704,6 +1496,7 @@ export class KafkaMessageProcessingService {
 		} catch (error) {
 			// Processing failed - ensure status is set to ERROR
 			// The consumer may have already marked it as ERROR, but we need to ensure it's ERROR
+			// Update from RETRYING or any other status (except already ERROR) to ERROR
 			await this.dataSource.query(
 				`
 				UPDATE core.kafka_message_processing

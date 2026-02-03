@@ -22,7 +22,6 @@ export const EnterpriseAgentUpsertSchema = z.object({
 		anniversaryDate: z.coerce.date().optional(),
 		terminationDate: z.coerce.date().optional(),
 		isStaff: z.boolean(),
-		agentCompanyId: z.string().uuid().optional(),
 	}),
 	contactMethods: z.array(
 		z.object({

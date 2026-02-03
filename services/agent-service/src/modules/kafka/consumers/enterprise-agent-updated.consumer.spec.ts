@@ -297,8 +297,99 @@ describe('EnterpriseAgentUpdatedConsumer', () => {
 				anniversaryDate: new Date('2021-01-01'),
 				terminationDate: undefined,
 				isStaff: false,
-				agentCompanyId: undefined,
 			});
+		});
+
+		it('should validate suffix against enum and exclude invalid values', () => {
+			// Test with valid suffix (should be included)
+			const payloadWithValidSuffix = {
+				uuid: '550e8400-e29b-41d4-a716-446655440000',
+				member_first_name: 'John',
+				member_last_name: 'Doe',
+				suffix: '  Jr  ',
+				lifecycle_status_caption: 'Active',
+			};
+			const resultWithValidSuffix = (consumer as any).translateKafkaMessageToUpsertData(payloadWithValidSuffix);
+			expect(resultWithValidSuffix.agent.suffix).toBe('Jr');
+
+			// Test with other valid suffixes
+			const validSuffixes = ['Sr', 'II', 'III', 'IV', 'V', 'MD', 'PhD', 'Esq'];
+			validSuffixes.forEach((suffix) => {
+				const payload = {
+					uuid: '550e8400-e29b-41d4-a716-446655440000',
+					member_first_name: 'John',
+					member_last_name: 'Doe',
+					suffix,
+					lifecycle_status_caption: 'Active',
+				};
+				const result = (consumer as any).translateKafkaMessageToUpsertData(payload);
+				expect(result.agent.suffix).toBe(suffix);
+			});
+
+			// Test with null suffix (should be excluded)
+			const payloadWithNullSuffix = {
+				uuid: '550e8400-e29b-41d4-a716-446655440000',
+				member_first_name: 'John',
+				member_last_name: 'Doe',
+				suffix: null,
+				lifecycle_status_caption: 'Active',
+			};
+			const resultWithNullSuffix = (consumer as any).translateKafkaMessageToUpsertData(payloadWithNullSuffix);
+			expect(resultWithNullSuffix.agent.suffix).toBeUndefined();
+
+			// Test with empty string suffix (should be excluded)
+			const payloadWithEmptySuffix = {
+				uuid: '550e8400-e29b-41d4-a716-446655440000',
+				member_first_name: 'John',
+				member_last_name: 'Doe',
+				suffix: '',
+				lifecycle_status_caption: 'Active',
+			};
+			const resultWithEmptySuffix = (consumer as any).translateKafkaMessageToUpsertData(payloadWithEmptySuffix);
+			expect(resultWithEmptySuffix.agent.suffix).toBeUndefined();
+
+			// Test with whitespace-only suffix (should be excluded)
+			const payloadWithWhitespaceSuffix = {
+				uuid: '550e8400-e29b-41d4-a716-446655440000',
+				member_first_name: 'John',
+				member_last_name: 'Doe',
+				suffix: '   ',
+				lifecycle_status_caption: 'Active',
+			};
+			const resultWithWhitespaceSuffix = (consumer as any).translateKafkaMessageToUpsertData(payloadWithWhitespaceSuffix);
+			expect(resultWithWhitespaceSuffix.agent.suffix).toBeUndefined();
+
+			// Test with undefined suffix (should be excluded)
+			const payloadWithUndefinedSuffix = {
+				uuid: '550e8400-e29b-41d4-a716-446655440000',
+				member_first_name: 'John',
+				member_last_name: 'Doe',
+				lifecycle_status_caption: 'Active',
+			};
+			const resultWithUndefinedSuffix = (consumer as any).translateKafkaMessageToUpsertData(payloadWithUndefinedSuffix);
+			expect(resultWithUndefinedSuffix.agent.suffix).toBeUndefined();
+
+			// Test with invalid suffix value (not in enum) - should be excluded
+			const payloadWithInvalidSuffix = {
+				uuid: '550e8400-e29b-41d4-a716-446655440000',
+				member_first_name: 'John',
+				member_last_name: 'Doe',
+				suffix: 'InvalidSuffix',
+				lifecycle_status_caption: 'Active',
+			};
+			const resultWithInvalidSuffix = (consumer as any).translateKafkaMessageToUpsertData(payloadWithInvalidSuffix);
+			expect(resultWithInvalidSuffix.agent.suffix).toBeUndefined();
+
+			// Test with lowercase valid suffix (should be excluded - enum is case-sensitive)
+			const payloadWithLowercaseSuffix = {
+				uuid: '550e8400-e29b-41d4-a716-446655440000',
+				member_first_name: 'John',
+				member_last_name: 'Doe',
+				suffix: 'jr',
+				lifecycle_status_caption: 'Active',
+			};
+			const resultWithLowercaseSuffix = (consumer as any).translateKafkaMessageToUpsertData(payloadWithLowercaseSuffix);
+			expect(resultWithLowercaseSuffix.agent.suffix).toBeUndefined();
 		});
 
 		it('should translate contact methods from member_email, secondary_email, and cell_phone', () => {
