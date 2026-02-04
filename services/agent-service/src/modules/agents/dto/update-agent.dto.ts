@@ -72,13 +72,6 @@ export class UpdateAgentDto {
 	systemId?: number;
 
 	@ApiPropertyOptional({
-		description: 'Agent company ID (UUID)',
-		example: '550e8400-e29b-41d4-a716-446655440000',
-		nullable: true,
-	})
-	agentCompanyId?: string | null;
-
-	@ApiPropertyOptional({
 		description: 'Whether agent is a seed agent',
 		example: false,
 	})

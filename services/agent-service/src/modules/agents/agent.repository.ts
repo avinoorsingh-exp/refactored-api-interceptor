@@ -20,14 +20,14 @@ const AGENT_QUERY_CONFIG: BaseQueryConfig = {
 	allowedFilterFields: [
 		'id', 'agentId', 'title', 'firstName', 'middleName', 'lastName', 'suffix',
 		'preferredName', 'birthDate', 'lifecycleStatus', 'systemId', 'seedAgent',
-		'joinDate', 'anniversaryDate', 'terminationDate', 'isStaff', 'agentCompanyId',
+		'joinDate', 'anniversaryDate', 'terminationDate', 'isStaff',
 		// Relational filter fields (handled specially in findPage)
 		'email', 'country',
 	],
 	allowedSortFields: [
 		'id', 'agentId', 'title', 'firstName', 'middleName', 'lastName', 'suffix',
 		'preferredName', 'birthDate', 'lifecycleStatus', 'systemId', 'seedAgent',
-		'joinDate', 'anniversaryDate', 'terminationDate', 'isStaff', 'agentCompanyId',
+		'joinDate', 'anniversaryDate', 'terminationDate', 'isStaff',
 		'created', 'lastModified',
 		// Relational sort fields (handled specially in findPage)
 		'primaryEmail',
@@ -110,7 +110,6 @@ export class AgentTypeOrmRepository
 			lifecycleStatus: entity.lifecycleStatus,
 
 			// Optional string fields (always include, even if null/undefined)
-			agentCompanyId: entity.agentCompanyId ?? null,
 			title: entity.title ?? null,
 			middleName: entity.middleName ?? null,
 			suffix: entity.suffix ?? null,
@@ -140,7 +139,6 @@ export class AgentTypeOrmRepository
 		const requestedIncludes = selection?.include ?? [];
 
 		// Map relations only if loaded (singular names following GraphQL conventions)
-		if (entity.agentCompany) result.agentCompany = entity.agentCompany;
 		if (entity.agentOffice) result.agentOffice = entity.agentOffice;
 		if (entity.office) result.office = entity.office;
 		if (entity.mls) result.mls = entity.mls;
@@ -157,6 +155,8 @@ export class AgentTypeOrmRepository
 		if (entity.activeLocations) result.activeLocation = entity.activeLocations;
 		if (entity.publicProfile) result.publicProfile = entity.publicProfile;
 		if (entity.licenses) result.license = entity.licenses;
+		// Direct access to companies (hides junction table)
+		if (entity.agentCompany) result.agentCompany = entity.agentCompany;
 
 		// Virtual relations - include as null if requested but not found
 		// This ensures consistent API responses when include= is specified
@@ -193,6 +193,22 @@ export class AgentTypeOrmRepository
 			result.licensedStates = entity.licensedStates;
 		}
 
+		// agentCompanyAssociation - junction table with nested company
+		if (requestedIncludes.includes('agentCompanyAssociation') && entity.agentCompanyAssociations) {
+			result.agentCompanyAssociation = entity.agentCompanyAssociations;
+		}
+
+		// primaryAgentCompany - virtual relation for primary company
+		// The join maps the association to primaryAgentCompany, so we extract the nested company
+		if (requestedIncludes.includes('primaryAgentCompany')) {
+			// primaryAgentCompany is mapped as the association object with agentCompany nested
+			const association = entity.primaryAgentCompany as any;
+			result.primaryAgentCompany = association?.agentCompany ?? null;
+		} else if (entity.primaryAgentCompany) {
+			const association = entity.primaryAgentCompany as any;
+			result.primaryAgentCompany = association?.agentCompany ?? null;
+		}
+
 		return result as unknown as Agent;
 	}
 
@@ -209,7 +225,6 @@ export class AgentTypeOrmRepository
 		if (data.lifecycleStatus !== undefined) entityData.lifecycleStatus = data.lifecycleStatus as AgentEntity['lifecycleStatus'];
 
 		// Optional string fields
-		if (data.agentCompanyId !== undefined) entityData.agentCompanyId = data.agentCompanyId ?? undefined;
 		if (data.title !== undefined) entityData.title = data.title as AgentEntity['title'];
 		if (data.middleName !== undefined) entityData.middleName = data.middleName;
 		if (data.suffix !== undefined) entityData.suffix = data.suffix;
@@ -380,6 +395,34 @@ export class AgentTypeOrmRepository
 	}
 
 	/**
+	 * Loads the primary agent company for an agent.
+	 * Uses leftJoinAndMapOne through the junction table where isPrimary = true.
+	 * The company is mapped directly to entity.primaryAgentCompany.
+	 *
+	 * @param qb - Query builder
+	 * @param alias - Base entity alias (usually 'agent')
+	 */
+	protected loadPrimaryAgentCompany<T>(
+		qb: SelectQueryBuilder<T>,
+		alias: string,
+	): void {
+		const associationAlias = 'primaryAgentCompanyAssoc';
+		const companyAlias = 'primaryAgentCompany';
+
+		// First join the junction table where isPrimary = true
+		// Then map the company entity directly to the virtual property
+		qb.leftJoinAndMapOne(
+			`${alias}.primaryAgentCompany`,
+			`${alias}.agentCompanyAssociations`,
+			associationAlias,
+			`${associationAlias}.isPrimary = true`,
+		);
+
+		// Join the company through the association
+		qb.leftJoinAndSelect(`${associationAlias}.agentCompany`, companyAlias);
+	}
+
+	/**
 	 * Loads licensed states for agents.
 	 * Uses a correlated subquery with array_agg for efficiency.
 	 * Results are loaded separately and merged with entities.
@@ -492,6 +535,13 @@ export class AgentTypeOrmRepository
 	 */
 	private hasLicensedStatesInclude(include?: string[]): boolean {
 		return include?.includes('licensedStates') ?? false;
+	}
+
+	/**
+	 * Check if primaryAgentCompany is requested in includes.
+	 */
+	private hasPrimaryAgentCompanyInclude(include?: string[]): boolean {
+		return include?.includes('primaryAgentCompany') ?? false;
 	}
 
 	/**
@@ -819,6 +869,7 @@ export class AgentTypeOrmRepository
 		const hasPrimaryAddress = this.hasPrimaryAddressInclude(selection?.include);
 		const hasPrimaryLicense = this.hasPrimaryLicenseInclude(selection?.include);
 		const hasLicensedStates = this.hasLicensedStatesInclude(selection?.include);
+		const hasPrimaryAgentCompany = this.hasPrimaryAgentCompanyInclude(selection?.include);
 		const hasAddresses = selection?.include?.includes('address') || false;
 
 		// Parse filter if it's a JSON string (query params come in as strings)
@@ -839,6 +890,7 @@ export class AgentTypeOrmRepository
 			primaryContactTypes.length > 0 ||
 			hasPrimaryAddress ||
 			hasPrimaryLicense ||
+			hasPrimaryAgentCompany ||
 			hasAddresses ||
 			hasRelationalFilters ||
 			hasRelationalSort;
@@ -886,6 +938,9 @@ export class AgentTypeOrmRepository
 				}
 				if (hasPrimaryLicense) {
 					this.loadPrimaryLicense(qb, this.getAlias());
+				}
+				if (hasPrimaryAgentCompany) {
+					this.loadPrimaryAgentCompany(qb, this.getAlias());
 				}
 				if (hasAddresses) {
 					this.loadAddressesWithVirtualState(qb, this.getAlias());

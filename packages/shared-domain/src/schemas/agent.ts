@@ -117,13 +117,6 @@ export const AgentBaseSchema = z
 
 		systemId: z.number().int().nullable().optional().describe('System ID reference'),
 
-		agentCompanyId: z
-			.string()
-			.uuid({ message: 'errors.agent.agentCompanyId.invalid' })
-			.nullable()
-			.optional()
-			.describe('Foreign key to AgentCompany (UUID)'),
-
 		seedAgent: z.boolean().default(false).describe('Whether agent is a seed agent'),
 		joinDate: z.coerce.date().nullable().optional().describe('Date when agent joined'),
 		anniversaryDate: z.coerce.date().nullable().optional().describe('Agent anniversary date'),

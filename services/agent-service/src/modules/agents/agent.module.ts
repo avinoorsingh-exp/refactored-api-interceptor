@@ -143,6 +143,8 @@ import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 		AgentAddressService,
 		LicenseService,
 		AgentExistsGuard,
+		// Export AGENT_SERVICE token for AgentExistsGuard in other modules
+		'AGENT_SERVICE',
 		// Export IAgentRepository token for use in other modules
 		{
 			provide: 'IAgentRepository',

@@ -231,7 +231,27 @@ export {
 	type CreateAgentCompanyInput as CreateAgentCompanyInputType,
 	UpdateAgentCompanyInput,
 	type UpdateAgentCompanyInput as UpdateAgentCompanyInputType,
+	AgentCompanyIdParamSchema,
+	type AgentCompanyIdParam,
 } from './schemas/agent-company.js'
+
+/**
+ * Agent Company Association entity schemas and types (junction table).
+ * @public
+ */
+export {
+	AgentCompanyAssociationBaseSchema,
+	AgentCompanyAssociationExpandedSchema,
+	type AgentCompanyAssociationBase,
+	type AgentCompanyAssociationExpanded,
+	type AgentCompanyAssociation,
+	CreateAgentCompanyAssociationSchema,
+	type CreateAgentCompanyAssociationInput,
+	UpdateAgentCompanyAssociationSchema,
+	type UpdateAgentCompanyAssociationInput,
+	AgentCompanyAssociationIdParamSchema,
+	type AgentCompanyAssociationIdParam,
+} from './schemas/agent-company-association.js'
 
 // ============================================================================
 // ENTITIES - EXTERNAL REFERENCE

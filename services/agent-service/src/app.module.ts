@@ -17,6 +17,7 @@ import { MLSModule } from './modules/mls/mls.module.js'
 import { AgentModule } from './modules/agents/agent.module.js'
 import { KafkaModule } from './modules/kafka/kafka.module.js'
 import { AdminJobsModule } from './modules/admin/jobs/admin-jobs.module.js'
+import { AgentCompanyAssociationModule } from './modules/agent-companies/agent-company-association.module.js'
 import { ApiMonitoringModule, ApiActorMiddleware, API_MONITORING_LOGGER_TOKEN } from '@exprealty/api-monitoring'
 import { CorrelationIdMiddleware } from './common/correlation-id.middleware.js'
 import { LoggerService } from './core/logger.service.js'
@@ -39,6 +40,7 @@ import { LoggerService } from './core/logger.service.js'
     AgentModule,
     KafkaModule,
     AdminJobsModule,
+    AgentCompanyAssociationModule,
     ApiMonitoringModule.forRoot({
       logger: LoggerService, // LoggerService class from LoggerModule (which is @Global())
     }),

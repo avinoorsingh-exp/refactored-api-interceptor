@@ -234,4 +234,5 @@ curl -X POST http://localhost:3000/v1/my-resources \
 
 - `docs/architecture/api-patterns.md`
 - `docs/architecture/error-handling.md`
-- `.github/instructions/api-architect.instructions.md`
+- `docs/architecture/query-system.md` - For search, filter, sort, projections
+- `docs/runbooks/adding-virtual-relation-sorting-filtering.md` - For sorting/filtering on virtual relations

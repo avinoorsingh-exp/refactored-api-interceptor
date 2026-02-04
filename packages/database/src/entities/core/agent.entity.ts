@@ -1,6 +1,5 @@
 import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, OneToMany, OneToOne, JoinColumn, ManyToMany, JoinTable } from 'typeorm'
 import { AddressEntity } from './address.entity.js'
-import { AgentCompanyEntity } from './agent-company.entity.js'
 import { AuditableEntity } from './auditable.entity.js'
 import { MLSEntity } from './mls.entity.js'
 import { OfficeEntity } from './office.entity.js'
@@ -8,6 +7,7 @@ import { Searchable, Filterable, Sortable, SearchValidators } from '../../decora
 
 // Forward declarations for circular dependencies
 import type { AgentOfficeEntity } from './agent-office.entity.js'
+import type { AgentCompanyAssociationEntity } from './agent-company-association.entity.js'
 
 import type { AgentAddressEntity } from './agent-address.entity.js'
 import type { AgentExternalReferenceEntity } from './agent-external-reference.entity.js'
@@ -19,6 +19,7 @@ import type { ActiveLocationEntity } from './active-location.entity.js'
 import type { RelationshipEntity } from './relationship.entity.js'
 import type { PublicProfileEntity } from './public-profile.entity.js'
 import type { LicenseEntity } from './license.entity.js'
+import { AgentCompanyEntity } from './agent-company.entity.js'
 
 /**
  * Agent title enum values.
@@ -208,27 +209,46 @@ export class AgentEntity extends AuditableEntity {
 	@Sortable()
 	isStaff!: boolean
 
-	/**
-	 * Foreign key to AgentCompany.
-	 * Nullable to support legacy data migration.
-	 * @public
-	 */
-	@Column({ name: 'agent_company_id', type: 'uuid', nullable: true })
-	@Filterable()
-	@Sortable()
-	agentCompanyId?: string
-
 	// ==========================================
 	// RELATIONSHIPS
 	// ==========================================
 
 	/**
-	 * Many-to-One relationship with AgentCompany.
+	 * One-to-Many relationship with AgentCompanyAssociation (junction table).
+	 * An agent can be associated with multiple companies.
+	 * Use this to access junction metadata like isPrimary.
 	 * @public
 	 */
-	@ManyToOne(() => AgentCompanyEntity)
-	@JoinColumn({ name: 'agent_company_id' })
-	agentCompany?: AgentCompanyEntity
+	@OneToMany('AgentCompanyAssociationEntity', 'agent')
+	agentCompanyAssociations?: AgentCompanyAssociationEntity[]
+
+	/**
+	 * Virtual property for primary agent company.
+	 * Loaded via custom query when include=primaryAgentCompany is specified.
+	 * @see AgentRepository.loadPrimaryAgentCompany()
+	 */
+	primaryAgentCompany?: AgentCompanyEntity
+
+	/**
+	 * Many-to-Many relationship with AgentCompany.
+	 * Direct access to companies (hides junction table).
+	 * TypeORM handles agent_company_association join table transparently.
+	 * @public
+	 */
+	@ManyToMany(() => AgentCompanyEntity, (company) => company.agents)
+	@JoinTable({
+		name: 'agent_company_association',
+		schema: 'core',
+		joinColumn: {
+			name: 'agent_id',
+			referencedColumnName: 'id',
+		},
+		inverseJoinColumn: {
+			name: 'agent_company_id',
+			referencedColumnName: 'id',
+		},
+	})
+	agentCompany?: AgentCompanyEntity[]
 
 	/**
 	 * One-to-Many relationship with AgentOffice (junction table).
