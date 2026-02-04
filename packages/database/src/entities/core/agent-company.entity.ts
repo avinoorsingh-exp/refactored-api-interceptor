@@ -2,9 +2,22 @@ import {
 	Entity,
 	Column,
 	PrimaryGeneratedColumn,
+	OneToMany,
+	ManyToMany,
 } from 'typeorm'
 import { AuditableEntity } from './auditable.entity.js'
 import { Searchable, Filterable, Sortable, SearchValidators } from '../../decorators/searchable-decorators.js'
+import { createEncryptedTransformer, createWriteOnlyEncryptedTransformer } from '@exprealty/encryption'
+
+// Forward declaration for circular dependency
+import type { AgentCompanyAssociationEntity } from './agent-company-association.entity.js'
+
+/**
+ * Environment variable for encryption key.
+ * Falls back to a development-only key if not set.
+ * IMPORTANT: Always set ENCRYPTION_KEY in production!
+ */
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY ?? 'dev-only-encryption-key-32chars!'
 
 /**
  * TypeORM entity for AgentCompany table.
@@ -63,17 +76,33 @@ export class AgentCompanyEntity extends AuditableEntity {
 	phone!: string
 
 	/**
-	 * Tax ID (plaintext - for non-sensitive display).
+	 * Tax ID (AES encrypted, masked on read - shows last 4 digits).
+	 * Stored encrypted in database, displayed as "*****6789" format.
 	 * @public
 	 */
-	@Column({ name: 'tax_id', type: 'text', nullable: true })
+	@Column({
+		name: 'tax_id',
+		type: 'text',
+		nullable: true,
+		transformer: createEncryptedTransformer({
+			key: ENCRYPTION_KEY,
+			maskOnRead: true,
+			visibleChars: 4,
+		}),
+	})
 	taxId?: string
 
 	/**
-	 * Hashed tax ID for secure storage.
+	 * Hashed tax ID for secure lookups (AES encrypted, write-only).
+	 * Used for searching/matching without exposing the actual value.
 	 * @public
 	 */
-	@Column({ name: 'tax_id_hashed', type: 'text', nullable: true })
+	@Column({
+		name: 'tax_id_hashed',
+		type: 'text',
+		nullable: true,
+		transformer: createWriteOnlyEncryptedTransformer({ key: ENCRYPTION_KEY }),
+	})
 	taxIdHashed?: string
 
 	/**
@@ -83,4 +112,25 @@ export class AgentCompanyEntity extends AuditableEntity {
 	@Column({ name: 'use_ssn', type: 'boolean', default: false })
 	@Filterable()
 	useSsn!: boolean
+
+	// ==========================================
+	// RELATIONSHIPS
+	// ==========================================
+
+	/**
+	 * One-to-Many relationship with AgentCompanyAssociation (junction table).
+	 * Provides access to agents associated with this company.
+	 * @public
+	 */
+	@OneToMany('AgentCompanyAssociationEntity', 'agentCompany')
+	agentAssociations?: AgentCompanyAssociationEntity[]
+
+	/**
+	 * Many-to-Many relationship with Agent.
+	 * Direct access to agents (hides junction table).
+	 * Inverse of Agent.agentCompany.
+	 * @public
+	 */
+	@ManyToMany('AgentEntity', 'agentCompany')
+	agents?: import('./agent.entity.js').AgentEntity[]
 }

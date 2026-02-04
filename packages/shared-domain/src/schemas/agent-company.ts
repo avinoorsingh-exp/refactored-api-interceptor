@@ -17,7 +17,7 @@ import {
 export const AgentCompanyBaseSchema = z
 	.object({
 		id: z.string().uuid({ message: 'errors.company.id.invalid' }),
-		legacyId: z.string().uuid({ message: 'errors.company.legacy.id.invalid' }),
+		legacyId: z.string().regex(/^\d+$/, { message: 'errors.company.legacy.id.invalid' }),
 		email: EmailBranded,
 		name: NameBranded,
 		phone: PhoneNumberBranded,
@@ -104,3 +104,17 @@ export const UpdateAgentCompanyInput = CreateAgentCompanyInput.partial().describ
  * @public
  */
 export type UpdateAgentCompanyInput = z.infer<typeof UpdateAgentCompanyInput>
+
+/**
+ * Schema for the ID parameter in routes (/v1/agent-companies/:id).
+ * @public
+ */
+export const AgentCompanyIdParamSchema = z.object({
+	id: z.string().uuid({ message: 'errors.agent_company.id.invalid' }),
+})
+
+/**
+ * Type for the ID parameter.
+ * @public
+ */
+export type AgentCompanyIdParam = z.infer<typeof AgentCompanyIdParamSchema>

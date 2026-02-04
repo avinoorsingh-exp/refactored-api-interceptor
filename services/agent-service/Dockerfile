@@ -12,6 +12,7 @@ COPY tsconfig.json ./
 COPY packages/config ./packages/config
 COPY packages/logger ./packages/logger
 COPY packages/cache ./packages/cache
+COPY packages/encryption ./packages/encryption
 COPY packages/database ./packages/database
 COPY packages/shared-domain ./packages/shared-domain
 COPY packages/api-monitoring ./packages/api-monitoring
@@ -29,6 +30,9 @@ WORKDIR /app/packages/logger
 RUN pnpm build
 
 WORKDIR /app/packages/cache
+RUN pnpm build
+
+WORKDIR /app/packages/encryption
 RUN pnpm build
 
 WORKDIR /app/packages/shared-domain
@@ -65,6 +69,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/config/package.json ./packages/config/
 COPY packages/logger/package.json ./packages/logger/
 COPY packages/cache/package.json ./packages/cache/
+COPY packages/encryption/package.json ./packages/encryption/
 COPY packages/database/package.json ./packages/database/
 COPY packages/shared-domain/package.json ./packages/shared-domain/
 COPY packages/api-monitoring/package.json ./packages/api-monitoring/
@@ -78,6 +83,7 @@ RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 COPY --from=builder /app/packages/config/dist ./packages/config/dist
 COPY --from=builder /app/packages/logger/dist ./packages/logger/dist
 COPY --from=builder /app/packages/cache/dist ./packages/cache/dist
+COPY --from=builder /app/packages/encryption/dist ./packages/encryption/dist
 COPY --from=builder /app/packages/database/dist ./packages/database/dist
 COPY --from=builder /app/packages/shared-domain/dist ./packages/shared-domain/dist
 COPY --from=builder /app/packages/api-monitoring/dist ./packages/api-monitoring/dist

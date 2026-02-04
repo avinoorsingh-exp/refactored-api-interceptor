@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm'
 import * as fs from 'fs'
 import { AddressEntity } from './entities/core/address.entity.js'
 import { AgentCompanyEntity } from './entities/core/agent-company.entity.js'
+import { AgentCompanyAssociationEntity } from './entities/core/agent-company-association.entity.js'
 import { AgentEntity } from './entities/core/agent.entity.js'
 import { AgentAddressEntity } from './entities/core/agent-address.entity.js'
 import { CompanyEntity } from './entities/core/company.entity.js'
@@ -152,6 +153,7 @@ export const AppDataSource = new DataSource({
 	entities: [
 		AddressEntity,
 		AgentCompanyEntity,
+		AgentCompanyAssociationEntity,
 		AgentEntity,
 		AgentAddressEntity,
 		CompanyEntity,

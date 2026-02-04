@@ -41,6 +41,7 @@
 	},
 	"dependencies": {
 		"@exprealty/config": "workspace:*",
+		"@exprealty/encryption": "workspace:*",
 		"@exprealty/shared-domain": "workspace:*",
 		"pg": "^8.11.3",
 		"reflect-metadata": "^0.2.1",

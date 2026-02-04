@@ -43,6 +43,12 @@ export { AddressEntity } from './entities/core/address.entity.js'
 export { AgentCompanyEntity } from './entities/core/agent-company.entity.js'
 
 /**
+ * TypeORM entity for AgentCompanyAssociation junction table.
+ * @public
+ */
+export { AgentCompanyAssociationEntity } from './entities/core/agent-company-association.entity.js'
+
+/**
  * TypeORM entity for Agent table.
  * @public
  */

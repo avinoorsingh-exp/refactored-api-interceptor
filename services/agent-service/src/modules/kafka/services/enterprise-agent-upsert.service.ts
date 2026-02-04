@@ -151,7 +151,6 @@ export class EnterpriseAgentUpsertService {
 			anniversaryDate: agentData.anniversaryDate,
 			terminationDate: agentData.terminationDate,
 			isStaff: agentData.isStaff,
-			agentCompanyId: agentData.agentCompanyId,
 			systemId: agentData.systemId,
 			modifiedBy: 'Enterprise',
 		};

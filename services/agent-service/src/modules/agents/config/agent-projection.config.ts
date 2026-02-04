@@ -70,7 +70,6 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		'anniversaryDate',
 		'terminationDate',
 		'isStaff',
-		'agentCompanyId',
 		'created',
 		'lastModified',
 		'modifiedBy',
@@ -79,10 +78,6 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 	// Available relations that can be included via ?include=
 	// Note: Uses singular names following GraphQL conventions
 	relations: {
-		agentCompany: {
-			property: 'agentCompany',
-			fields: ['id', 'name', 'lifecycleStatus'],
-		},
 		agentOffice: {
 			property: 'agentOffice',
 			fields: ['id', 'officeId', 'isPrimary'],
@@ -179,6 +174,26 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 			property: 'licensedStates',
 			fields: [], // Returns string[] directly, not an object
 			virtual: true, // Loaded by repository via subquery
+		},
+		// Junction table for agent-company associations
+		// Includes isPrimary flag and nested agentCompany data
+		agentCompanyAssociation: {
+			property: 'agentCompanyAssociations',
+			fields: ['id', 'agentId', 'agentCompanyId', 'isPrimary'],
+			nested: ['agentCompany'], // Include the nested company entity
+		},
+		// Direct access to AgentCompany[] - hides junction table
+		// Like office, this provides a cleaner API when junction metadata isn't needed
+		agentCompany: {
+			property: 'agentCompany',
+			fields: ['id', 'legacyId', 'name', 'email', 'phone', 'taxId', 'useSsn'],
+		},
+		// Virtual relation - loaded via AgentRepository.loadPrimaryAgentCompany()
+		// Returns the company with isPrimary = true from agent's company associations
+		primaryAgentCompany: {
+			property: 'primaryAgentCompany',
+			fields: ['id', 'legacyId', 'name', 'email', 'phone', 'taxId'],
+			virtual: true, // Loaded by repository, not ProjectionService
 		},
 	},
 };
