@@ -104,6 +104,84 @@ describe('EnterpriseAgentUpsertService', () => {
 		jest.clearAllMocks();
 	});
 
+	describe('normalizeLegacyPayload', () => {
+		it('should remove agentCompanyId from legacy payloads', () => {
+			const payloadWithAgentCompanyId = {
+				agent: {
+					id: '550e8400-e29b-41d4-a716-446655440000',
+					firstName: 'John',
+					lastName: 'Doe',
+					agentCompanyId: 'legacy-company-id',
+					isStaff: false,
+					lifecycleStatus: 'Active',
+				},
+			};
+
+			const normalized = (service as any).normalizeLegacyPayload(payloadWithAgentCompanyId);
+			expect(normalized.agent.agentCompanyId).toBeUndefined();
+			expect(normalized.agent.firstName).toBe('John');
+			expect(normalized.agent.lastName).toBe('Doe');
+		});
+
+		it('should remove invalid suffix values from legacy payloads', () => {
+			// Test with empty string suffix
+			const payloadWithEmptySuffix = {
+				agent: {
+					id: '550e8400-e29b-41d4-a716-446655440000',
+					firstName: 'John',
+					lastName: 'Doe',
+					suffix: '',
+					isStaff: false,
+					lifecycleStatus: 'Active',
+				},
+			};
+			const normalizedEmpty = (service as any).normalizeLegacyPayload(payloadWithEmptySuffix);
+			expect(normalizedEmpty.agent.suffix).toBeUndefined();
+
+			// Test with invalid enum value
+			const payloadWithInvalidSuffix = {
+				agent: {
+					id: '550e8400-e29b-41d4-a716-446655440000',
+					firstName: 'John',
+					lastName: 'Doe',
+					suffix: 'InvalidSuffix',
+					isStaff: false,
+					lifecycleStatus: 'Active',
+				},
+			};
+			const normalizedInvalid = (service as any).normalizeLegacyPayload(payloadWithInvalidSuffix);
+			expect(normalizedInvalid.agent.suffix).toBeUndefined();
+
+			// Test with valid suffix (should be kept)
+			const payloadWithValidSuffix = {
+				agent: {
+					id: '550e8400-e29b-41d4-a716-446655440000',
+					firstName: 'John',
+					lastName: 'Doe',
+					suffix: 'Jr',
+					isStaff: false,
+					lifecycleStatus: 'Active',
+				},
+			};
+			const normalizedValid = (service as any).normalizeLegacyPayload(payloadWithValidSuffix);
+			expect(normalizedValid.agent.suffix).toBe('Jr');
+		});
+
+		it('should handle payloads without agent object', () => {
+			const payloadWithoutAgent = {
+				contactMethods: [],
+				addresses: [],
+			};
+			const normalized = (service as any).normalizeLegacyPayload(payloadWithoutAgent);
+			expect(normalized).toEqual(payloadWithoutAgent);
+		});
+
+		it('should handle null and undefined payloads', () => {
+			expect((service as any).normalizeLegacyPayload(null)).toBeNull();
+			expect((service as any).normalizeLegacyPayload(undefined)).toBeUndefined();
+		});
+	});
+
 	describe('upsertAgentWithAssociations', () => {
 		it('should throw error when agent.id is missing', async () => {
 			// Arrange
