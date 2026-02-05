@@ -17,6 +17,12 @@ export class RouteBreakdownQueryDto {
 	@IsOptional()
 	@IsDate()
 	@Type(() => Date)
+	@Transform(({ value }) => {
+		if (typeof value === 'string') {
+			return new Date(value);
+		}
+		return value;
+	})
 	startTime?: Date;
 
 	@ApiPropertyOptional({
@@ -26,6 +32,12 @@ export class RouteBreakdownQueryDto {
 	@IsOptional()
 	@IsDate()
 	@Type(() => Date)
+	@Transform(({ value }) => {
+		if (typeof value === 'string') {
+			return new Date(value);
+		}
+		return value;
+	})
 	endTime?: Date;
 
 	@ApiPropertyOptional({
