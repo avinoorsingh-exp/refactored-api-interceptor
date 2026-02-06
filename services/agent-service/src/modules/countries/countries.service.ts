@@ -94,8 +94,43 @@ export class CountriesService {
 	}
 
 	/**
+	 * Retrieves a country by its ID.
+	 *
+	 * @param id - The country ID
+	 * @returns The country entity if found, null otherwise
+	 */
+	async findById(id: number): Promise<Country | null> {
+		const startTime = Date.now()
+
+		try {
+			const country = await this.countriesRepository.findById(id)
+
+			const duration = Date.now() - startTime
+
+			if (country) {
+				this.logger.info(
+					`Country found: ${country.alpha2} (${country.id}) in ${duration}ms`,
+				)
+				return country
+			}
+
+			this.logger.info(
+				`Country not found: ID ${id} in ${duration}ms`,
+			)
+			return null
+		} catch (error) {
+			const duration = Date.now() - startTime
+			this.logger.error(
+				`Failed to find country ID ${id}: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
+				{ stack: error instanceof Error ? error.stack : undefined },
+			)
+			throw error
+		}
+	}
+
+	/**
 	 * Retrieves a country by its alpha-2 code.
-	 * 
+	 *
 	 * @param code - The alpha-2 country code (e.g., "US")
 	 * @returns The country entity if found, null otherwise
 	 */

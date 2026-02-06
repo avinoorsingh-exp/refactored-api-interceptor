@@ -34,7 +34,52 @@ pipeline
       }
     }
 
+    stage('Build + Test (Non-Deploy)') {
+      when {
+        not {
+          anyOf {
+            branch 'development'
+            branch 'dev'
+            branch 'qa'
+            branch 'test'
+            branch 'accp'
+            branch 'main'
+          }
+        }
+      }
+      steps {
+        script {
+          docker.image('node:20-alpine')
+            .inside("-u 0 -v $WORKSPACE:/app -w /app") {
+              sh """
+              apk add --no-cache python3 make g++
+              npm install -g pnpm
+
+              echo "=== Installing dependencies ==="
+              pnpm install --frozen-lockfile
+
+              echo "=== Building workspace packages ==="
+              pnpm build
+
+              echo "=== Running tests with coverage ==="
+              pnpm test:cov || true
+              """
+            }
+        }
+      }
+    }
+
     stage('Docker build') {
+      when {
+        anyOf {
+          branch 'development'
+          branch 'dev'
+          branch 'qa'
+          branch 'test'
+          branch 'accp'
+          branch 'main'
+        }
+      }
       steps {
         script {
           docker.build("${env.IMAGE}", "-f services/agent-service/Dockerfile .")
@@ -130,11 +175,20 @@ pipeline
     }
 
     stage('Fetch Database Secrets') {
+      when {
+        anyOf {
+          branch 'dev'
+          branch 'test'
+          branch 'qa'
+          branch 'accp'
+          branch 'main'
+        }
+      }
       steps {
         script {
           def secretName = ''
           def credentialsId = ''
-          
+
           if (env.BRANCH_NAME == 'dev') {
             secretName = 'dev/agent-service-dev'
             credentialsId = 'Jenkins-Dev'

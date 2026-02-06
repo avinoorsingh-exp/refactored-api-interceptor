@@ -1,5 +1,5 @@
 import { Country } from '@exprealty/shared-domain'
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm'
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm'
 import { AuditableEntity } from './auditable.entity.js'
 import { Searchable, Sortable, Filterable, SearchValidators } from '../../decorators/searchable-decorators.js'
 
@@ -69,4 +69,12 @@ export class CountryEntity extends AuditableEntity implements Country {
 	@Filterable()
 	@Sortable()
 	dialingCode!: number
+
+	/**
+	 * One-to-many relationship with System.
+	 * Systems that belong to this country.
+	 * Uses string name to avoid circular dependency at module load time.
+	 */
+	@OneToMany('SystemEntity', 'country')
+	systems?: unknown[]
 }

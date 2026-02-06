@@ -8,6 +8,7 @@ import { QueryModule } from './common/query/query.module.js'
 import { MetadataModule } from './modules/metadata/metadata.module.js'
 import { AgentController, RootHealthController } from './app.controller.js'
 import { CountriesModule } from './modules/countries/countries.module.js'
+import { CurrenciesModule } from './modules/currencies/currencies.module.js'
 import { CompaniesModule } from './modules/companies/companies.module.js'
 import { RegionsModule } from './modules/regions/regions.module.js'
 import { StatesModule } from './modules/states/states.module.js'
@@ -31,6 +32,7 @@ import { LoggerService } from './core/logger.service.js'
     QueryModule,  // Global module - provides QueryService and search strategies
     MetadataModule,  // Global module - provides MetadataService for entity metadata
     CountriesModule,
+    CurrenciesModule,
     CompaniesModule,
     RegionsModule,
     StatesModule,

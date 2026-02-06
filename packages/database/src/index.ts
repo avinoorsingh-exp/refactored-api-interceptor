@@ -247,6 +247,20 @@ export { MLSEntity } from './entities/core/mls.entity.js'
 export { CountryEntity } from './entities/core/country.entity.js'
 
 /**
+ * TypeORM entity for Currency table.
+ * Stores ISO 4217 currency reference data.
+ * @public
+ */
+export { CurrencyEntity } from './entities/core/currency.entity.js'
+
+/**
+ * TypeORM entity for System table.
+ * Represents a system configuration within a country.
+ * @public
+ */
+export { SystemEntity } from './entities/core/system.entity.js'
+
+/**
  * TypeORM entity for Region table.
  * @public
  */

@@ -6,7 +6,7 @@ import {
 	JoinColumn,
 } from 'typeorm'
 import { AuditableEntity } from './auditable.entity.js'
-import { Searchable, Filterable, Sortable, SearchValidators } from '../../decorators/searchable-decorators.js'
+import { Searchable, Filterable, Sortable } from '../../decorators/searchable-decorators.js'
 
 /**
  * Artifact type enum values.
@@ -42,11 +42,11 @@ export class ArtifactEntity extends AuditableEntity {
 	type!: ArtifactType
 
 	/**
-	 * Foreign key to Agent (BigInt).
+	 * Foreign key to Agent (UUID).
 	 * @public
 	 */
-	@Column({ name: 'agent_id', type: 'bigint' })
-	@Searchable({ type: 'integer', weight: 4, behavior: 'exact', description: 'Agent ID reference (bigint)', validate: SearchValidators.bigint })
+	@Column({ name: 'agent_id', type: 'uuid' })
+	@Searchable({ weight: 4, behavior: 'exact', description: 'Agent ID reference (UUID)' })
 	@Filterable()
 	@Sortable()
 	agentId!: string
@@ -62,11 +62,11 @@ export class ArtifactEntity extends AuditableEntity {
 	url?: string
 
 	/**
-	 * Many-to-One relationship with Agent via agentId (legacy BigInt).
-	 * Note: Uses BigInt agent_id, not UUID.
+	 * Many-to-One relationship with Agent via agentId (UUID).
+	 * References Agent.id (UUID primary key).
 	 * @public
 	 */
 	@ManyToOne('AgentEntity')
-	@JoinColumn({ name: 'agent_id', referencedColumnName: 'agentId' })
+	@JoinColumn({ name: 'agent_id' })
 	agent?: unknown
 }
