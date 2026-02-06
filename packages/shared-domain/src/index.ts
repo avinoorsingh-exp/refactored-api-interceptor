@@ -760,6 +760,58 @@ export {
 } from './schemas/country.js'
 
 // ============================================================================
+// ENTITIES - CURRENCY
+// ============================================================================
+
+/**
+ * Currency entity schemas and types.
+ * Conforms to ISO 4217 standard.
+ * @public
+ */
+export {
+	CurrencyBaseSchema,
+	CurrencyExpandedSchema,
+	type Currency,
+	type CurrencyBase,
+	type CurrencyExpanded,
+	type CurrencyApiResponse,
+	CreateCurrencyInputSchema,
+	type CreateCurrencyInput,
+	UpdateCurrencyInputSchema,
+	type UpdateCurrencyInput,
+	CurrencyIdParamSchema,
+	type CurrencyIdParam,
+} from './schemas/currency.js'
+
+// ============================================================================
+// ENTITIES - SYSTEM
+// ============================================================================
+
+/**
+ * System entity schemas and types.
+ * Represents system configurations within countries.
+ * @public
+ */
+export {
+	SystemBaseSchema,
+	SystemExpandedSchema,
+	type System,
+	type SystemBase,
+	type SystemExpanded,
+	type SystemApiResponse,
+	CreateSystemInputSchema,
+	type CreateSystemInput,
+	UpdateSystemInputSchema,
+	type UpdateSystemInput,
+	SystemIdParamSchema,
+	type SystemIdParam,
+	CountryIdParamSchema,
+	type CountryIdParam,
+	CountrySystemParamSchema,
+	type CountrySystemParam,
+} from './schemas/system.js'
+
+// ============================================================================
 // ENTITIES - REGION
 // ============================================================================
 
