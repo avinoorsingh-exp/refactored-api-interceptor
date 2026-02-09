@@ -137,7 +137,11 @@ export class KafkaProducerService implements RegisterableKafkaService {
 		headers?: Record<string, string>,
 	): Promise<void> {
 		const nodeEnv = this.configService.get('NODE_ENV');
-		const messageValue = typeof message === 'string' ? message : JSON.stringify(message);
+		// Convert message to Buffer containing JSON bytes (not stringified)
+		// This matches how consumers expect to receive messages: Buffer -> toString() -> JSON.parse()
+		const messageValue = typeof message === 'string' 
+			? Buffer.from(message) 
+			: Buffer.from(JSON.stringify(message));
 
 		// Skip sending in local environment, but log the message and create a mock SENT record
 		if (nodeEnv === 'local') {
@@ -177,7 +181,7 @@ export class KafkaProducerService implements RegisterableKafkaService {
 			this.logger.info('Kafka message skipped (local environment) - message would be sent to topic', {
 				topic,
 				key,
-				message: messageValue,
+				message: typeof message === 'object' && message !== null ? message : messageValue.toString(),
 				headers,
 			});
 			return;
@@ -201,7 +205,8 @@ export class KafkaProducerService implements RegisterableKafkaService {
 
 		try {
 			// Build message object - only include key if provided
-			const message: { value: string; key?: string; headers?: Record<string, string> } = {
+			// Value is a Buffer containing JSON bytes (not stringified)
+			const message: { value: Buffer; key?: string; headers?: Record<string, string> } = {
 				value: messageValue,
 			};
 			
@@ -273,15 +278,14 @@ export class KafkaProducerService implements RegisterableKafkaService {
 			}
 
 			// Log the full message payload for CloudWatch visibility
-			// Parse message for better readability in logs (if it's a string, try to parse it)
 			// Format matches consumer logging style - pass object directly for proper JSON serialization
 			let logMessage: unknown = message;
 			if (typeof message === 'string') {
 				try {
-					logMessage = JSON.parse(messageValue);
+					logMessage = JSON.parse(messageValue.toString());
 				} catch {
 					// If parsing fails, use the string as-is
-					logMessage = messageValue;
+					logMessage = messageValue.toString();
 				}
 			}
 
