@@ -204,25 +204,26 @@ export class KafkaProducerService implements RegisterableKafkaService {
 		}
 
 		try {
-			// Build message object - only include key if provided
+			// Build KafkaJS message object - only include key if provided
+			// Use kafkaMessage variable to avoid shadowing the original message parameter
 			// Value is a Buffer containing JSON bytes (not stringified)
-			const message: { value: Buffer; key?: string; headers?: Record<string, string> } = {
+			const kafkaMessage: { value: Buffer; key?: string; headers?: Record<string, string> } = {
 				value: messageValue,
 			};
 			
 			// Only include key if it's provided and not empty
 			if (key !== undefined && key !== null && key !== '') {
-				message.key = key;
+				kafkaMessage.key = key;
 			}
 			
 			// Only include headers if provided
 			if (headers) {
-				message.headers = headers;
+				kafkaMessage.headers = headers;
 			}
 			
 			const result = await this.producer.send({
 				topic,
-				messages: [message],
+				messages: [kafkaMessage],
 			});
 
 			// Extract partition and offset from the send result
@@ -245,7 +246,7 @@ export class KafkaProducerService implements RegisterableKafkaService {
 			}
 
 			// Create SENT record in database (non-blocking)
-			// Extract eventId from message if available
+			// Extract eventId from original message payload (not KafkaJS message object)
 			let eventId: string | undefined;
 			if (typeof message === 'object' && message !== null) {
 				const msg = message as Record<string, unknown>;
@@ -256,6 +257,7 @@ export class KafkaProducerService implements RegisterableKafkaService {
 			const serviceName = String((allConfig as Record<string, unknown>)['SERVICE_NAME'] || 'agent-service');
 
 			// Create SENT record - this is non-blocking, errors are logged but not thrown
+			// Store the original message payload, not the KafkaJS message object (which may have Buffer values)
 			const recordCreated = await this.kafkaMessageProcessingService.createSentRecord({
 				topic,
 				partition,
@@ -279,8 +281,13 @@ export class KafkaProducerService implements RegisterableKafkaService {
 
 			// Log the full message payload for CloudWatch visibility
 			// Format matches consumer logging style - pass object directly for proper JSON serialization
+			// messageValue is a Buffer, so parse it to get the original message object
 			let logMessage: unknown = message;
-			if (typeof message === 'string') {
+			if (typeof message === 'object' && message !== null) {
+				// Use original message object directly
+				logMessage = message;
+			} else {
+				// For non-object messages, parse from Buffer
 				try {
 					logMessage = JSON.parse(messageValue.toString());
 				} catch {

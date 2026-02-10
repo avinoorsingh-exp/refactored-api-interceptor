@@ -36,7 +36,6 @@ export class KafkaBulkOperationsController {
 		loggerService: LoggerService,
 	) {
 		this.logger = loggerService;
-		this.logger.setContext('KafkaBulkOperationsController');
 	}
 
 	/**
@@ -54,6 +53,7 @@ export class KafkaBulkOperationsController {
 		type: Object,
 	})
 	async startAllEnabled(@Req() req: Request): Promise<BulkOperationResponse> {
+		this.logger.setContext('KafkaBulkOperationsController');
 		const correlationId = this.getCorrelationId(req);
 		this.logger.info(`[${correlationId}] POST /v1/kafka/services/bulk/start-enabled - Starting all enabled services`);
 		
@@ -75,6 +75,7 @@ export class KafkaBulkOperationsController {
 		type: Object,
 	})
 	async stopAllRunning(@Req() req: Request): Promise<BulkOperationResponse> {
+		this.logger.setContext('KafkaBulkOperationsController');
 		const correlationId = this.getCorrelationId(req);
 		this.logger.info(`[${correlationId}] POST /v1/kafka/services/bulk/stop-running - Stopping all running services`);
 		
@@ -96,6 +97,7 @@ export class KafkaBulkOperationsController {
 		type: Object,
 	})
 	async enableAll(@Req() req: Request): Promise<BulkOperationResponse> {
+		this.logger.setContext('KafkaBulkOperationsController');
 		const correlationId = this.getCorrelationId(req);
 		this.logger.info(`[${correlationId}] POST /v1/kafka/services/bulk/enable-all - Enabling all services`);
 		
@@ -117,6 +119,7 @@ export class KafkaBulkOperationsController {
 		type: Object,
 	})
 	async disableAll(@Req() req: Request): Promise<BulkOperationResponse> {
+		this.logger.setContext('KafkaBulkOperationsController');
 		const correlationId = this.getCorrelationId(req);
 		this.logger.info(`[${correlationId}] POST /v1/kafka/services/bulk/disable-all - Disabling all services`);
 		

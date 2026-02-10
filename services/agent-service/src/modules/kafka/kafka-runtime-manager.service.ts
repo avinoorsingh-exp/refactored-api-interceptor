@@ -277,29 +277,43 @@ export class KafkaRuntimeManager {
 				// Add service to the group
 				existingGroup.services.add(id);
 				
-				// CRITICAL: Topic should already be subscribed (we subscribe to all topics upfront)
-				// If it's not, this means a new service was registered after the consumer started
-				// KafkaJS doesn't support subscribing to new topics after consumer.run() is called
-				// We need to restart the consumer group with the updated topic list
-				if (!existingGroup.topics.has(runtime.topic)) {
-					this.logger.warn(`Topic ${runtime.topic} not in subscribed topics - restarting consumer group to add topic`, {
+				// CRITICAL: KafkaJS does not allow topics to be added after consumer.run() has started.
+				// Any change to the logical subscription set MUST result in a consumer restart
+				// so KafkaJS re-subscribes correctly. Even if the topic appears in the topics set,
+				// we must restart to ensure the consumer is actually subscribed and will receive messages.
+				const topicAlreadyTracked = existingGroup.topics.has(runtime.topic);
+				if (topicAlreadyTracked) {
+					this.logger.info(`Topic ${runtime.topic} found in topics set, but restarting consumer group to ensure active subscription`, {
+						groupId,
+						subscribedTopics: Array.from(existingGroup.topics),
+						topic: runtime.topic,
+					});
+				} else {
+					this.logger.info(`Topic ${runtime.topic} not in subscribed topics - restarting consumer group to add topic`, {
 						groupId,
 						subscribedTopics: Array.from(existingGroup.topics),
 						newTopic: runtime.topic,
 					});
-					
-					// Restart the consumer group with the new topic included
-					await this.restartConsumerGroup(groupId, runtime.topic, service);
-					
-					// After restart, the topic should be in the subscribed topics
-					if (!existingGroup.topics.has(runtime.topic)) {
-						this.logger.error(`Failed to add topic to consumer group after restart`, {
-							groupId,
-							topic: runtime.topic,
-							subscribedTopics: Array.from(existingGroup.topics),
-						});
-						throw new Error(`Failed to subscribe to topic ${runtime.topic} - consumer group restart failed`);
-					}
+				}
+				
+				// Always restart the consumer group when attaching a new service
+				// This ensures the consumer is properly subscribed to all topics before run()
+				await this.restartConsumerGroup(groupId, runtime.topic, service);
+				
+				// Get the updated group registry after restart
+				const updatedGroup = this.groupConsumers.get(groupId);
+				if (!updatedGroup) {
+					throw new Error(`Consumer group ${groupId} was lost during restart`);
+				}
+				
+				// Verify the topic is now in the subscribed topics after restart
+				if (!updatedGroup.topics.has(runtime.topic)) {
+					this.logger.error(`Failed to add topic to consumer group after restart`, {
+						groupId,
+						topic: runtime.topic,
+						subscribedTopics: Array.from(updatedGroup.topics),
+					});
+					throw new Error(`Failed to subscribe to topic ${runtime.topic} - consumer group restart failed`);
 				}
 
 				// Register message handler for this topic
@@ -312,30 +326,30 @@ export class KafkaRuntimeManager {
 				}
 				
 				// Always set the handler (even if one exists, replace it to ensure it's correct)
-				const hadExistingHandler = existingGroup.messageHandlers.has(runtime.topic);
-				existingGroup.messageHandlers.set(runtime.topic, handler);
+				const hadExistingHandler = updatedGroup.messageHandlers.has(runtime.topic);
+				updatedGroup.messageHandlers.set(runtime.topic, handler);
 				
 				this.logger.info(`Registered message handler for topic`, {
 					groupId,
 					topic: runtime.topic,
 					serviceId: id,
-					totalHandlers: existingGroup.messageHandlers.size,
-					registeredTopics: Array.from(existingGroup.messageHandlers.keys()),
+					totalHandlers: updatedGroup.messageHandlers.size,
+					registeredTopics: Array.from(updatedGroup.messageHandlers.keys()),
 					hadExistingHandler,
 				});
 
 				// Update service runtime to reflect attachment
-				runtime.instance = existingGroup.consumerInstance;
+				runtime.instance = updatedGroup.consumerInstance;
 				runtime.status = KafkaServiceStatus.ATTACHED;
-				runtime.startedAt = existingGroup.startedAt; // Use group's start time
+				runtime.startedAt = updatedGroup.startedAt; // Use group's start time
 				runtime.error = undefined;
 
 				this.logger.info(`Service attached to consumer group successfully`, {
 					serviceId: id,
 					groupId,
 					topic: runtime.topic,
-					totalServices: existingGroup.services.size,
-					totalTopics: existingGroup.topics.size,
+					totalServices: updatedGroup.services.size,
+					totalTopics: updatedGroup.topics.size,
 				});
 			} else {
 				// Create new consumer group - this is the first service with this groupId
@@ -545,11 +559,24 @@ export class KafkaRuntimeManager {
 
 	/**
 	 * Restart a consumer group to add a new topic.
-	 * This is necessary because KafkaJS doesn't support subscribing to new topics
-	 * after consumer.run() has been called.
+	 * 
+	 * CRITICAL: KafkaJS does not allow topics to be added after consumer.run() has started.
+	 * Any change to the logical subscription set MUST result in a consumer restart
+	 * so KafkaJS re-subscribes correctly.
+	 * 
+	 * This method is idempotent - calling it multiple times with the same topic is safe.
+	 * It preserves all existing handlers and services, ensuring no message processing is lost.
+	 * 
+	 * The restart process:
+	 * 1. Preserves all existing handlers and services
+	 * 2. Disconnects the current consumer cleanly
+	 * 3. Creates a new consumer instance
+	 * 4. Subscribes to all topics (existing + new) BEFORE calling run()
+	 * 5. Restores all handlers and services
+	 * 6. Restarts message routing
 	 * 
 	 * @param groupId - The consumer group ID
-	 * @param newTopic - The new topic to add
+	 * @param newTopic - The new topic to add (will be added to existing topics)
 	 * @param service - The service instance to use for creating a new consumer
 	 */
 	private async restartConsumerGroup(groupId: string, newTopic: string, service: RegisterableKafkaService): Promise<void> {
@@ -604,7 +631,9 @@ export class KafkaRuntimeManager {
 		// Update the group registry with the new consumer and topics
 		groupRegistry.consumerInstance = newConsumer;
 		groupRegistry.topics = new Set(allTopics);
-		// Handlers and services are already preserved above
+		// Restore preserved handlers and services
+		groupRegistry.messageHandlers = existingHandlers;
+		groupRegistry.services = existingServices;
 
 		// Update all service runtimes to point to the new consumer instance
 		for (const serviceId of existingServices) {
@@ -616,6 +645,7 @@ export class KafkaRuntimeManager {
 		}
 
 		// Restart message routing with the new consumer
+		// This must happen AFTER handlers are restored so the router can find them
 		this.setupMessageRouting(groupRegistry);
 
 		this.logger.info(`Consumer group restarted successfully with new topic`, {

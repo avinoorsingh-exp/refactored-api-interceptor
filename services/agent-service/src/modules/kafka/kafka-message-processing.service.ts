@@ -903,7 +903,7 @@ export class KafkaMessageProcessingService {
 
 			// Extract topic from locked message (already validated to exist)
 			// PostgreSQL returns column names in lowercase by default
-			const topicFromLock = lockedMessage.topic || lockedMessage.TOPIC || (lockedMessage as any)?.['topic'] || (lockedMessage as any)?.['TOPIC'];
+			const topicFromLock = lockedMessage.topic || lockedMessage.TOPIC || (lockedMessage)?.['topic'] || (lockedMessage)?.['TOPIC'];
 			if (!topicFromLock) {
 				if (transactionStarted) {
 					try {
@@ -927,7 +927,7 @@ export class KafkaMessageProcessingService {
 			// Extract current status for logging (while row is locked)
 			// PostgreSQL returns column names in lowercase by default
 			// Extract status with multiple fallbacks to handle any casing issues
-			const currentStatusRaw = lockedMessage.status || lockedMessage.STATUS || (lockedMessage as any)?.['status'] || (lockedMessage as any)?.['STATUS'];
+			const currentStatusRaw = lockedMessage.status || lockedMessage.STATUS || (lockedMessage)?.['status'] || (lockedMessage)?.['STATUS'];
 			// Normalize status to string and trim whitespace, convert to uppercase for comparison
 			const currentStatus = currentStatusRaw ? String(currentStatusRaw).trim().toUpperCase() : null;
 			
@@ -1102,7 +1102,7 @@ export class KafkaMessageProcessingService {
 		
 		// Validate payload structure before using it
 		if (!hasCustomPayload && payloadToUse && typeof payloadToUse === 'object') {
-			const agent = (payloadToUse as any)?.agent;
+			const agent = (payloadToUse)?.agent;
 			if (agent) {
 				// Ensure firstName and lastName are preserved
 				if (!agent.firstName && agent.first_name) {
@@ -1121,11 +1121,11 @@ export class KafkaMessageProcessingService {
 			messageId,
 			hasCustomPayload,
 			payloadType: typeof payloadToUse,
-			hasAgent: !!(payloadToUse as any)?.agent,
-			agentFirstName: (payloadToUse as any)?.agent?.firstName,
-			agentLastName: (payloadToUse as any)?.agent?.lastName,
-			agentId: (payloadToUse as any)?.agent?.id,
-			agentKeys: (payloadToUse as any)?.agent ? Object.keys((payloadToUse as any).agent) : [],
+			hasAgent: !!(payloadToUse)?.agent,
+			agentFirstName: (payloadToUse)?.agent?.firstName,
+			agentLastName: (payloadToUse)?.agent?.lastName,
+			agentId: (payloadToUse)?.agent?.id,
+			agentKeys: (payloadToUse)?.agent ? Object.keys((payloadToUse).agent) : [],
 		});
 
 		// Construct a mock Kafka message from payload
@@ -1145,10 +1145,10 @@ export class KafkaMessageProcessingService {
 		this.logger.info('Payload being stringified for retry', {
 			messageId,
 			payloadStringLength: stringifiedPayload.length,
-			hasAgent: !!(payloadToUse as any)?.agent,
-			agentFirstName: (payloadToUse as any)?.agent?.firstName,
-			agentLastName: (payloadToUse as any)?.agent?.lastName,
-			agentId: (payloadToUse as any)?.agent?.id,
+			hasAgent: !!(payloadToUse)?.agent,
+			agentFirstName: (payloadToUse)?.agent?.firstName,
+			agentLastName: (payloadToUse)?.agent?.lastName,
+			agentId: (payloadToUse)?.agent?.id,
 			payloadPreview: stringifiedPayload.substring(0, 500),
 		});
 

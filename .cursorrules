@@ -213,3 +213,54 @@ When writing TypeORM QueryBuilder code that uses GROUP BY or aggregate functions
 - Use quoted SQL column references consistently: `"log"."actor_id"`, `"log"."actor_type"`, etc.
 - GROUP BY must use the exact same raw column expressions as SELECT, not aliases.
 - ORDER BY can use aggregate aliases (e.g., `'requestCount'`) or the same raw column expressions.
+
+## KafkaJS Consumer Subscription Rules
+
+### Critical Invariant
+
+**KafkaJS consumers do not support dynamic topic subscription after `consumer.run()` has been called.**
+
+### Enforced Invariant
+
+- Any change to the logical subscription set (adding or attaching a consumer, service, or handler) **MUST** trigger a full consumer restart.
+- `consumer.subscribe()` **MUST** always occur before `consumer.run()`.
+- Consumer restart logic must be centralized and idempotent.
+- All existing handlers must be reattached after restart.
+
+### Disallowed Patterns
+
+- Adding topics conditionally without restarting the consumer.
+- Skipping consumer restarts because a topic "already exists" in a local set or cache.
+- Calling `consumer.subscribe()` after `consumer.run()`.
+- Optimizing away restarts when attaching new services to existing consumer groups.
+
+### Required Behavior
+
+- Attaching a new consumer/service is treated as a topology change.
+- When attaching a service to an existing consumer group, **ALWAYS** restart the consumer group, even if the topic appears to already be in the topics set.
+- Consumer restart must preserve all existing handlers and services.
+- Restart must happen synchronously before registering new handlers.
+
+### Implementation Pattern
+
+When implementing or modifying Kafka consumers:
+
+1. **Consumer Group Management**: In `KafkaRuntimeManager`, when attaching a new service to an existing consumer group:
+   - Always call `restartConsumerGroup()` when attaching a new service.
+   - Do NOT check if the topic is already in the topics set to skip restart.
+   - The restart ensures KafkaJS properly subscribes to all topics before `run()`.
+
+2. **Handler Registration**: Register message handlers after the consumer restart completes, ensuring they are attached to the restarted consumer instance.
+
+3. **Idempotency**: The restart logic must be idempotent - safe to call multiple times with the same topic.
+
+### Do NOT Change
+
+- Consumer group IDs.
+- Topic names or patterns.
+- Delivery semantics (at-least-once).
+- Public APIs or service interfaces.
+
+### Rationale
+
+KafkaJS silently ignores late subscriptions. This rule prevents false-positive subscription state and message loss. The only way to add topics to an active consumer is to restart it with the complete topic list.

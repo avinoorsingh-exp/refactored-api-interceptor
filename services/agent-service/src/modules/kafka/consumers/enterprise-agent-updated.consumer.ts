@@ -37,7 +37,6 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 		loggerService: LoggerService,
 	) {
 		this.logger = loggerService;
-		this.logger.setContext('EnterpriseAgentUpdatedConsumer');
 		this.groupId = this.configService.get('KAFKA_CONSUMER_GROUP_ID');
 		// Generate a unique service ID based on topic and groupId
 		this.serviceId = `consumer-${this.topic}-${this.groupId}`;
@@ -181,6 +180,7 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 		message: KafkaMessage,
 		throwOnError: boolean = false,
 	): Promise<void> {
+		this.logger.setContext('EnterpriseAgentUpdatedConsumer');
 		try {
 			const messageValue = message.value?.toString() || '';
 			const messageKey = message.key?.toString() || '';
@@ -445,10 +445,10 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 				// Use message as-is when translation is skipped (for retry with custom payload)
 				translated = message;
 				this.logger.info('Skipping translation for retry with custom payload', {
-					hasAgent: !!(translated as any)?.agent,
-					agentFirstName: (translated as any)?.agent?.firstName,
-					agentLastName: (translated as any)?.agent?.lastName,
-					agentId: (translated as any)?.agent?.id,
+					hasAgent: !!(translated)?.agent,
+					agentFirstName: (translated)?.agent?.firstName,
+					agentLastName: (translated)?.agent?.lastName,
+					agentId: (translated)?.agent?.id,
 					messageType: typeof translated,
 					messageKeys: translated && typeof translated === 'object' ? Object.keys(translated) : [],
 				});
@@ -462,14 +462,14 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 
 			// Log the payload structure before validation
 			this.logger.debug('Payload structure before validation', {
-				hasAgent: !!(translated as any)?.agent,
-				agentFirstName: (translated as any)?.agent?.firstName,
-				agentLastName: (translated as any)?.agent?.lastName,
-				agentId: (translated as any)?.agent?.id,
-				firstNameType: typeof (translated as any)?.agent?.firstName,
-				lastNameType: typeof (translated as any)?.agent?.lastName,
-				firstNameLength: (translated as any)?.agent?.firstName?.length,
-				lastNameLength: (translated as any)?.agent?.lastName?.length,
+				hasAgent: !!(translated)?.agent,
+				agentFirstName: (translated)?.agent?.firstName,
+				agentLastName: (translated)?.agent?.lastName,
+				agentId: (translated)?.agent?.id,
+				firstNameType: typeof (translated)?.agent?.firstName,
+				lastNameType: typeof (translated)?.agent?.lastName,
+				firstNameLength: (translated)?.agent?.firstName?.length,
+				lastNameLength: (translated)?.agent?.lastName?.length,
 			});
 
 			// Upsert agent and all associations (validates with Zod and saves to database)

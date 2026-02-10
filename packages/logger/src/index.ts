@@ -22,7 +22,7 @@ export interface LoggerOptions {
 
 /**
  * Create a Winston logger with sensible defaults.
- * - Console output only in development
+ * - Console output always enabled (CloudWatch captures stdout/stderr)
  * - Optional daily-rotating file logs if logDir is set
  * - Optionally repurposes console.* to Winston (suppressed outside dev)
  */
@@ -38,8 +38,10 @@ export function createLogger(opts: LoggerOptions = {}) {
 	const isLocal = env === 'dev'
 	const transports: winston.transport[] = []
 
-	// Console transport only in local/dev
+	// Console transport - ALWAYS enabled (CloudWatch captures stdout/stderr)
+	// Use colored format for dev, JSON format for test/prod (better for CloudWatch)
 	if (isLocal) {
+		// Dev: colored, human-readable format
 		transports.push(
 			new winston.transports.Console({
 				format: winston.format.combine(
@@ -55,6 +57,17 @@ export function createLogger(opts: LoggerOptions = {}) {
 							? `${baseMessage} ${JSON.stringify(metaRecord)}`
 							: baseMessage
 					}),
+				),
+			}),
+		)
+	} else {
+		// Test/Prod: JSON format for CloudWatch parsing
+		transports.push(
+			new winston.transports.Console({
+				format: winston.format.combine(
+					winston.format.timestamp(),
+					winston.format.errors({ stack: true }),
+					winston.format.json(),
 				),
 			}),
 		)
