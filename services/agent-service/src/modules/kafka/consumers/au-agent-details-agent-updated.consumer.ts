@@ -32,7 +32,6 @@ export class AuAgentDetailsAgentUpdatedConsumer implements RegisterableKafkaServ
 		loggerService: LoggerService,
 	) {
 		this.logger = loggerService;
-		this.logger.setContext('AuAgentDetailsAgentUpdatedConsumer');
 		this.groupId = this.configService.get('KAFKA_CONSUMER_GROUP_ID');
 		this.serviceId = `consumer-${this.topic}-${this.groupId}`;
 	}
@@ -139,6 +138,7 @@ export class AuAgentDetailsAgentUpdatedConsumer implements RegisterableKafkaServ
 		partition: number,
 		message: KafkaMessage,
 	): Promise<void> {
+		this.logger.setContext('AuAgentDetailsAgentUpdatedConsumer');
 		try {
 			const messageValue = message.value?.toString() || '';
 			const messageKey = message.key?.toString() || '';

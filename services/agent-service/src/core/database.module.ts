@@ -66,7 +66,7 @@ import { LoggerModule } from './logger.module.js'
           // Uses DB_SSL from config (loaded from AWS Secrets Manager or .env)
           // Explicitly check for true to avoid "false" string being coerced to true
           ssl: (() => {
-            const sslEnabled = cfg.DB_SSL === true || String(cfg.DB_SSL).toLowerCase() === 'true' || String(cfg.DB_SSL) === '1';
+            const sslEnabled = cfg.DB_SSL || String(cfg.DB_SSL).toLowerCase() === 'true' || String(cfg.DB_SSL) === '1';
             const sslConfig = sslEnabled ? {
               rejectUnauthorized: false,
               checkServerIdentity: () => undefined,

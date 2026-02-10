@@ -59,8 +59,8 @@ export class ApiRequestContextService {
 		const context = this.getContext();
 		if (context) {
 			// Store actor info in context (TypeScript allows this at runtime)
-			(context as ApiRequestContext).actorId = actorId;
-			(context as ApiRequestContext).actorType = actorType;
+			(context).actorId = actorId;
+			(context).actorType = actorType;
 		}
 	}
 
@@ -71,7 +71,7 @@ export class ApiRequestContextService {
 		const context = this.getContext();
 		if (context) {
 			// Store start time in context (TypeScript allows this at runtime)
-			(context as ApiRequestContext).startTime = Date.now();
+			(context).startTime = Date.now();
 		}
 	}
 

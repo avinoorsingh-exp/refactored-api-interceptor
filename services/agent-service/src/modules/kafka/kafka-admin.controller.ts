@@ -51,7 +51,6 @@ export class KafkaAdminController {
 		loggerService: LoggerService,
 	) {
 		this.logger = loggerService;
-		this.logger.setContext('KafkaAdminController');
 	}
 
 	/**
@@ -72,6 +71,7 @@ export class KafkaAdminController {
 		type: [KafkaServiceResponseDto],
 	})
 	async getServices(@Req() req: Request): Promise<KafkaServiceResponseDto[]> {
+		this.logger.setContext('KafkaAdminController');
 		const correlationId = this.getCorrelationId(req);
 		this.logger.info(`[${correlationId}] GET /v1/kafka/services - Listing all Kafka services`);
 
@@ -162,6 +162,7 @@ export class KafkaAdminController {
 		@Param('id') id: string,
 		@Req() req: Request,
 	): Promise<KafkaServiceOperationResponseDto> {
+		this.logger.setContext('KafkaAdminController');
 		const correlationId = this.getCorrelationId(req);
 		this.logger.info(`[${correlationId}] POST /v1/kafka/services/${id}/start - Starting service`);
 
@@ -256,6 +257,7 @@ export class KafkaAdminController {
 		@Param('id') id: string,
 		@Req() req: Request,
 	): Promise<KafkaServiceOperationResponseDto> {
+		this.logger.setContext('KafkaAdminController');
 		const correlationId = this.getCorrelationId(req);
 		this.logger.info(`[${correlationId}] POST /v1/kafka/services/${id}/stop - Stopping service`);
 
@@ -351,6 +353,7 @@ export class KafkaAdminController {
 		@Param('id') id: string,
 		@Req() req: Request,
 	): Promise<KafkaServiceOperationResponseDto> {
+		this.logger.setContext('KafkaAdminController');
 		const correlationId = this.getCorrelationId(req);
 		this.logger.info(`[${correlationId}] POST /v1/kafka/services/${id}/enable - Enabling service`);
 
@@ -512,6 +515,7 @@ export class KafkaAdminController {
 		@Param('id') id: string,
 		@Req() req: Request,
 	): Promise<KafkaServiceOperationResponseDto> {
+		this.logger.setContext('KafkaAdminController');
 		const correlationId = this.getCorrelationId(req);
 		this.logger.info(`[${correlationId}] POST /v1/kafka/services/${id}/disable - Disabling service`);
 

@@ -32,7 +32,6 @@ export class GlobalAdsAgentCreatedConsumer implements RegisterableKafkaService {
 		loggerService: LoggerService,
 	) {
 		this.logger = loggerService;
-		this.logger.setContext('GlobalAdsAgentCreatedConsumer');
 		this.groupId = this.configService.get('KAFKA_CONSUMER_GROUP_ID');
 		this.serviceId = `consumer-${this.topic}-${this.groupId}`;
 	}
@@ -139,6 +138,7 @@ export class GlobalAdsAgentCreatedConsumer implements RegisterableKafkaService {
 		partition: number,
 		message: KafkaMessage,
 	): Promise<void> {
+		this.logger.setContext('GlobalAdsAgentCreatedConsumer');
 		try {
 			const messageValue = message.value?.toString() || '';
 			const messageKey = message.key?.toString() || '';
