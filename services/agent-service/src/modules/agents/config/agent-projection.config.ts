@@ -47,6 +47,8 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		'sponsorConfiguration',
 		'activeLocation',
 		'publicProfile',
+		'license',
+		'licensedStates',
 	],
 
 	// Default fields (when no ?fields specified)
@@ -68,7 +70,6 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		'anniversaryDate',
 		'terminationDate',
 		'isStaff',
-		'agentCompanyId',
 		'created',
 		'lastModified',
 		'modifiedBy',
@@ -77,10 +78,6 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 	// Available relations that can be included via ?include=
 	// Note: Uses singular names following GraphQL conventions
 	relations: {
-		agentCompany: {
-			property: 'agentCompany',
-			fields: ['id', 'name', 'lifecycleStatus'],
-		},
 		agentOffice: {
 			property: 'agentOffice',
 			fields: ['id', 'officeId', 'isPrimary'],
@@ -137,6 +134,11 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 			property: 'publicProfile',
 			fields: ['id', 'firstName', 'lastName', 'email', 'phone', 'bio'],
 		},
+		license: {
+			property: 'licenses',
+			fields: ['id', 'number', 'type', 'isPrimary', 'firstName', 'lastName', 'middleName', 'suffix', 'expirationDate', 'lineOfBusinessId', 'countryId', 'stateCode'],
+			nested: ['country', 'lineOfBusiness'], // Related entities
+		},
 		// Virtual relations - loaded via AgentRepository.loadPrimaryContacts()
 		// Uses leftJoinAndMapOne with filtered condition on contactMethods
 		primaryEmail: {
@@ -155,6 +157,42 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 			property: 'primaryAddress',
 			fields: ['id', 'type', 'role', 'line1', 'line2', 'city', 'unit', 'postalCode', 'county', 'label', 'countryId', 'stateCode'],
 			nested: ['country', 'state'], // Both loaded by repository virtual join
+			virtual: true, // Loaded by repository, not ProjectionService
+		},
+		// Virtual relation - loaded via AgentRepository.loadPrimaryLicense()
+		// Returns the license with isPrimary = true
+		primaryLicense: {
+			property: 'primaryLicense',
+			fields: ['id', 'number', 'type', 'isPrimary', 'firstName', 'lastName', 'middleName', 'suffix', 'expirationDate', 'lineOfBusinessId', 'countryId', 'stateCode'],
+			nested: ['country', 'lineOfBusiness'],
+			virtual: true, // Loaded by repository, not ProjectionService
+		},
+		// Virtual relation - loaded via AgentRepository (subquery)
+		// Returns array of unique state codes where agent holds licenses
+		// Lightweight alternative to include=license for grid displays
+		licensedStates: {
+			property: 'licensedStates',
+			fields: [], // Returns string[] directly, not an object
+			virtual: true, // Loaded by repository via subquery
+		},
+		// Junction table for agent-company associations
+		// Includes isPrimary flag and nested agentCompany data
+		agentCompanyAssociation: {
+			property: 'agentCompanyAssociations',
+			fields: ['id', 'agentId', 'agentCompanyId', 'isPrimary'],
+			nested: ['agentCompany'], // Include the nested company entity
+		},
+		// Direct access to AgentCompany[] - hides junction table
+		// Like office, this provides a cleaner API when junction metadata isn't needed
+		agentCompany: {
+			property: 'agentCompany',
+			fields: ['id', 'legacyId', 'name', 'email', 'phone', 'taxId', 'useSsn'],
+		},
+		// Virtual relation - loaded via AgentRepository.loadPrimaryAgentCompany()
+		// Returns the company with isPrimary = true from agent's company associations
+		primaryAgentCompany: {
+			property: 'primaryAgentCompany',
+			fields: ['id', 'legacyId', 'name', 'email', 'phone', 'taxId'],
 			virtual: true, // Loaded by repository, not ProjectionService
 		},
 	},

@@ -137,7 +137,11 @@ export class KafkaProducerService implements RegisterableKafkaService {
 		headers?: Record<string, string>,
 	): Promise<void> {
 		const nodeEnv = this.configService.get('NODE_ENV');
-		const messageValue = typeof message === 'string' ? message : JSON.stringify(message);
+		// Convert message to Buffer containing JSON bytes (not stringified)
+		// This matches how consumers expect to receive messages: Buffer -> toString() -> JSON.parse()
+		const messageValue = typeof message === 'string' 
+			? Buffer.from(message) 
+			: Buffer.from(JSON.stringify(message));
 
 		// Skip sending in local environment, but log the message and create a mock SENT record
 		if (nodeEnv === 'local') {
@@ -177,7 +181,7 @@ export class KafkaProducerService implements RegisterableKafkaService {
 			this.logger.info('Kafka message skipped (local environment) - message would be sent to topic', {
 				topic,
 				key,
-				message: messageValue,
+				message: typeof message === 'object' && message !== null ? message : messageValue.toString(),
 				headers,
 			});
 			return;
@@ -202,7 +206,8 @@ export class KafkaProducerService implements RegisterableKafkaService {
 		try {
 			// Build KafkaJS message object - only include key if provided
 			// Use kafkaMessage variable to avoid shadowing the original message parameter
-			const kafkaMessage: { value: string; key?: string; headers?: Record<string, string> } = {
+			// Value is a Buffer containing JSON bytes (not stringified)
+			const kafkaMessage: { value: Buffer; key?: string; headers?: Record<string, string> } = {
 				value: messageValue,
 			};
 			
@@ -275,15 +280,19 @@ export class KafkaProducerService implements RegisterableKafkaService {
 			}
 
 			// Log the full message payload for CloudWatch visibility
-			// Parse message for better readability in logs (if it's a string, try to parse it)
 			// Format matches consumer logging style - pass object directly for proper JSON serialization
+			// messageValue is a Buffer, so parse it to get the original message object
 			let logMessage: unknown = message;
-			if (typeof message === 'string') {
+			if (typeof message === 'object' && message !== null) {
+				// Use original message object directly
+				logMessage = message;
+			} else {
+				// For non-object messages, parse from Buffer
 				try {
-					logMessage = JSON.parse(messageValue);
+					logMessage = JSON.parse(messageValue.toString());
 				} catch {
 					// If parsing fails, use the string as-is
-					logMessage = messageValue;
+					logMessage = messageValue.toString();
 				}
 			}
 

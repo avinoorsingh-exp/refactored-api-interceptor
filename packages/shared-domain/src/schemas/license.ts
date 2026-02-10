@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { DateOnlyISO } from '../value-objects/dates.js'
+import { LICENSE } from '../value-objects/contraints.js'
 
 /**
  * License type enum.
@@ -22,15 +23,16 @@ export type LicenseType = z.infer<typeof LicenseTypeSchema>
  */
 export const LicenseBaseSchema = z
 	.object({
-		id: z.string().uuid(),
-		expirationDate: DateOnlyISO.optional(),
+		id: z.string().uuid({ message: 'errors.license.id.invalid' }),
+		agentId: z.string().uuid({ message: 'errors.license.agentId.invalid' }),
+		expirationDate: DateOnlyISO.nullable().optional(),
 		isPrimary: z.boolean(),
 		type: LicenseTypeSchema,
-		firstName: z.string().min(1).max(100),
-		middleName: z.string().max(100).optional(),
-		lastName: z.string().min(1).max(100),
-		suffix: z.string().max(20).optional(),
-		number: z.string().min(1).max(100),
+		firstName: z.string().min(LICENSE.firstName.min).max(LICENSE.firstName.max),
+		middleName: z.string().max(LICENSE.middleName.max).nullable().optional(),
+		lastName: z.string().min(LICENSE.lastName.min).max(LICENSE.lastName.max),
+		suffix: z.string().max(LICENSE.suffix.max).nullable().optional(),
+		number: z.string().min(LICENSE.number.min).max(LICENSE.number.max),
 		lineOfBusinessId: z.string(),
 		countryId: z.number().int().positive({ message: 'errors.license.countryId.invalid' }),
 		stateCode: z.string().length(2, { message: 'errors.license.stateCode.invalid' }).nullable().optional(),
@@ -66,10 +68,21 @@ export type License = LicenseExpanded
 
 /**
  * Schema for creating a new License.
+ * Omits id and agentId (set from route).
+ * Applies trimming to name fields before validation.
  *
  * @public
  */
-export const CreateLicenseInputSchema = LicenseBaseSchema.omit({ id: true })
+export const CreateLicenseInputSchema = LicenseBaseSchema.omit({ id: true, agentId: true })
+	.extend({
+		// Apply trimming before validation for name fields
+		firstName: z.string().trim().min(LICENSE.firstName.min).max(LICENSE.firstName.max),
+		middleName: z.string().trim().max(LICENSE.middleName.max).nullable().optional(),
+		lastName: z.string().trim().min(LICENSE.lastName.min).max(LICENSE.lastName.max),
+		suffix: z.string().trim().max(LICENSE.suffix.max).nullable().optional(),
+		number: z.string().trim().min(LICENSE.number.min).max(LICENSE.number.max),
+	})
+	.describe('Payload to create a license')
 
 /**
  * @public
@@ -78,12 +91,47 @@ export type CreateLicenseInput = z.infer<typeof CreateLicenseInputSchema>
 
 /**
  * Schema for updating a License.
+ * All fields are optional for partial updates.
+ * Applies trimming to name fields before validation.
  *
  * @public
  */
-export const UpdateLicenseInputSchema = LicenseBaseSchema.omit({ id: true }).partial()
+export const UpdateLicenseInputSchema = LicenseBaseSchema.omit({ id: true, agentId: true })
+	.extend({
+		// Apply trimming before validation for name fields
+		firstName: z.string().trim().min(LICENSE.firstName.min).max(LICENSE.firstName.max).optional(),
+		middleName: z.string().trim().max(LICENSE.middleName.max).nullable().optional(),
+		lastName: z.string().trim().min(LICENSE.lastName.min).max(LICENSE.lastName.max).optional(),
+		suffix: z.string().trim().max(LICENSE.suffix.max).nullable().optional(),
+		number: z.string().trim().min(LICENSE.number.min).max(LICENSE.number.max).optional(),
+		isPrimary: z.boolean().optional(),
+		type: LicenseTypeSchema.optional(),
+		expirationDate: DateOnlyISO.nullable().optional(),
+		lineOfBusinessId: z.string().optional(),
+		countryId: z.number().int().positive({ message: 'errors.license.countryId.invalid' }).optional(),
+		stateCode: z.string().length(2, { message: 'errors.license.stateCode.invalid' }).nullable().optional(),
+	})
+	.partial()
+	.describe('Partial update payload for a license')
 
 /**
  * @public
  */
 export type UpdateLicenseInput = z.infer<typeof UpdateLicenseInputSchema>
+
+/**
+ * Schema for validating License ID path parameter.
+ * License IDs are UUIDs.
+ * @public
+ */
+export const LicenseIdParamSchema = z.object({
+	licenseId: z
+		.string()
+		.uuid({ message: 'errors.license.id.invalid' })
+		.describe('License ID (UUID)'),
+})
+
+/**
+ * @public
+ */
+export type LicenseIdParam = z.infer<typeof LicenseIdParamSchema>

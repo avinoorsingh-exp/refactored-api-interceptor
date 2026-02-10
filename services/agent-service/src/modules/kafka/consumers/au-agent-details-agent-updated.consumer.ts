@@ -1,5 +1,6 @@
 import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { Consumer, KafkaMessage } from 'kafkajs';
+import { KafkaMessageStatus } from '@exprealty/database';
 import { KafkaClientService } from '../kafka-client.service.js';
 import { KafkaMessageProcessingService } from '../kafka-message-processing.service.js';
 import { ConfigService } from '../../../core/config.service.js';
@@ -188,19 +189,22 @@ export class AuAgentDetailsAgentUpdatedConsumer implements RegisterableKafkaServ
 
 			const allConfig = this.configService.getAll();
 			const serviceName = String((allConfig as Record<string, unknown>)['SERVICE_NAME'] || 'agent-service');
-			await this.kafkaMessageProcessingService.lookupOrUpdateSentAndIncrementAttempt({
-				topic,
-				partition,
-				offset: message.offset,
-				messageKey: messageKey || undefined,
-				eventId: (parsedMessage as any)?.eventId || (parsedMessage as any)?.Uuid || (parsedMessage as any)?.uuid || undefined,
-				payload: translatedPayload,
-				headers: message.headers ? Object.fromEntries(
-					Object.entries(message.headers).map(([k, v]) => [k, v?.toString() || ''])
-				) : undefined,
-				consumerGroup: this.groupId,
-				serviceName,
-			});
+			await this.kafkaMessageProcessingService.lookupOrUpdateSentAndIncrementAttempt(
+				{
+					topic,
+					partition,
+					offset: message.offset,
+					messageKey: messageKey || undefined,
+					eventId: (parsedMessage as any)?.eventId || (parsedMessage as any)?.Uuid || (parsedMessage as any)?.uuid || undefined,
+					payload: translatedPayload,
+					headers: message.headers ? Object.fromEntries(
+						Object.entries(message.headers).map(([k, v]) => [k, v?.toString() || ''])
+					) : undefined,
+					consumerGroup: this.groupId,
+					serviceName,
+				},
+				KafkaMessageStatus.PROCESSED,
+			);
 
 			await this.processMessageWithRetry(parsedMessage, topic, partition, message.offset);
 

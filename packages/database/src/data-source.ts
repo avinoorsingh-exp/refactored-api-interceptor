@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm'
 import * as fs from 'fs'
 import { AddressEntity } from './entities/core/address.entity.js'
 import { AgentCompanyEntity } from './entities/core/agent-company.entity.js'
+import { AgentCompanyAssociationEntity } from './entities/core/agent-company-association.entity.js'
 import { AgentEntity } from './entities/core/agent.entity.js'
 import { AgentAddressEntity } from './entities/core/agent-address.entity.js'
 import { CompanyEntity } from './entities/core/company.entity.js'
@@ -38,6 +39,8 @@ import { RelationshipEntity } from './entities/core/relationship.entity.js'
 import { SponsorConfigurationEntity } from './entities/core/sponsor-configuration.entity.js'
 import { MLSEntity } from './entities/core/mls.entity.js'
 import { CountryEntity } from './entities/core/country.entity.js'
+import { CurrencyEntity } from './entities/core/currency.entity.js'
+import { SystemEntity } from './entities/core/system.entity.js'
 import { RegionEntity } from './entities/core/region.entity.js'
 import { StateEntity } from './entities/core/state.entity.js'
 import { ProgramEntity } from './entities/core/program.entity.js'
@@ -152,6 +155,7 @@ export const AppDataSource = new DataSource({
 	entities: [
 		AddressEntity,
 		AgentCompanyEntity,
+		AgentCompanyAssociationEntity,
 		AgentEntity,
 		AgentAddressEntity,
 		CompanyEntity,
@@ -187,6 +191,8 @@ export const AppDataSource = new DataSource({
 		SponsorConfigurationEntity,
 		MLSEntity,
 		CountryEntity,
+		CurrencyEntity,
+		SystemEntity,
 		RegionEntity,
 		StateEntity,
 		ProgramEntity,

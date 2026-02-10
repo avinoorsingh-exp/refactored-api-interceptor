@@ -118,20 +118,88 @@ export class AgentServiceController {
         duration_ms: duration,
       })
 
-      // Set response status
-      res.status(response.status)
-      
-      // Forward response headers
+      // CRITICAL: Normalize response headers before forwarding
+      // Since axios buffers the entire response (responseType: 'json'),
+      // we are NOT streaming. Therefore:
+      // - Remove Transfer-Encoding (we're not chunking)
+      // - Remove Content-Length (Express will set it correctly based on serialized JSON)
+      // This ensures only ONE framing mechanism is used
+      const normalizedHeaders: Record<string, string> = {}
       if (response.headers) {
         Object.entries(response.headers).forEach(([key, value]) => {
-          if (value !== undefined) {
-            res.setHeader(key, value as string)
+          if (value === undefined) {
+            return
           }
+          
+          const lowerKey = key.toLowerCase()
+          
+          // Skip framing headers - Express will set them correctly
+          if (lowerKey === 'transfer-encoding' || lowerKey === 'content-length') {
+            this.logger.debug('[RESPONSE_FRAMING] Skipping framing header from upstream', {
+              method,
+              path,
+              header: key,
+              value: String(value),
+              reason: 'Express will set framing headers based on response body',
+            })
+            return
+          }
+          
+          // Forward all other headers
+          normalizedHeaders[key] = String(value)
         })
       }
 
+      // Diagnostic logging: Log headers before setting them
+      this.logger.info('[RESPONSE_FRAMING] Normalized response headers', {
+        method,
+        path,
+        status: response.status,
+        upstreamHeaders: response.headers ? Object.keys(response.headers) : [],
+        normalizedHeaders: Object.keys(normalizedHeaders),
+        hasTransferEncoding: response.headers?.['transfer-encoding'] || response.headers?.['Transfer-Encoding'],
+        hasContentLength: response.headers?.['content-length'] || response.headers?.['Content-Length'],
+        responseDataSize: response.data ? JSON.stringify(response.data).length : 0,
+      })
+
+      // Set response status
+      res.status(response.status)
+      
+      // Forward normalized headers (excluding framing headers)
+      Object.entries(normalizedHeaders).forEach(([key, value]) => {
+        res.setHeader(key, value)
+      })
+
+      // Diagnostic logging: Log headers at write time
+      const headersBeforeWrite = {
+        transferEncoding: res.getHeader('transfer-encoding'),
+        contentLength: res.getHeader('content-length'),
+        headersSent: res.headersSent,
+        finished: (res as any).finished,
+      }
+      
+      this.logger.info('[RESPONSE_FRAMING] Headers before res.json()', {
+        method,
+        path,
+        ...headersBeforeWrite,
+      })
+
       // Send response body
+      // Express will automatically set Content-Length based on serialized JSON size
       res.json(response.data)
+
+      // Diagnostic logging: Log headers after write
+      // Note: headersSent will be true after res.json() if headers were committed
+      const headersAfterWrite = {
+        headersSent: res.headersSent,
+        finished: (res as any).finished,
+      }
+      
+      this.logger.info('[RESPONSE_FRAMING] Headers after res.json()', {
+        method,
+        path,
+        ...headersAfterWrite,
+      })
 
     } catch (error) {
       const duration = Date.now() - startTime

@@ -8,13 +8,13 @@ import {
 	HttpCode,
 	HttpStatus,
 	Req,
-	Res,
 	UseInterceptors,
 	ParseUUIDPipe,
 	BadRequestException,
 	NotFoundException,
+	Logger,
 } from '@nestjs/common';
-import { Request, Response } from 'express';
+import { Request } from 'express';
 import {
 	ApiTags,
 	ApiOperation,
@@ -311,53 +311,100 @@ export class KafkaMessageProcessingController {
 	 * POST /v1/kafka/messages/:id/retry
 	 *
 	 * @param id - Message record ID (UUID)
-	 * @param req - Express request object for correlation ID
-	 * @returns Updated message record
+	 * @param body - Optional body containing custom payload to use for retry
+	 * @returns Updated message record with final status (PROCESSED or ERROR)
 	 */
 	@Post(':id/retry')
 	@HttpCode(HttpStatus.OK)
-	@ApiExcludeEndpoint() // Exclude from Swagger to prevent schema validation
+	@ApiOperation({
+		summary: 'Retry processing a Kafka message',
+		description: 'Retries processing a Kafka message that previously failed. The message will be reprocessed using either the stored payload or an optional custom payload provided in the request body. Returns the updated message record with the final processing status.',
+	})
+	@ApiParam({
+		name: 'id',
+		description: 'Message record ID (UUID)',
+		type: String,
+	})
+	@ApiBody({
+		description: 'Optional request body. If provided, can contain a custom payload to use for retry instead of the stored payload. Body can be empty object {} or omitted entirely to use stored payload.',
+		required: false,
+		schema: {
+			type: 'object',
+			properties: {
+				payload: {
+					type: 'object',
+					description: 'Optional custom payload to use for retry. If provided, translation will be skipped and this payload will be used directly.',
+					additionalProperties: true,
+				},
+			},
+			additionalProperties: true,
+		},
+	})
+	@ApiResponse({
+		status: 200,
+		description: 'Message retry initiated successfully. Returns the updated message record with final status (PROCESSED or ERROR).',
+		type: KafkaMessageProcessingResponseDto,
+	})
+	@ApiResponse({
+		status: 400,
+		description: 'Invalid message ID format',
+	})
+	@ApiResponse({
+		status: 404,
+		description: 'Message not found',
+	})
+	@ApiResponse({
+		status: 409,
+		description: 'Message cannot be retried (e.g., already PROCESSED and not retryable)',
+	})
 	async retryMessage(
 		@Param('id', new ParseUUIDPipe({ errorHttpStatusCode: HttpStatus.BAD_REQUEST })) id: string,
-		@Req() req: Request,
-		@Res({ passthrough: false }) res: Response,
-	): Promise<void> {
-		// Bypass NestJS body parsing entirely by using @Res() and handling response manually
-		// This prevents any automatic validation from occurring
+		@Body() body: Record<string, any> | undefined,
+	): Promise<KafkaMessageProcessingResponseDto> {
+		const logger = new Logger('KafkaMessageProcessingController');
+		logger.log(`[RETRY_DEBUG] Retry endpoint called - messageId: ${id}, timestamp: ${Date.now()}`);
+		
 		try {
-		// Get body directly from request to bypass any NestJS transformation/validation
-		const body = req.body as Record<string, any> | undefined;
-		
-		// Handle two cases:
-		// 1. Body is a RetryMessageRequestDto with a payload property: { payload: {...} }
-		// 2. Body is the payload directly: {...}
-		// 3. Body is undefined/empty (use stored payload)
-		// Empty object {} should be treated as "no custom payload"
-		let customPayload: Record<string, unknown> | undefined;
-		
-		if (body && typeof body === 'object' && !Array.isArray(body)) {
-			const bodyKeys = Object.keys(body);
+			logger.log(`[RETRY_DEBUG] Body received - messageId: ${id}, hasBody: ${!!body}, timestamp: ${Date.now()}`);
 			
-			// Check if body has a 'payload' property (RetryMessageRequestDto format)
-			if ('payload' in body && typeof body.payload === 'object' && body.payload !== null) {
-				// Only use payload if it's not empty
-				const payloadKeys = Object.keys(body.payload);
-				if (payloadKeys.length > 0) {
-					customPayload = body.payload as Record<string, unknown>;
+			// Handle two cases:
+			// 1. Body is a RetryMessageRequestDto with a payload property: { payload: {...} }
+			// 2. Body is the payload directly: {...}
+			// 3. Body is undefined/empty (use stored payload)
+			// Empty object {} should be treated as "no custom payload"
+			let customPayload: Record<string, unknown> | undefined;
+			
+			if (body && typeof body === 'object' && !Array.isArray(body)) {
+				const bodyKeys = Object.keys(body);
+				
+				// Check if body has a 'payload' property (RetryMessageRequestDto format)
+				if ('payload' in body && typeof body.payload === 'object' && body.payload !== null) {
+					// Only use payload if it's not empty
+					const payloadKeys = Object.keys(body.payload);
+					if (payloadKeys.length > 0) {
+						customPayload = body.payload as Record<string, unknown>;
+					}
+				} else if (bodyKeys.length > 0) {
+					// Body is the payload directly (and it's not empty)
+					customPayload = body as Record<string, unknown>;
 				}
-			} else if (bodyKeys.length > 0) {
-				// Body is the payload directly (and it's not empty)
-				customPayload = body as Record<string, unknown>;
+				// If body is empty object {}, customPayload remains undefined
 			}
-			// If body is empty object {}, customPayload remains undefined
-		}
-		
-		// Optional body allows frontend to provide amended message payload
-		// If provided, it will be used instead of stored payload and translation will be skipped
-		// Validation will happen in the service layer (Zod validation in EnterpriseAgentUpsertService)
-		const result = await this.kafkaMessageProcessingService.retryMessage(id, customPayload);
-		res.status(HttpStatus.OK).json(result);
+			
+			// Optional body allows frontend to provide amended message payload
+			// If provided, it will be used instead of stored payload and translation will be skipped
+			// Validation will happen in the service layer (Zod validation in EnterpriseAgentUpsertService)
+			logger.log(`[RETRY_DEBUG] About to call retryMessage service - messageId: ${id}, timestamp: ${Date.now()}`);
+			const result = await this.kafkaMessageProcessingService.retryMessage(id, customPayload);
+			logger.log(`[RETRY_DEBUG] retryMessage service returned - messageId: ${id}, timestamp: ${Date.now()}`);
+			
+			logger.log(`[RETRY_DEBUG] Returning result - messageId: ${id}, timestamp: ${Date.now()}`);
+			return result;
 		} catch (error) {
+			logger.error(`[RETRY_DEBUG] Error in retry handler - messageId: ${id}`, {
+				error: error instanceof Error ? error.message : 'Unknown error',
+				stack: error instanceof Error ? error.stack : undefined,
+			});
 			// Let ProblemDetailsFilter handle the error
 			throw error;
 		}

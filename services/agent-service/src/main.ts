@@ -64,6 +64,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
 import configuration from './core/configuration.js'
 import { QueryPerformanceInterceptor } from './common/interceptors/query-performance.interceptor.js'
 import { PerformanceInterceptor } from './common/interceptors/performance.interceptor.js'
+import { ResponseHeaderFixInterceptor } from './common/interceptors/response-header-fix.interceptor.js'
 import { DataSource } from 'typeorm'
 
 console.error('[MAIN] Imports loaded successfully')
@@ -146,27 +147,132 @@ async function bootstrap() {
 				},
 			}));
 			
-			// Middleware to fix conflicting Content-Length and Transfer-Encoding headers
+			// CRITICAL: Response header normalization middleware
+			// Prevents invalid HTTP responses with both Content-Length and Transfer-Encoding
+			// This must run after compression middleware but before headers are committed
 			app.use((req: any, res: any, next: any) => {
-				const originalWrite = res.write.bind(res);
+				// Track Transfer-Encoding state
+				let hasTransferEncoding = false;
+				
+				// Store original methods
+				const originalSetHeader = res.setHeader.bind(res);
+				const originalWriteHead = res.writeHead.bind(res);
 				const originalEnd = res.end.bind(res);
 				
-				const fixHeaders = () => {
+				// Normalize headers by removing Content-Length when Transfer-Encoding is present
+				const normalizeHeaders = () => {
+					if (res.headersSent || res.finished) {
+						return;
+					}
+					
+					// Check current state
 					const transferEncoding = res.getHeader('transfer-encoding');
 					const contentLength = res.getHeader('content-length');
 					
-					if (transferEncoding && contentLength) {
-						res.removeHeader('content-length');
+					if (transferEncoding) {
+						hasTransferEncoding = true;
+						// Transfer-Encoding takes precedence - remove Content-Length
+						if (contentLength) {
+							try {
+								res.removeHeader('content-length');
+								// Clean up internal header storage
+								if ((res as any)._headers) {
+									delete (res as any)._headers['content-length'];
+									delete (res as any)._headers['Content-Length'];
+								}
+								if ((res as any)._headerNames) {
+									delete (res as any)._headerNames['content-length'];
+									delete (res as any)._headerNames['Content-Length'];
+								}
+								if ((res as any)._removedHeader) {
+									(res as any)._removedHeader['content-length'] = true;
+									(res as any)._removedHeader['Content-Length'] = true;
+								}
+							} catch (e) {
+								// Ignore errors if headers are already sent
+							}
+						}
 					}
 				};
 				
-				res.write = function(...args: any[]) {
-					fixHeaders();
-					return originalWrite(...args);
+				// Intercept setHeader to prevent Content-Length when Transfer-Encoding is present
+				res.setHeader = function(name: string, value: any) {
+					const lowerName = name.toLowerCase();
+					
+					if (lowerName === 'transfer-encoding') {
+						hasTransferEncoding = true;
+						// Remove Content-Length if it exists
+						if (res.getHeader('content-length')) {
+							res.removeHeader('content-length');
+							if ((res as any)._headers) {
+								delete (res as any)._headers['content-length'];
+								delete (res as any)._headers['Content-Length'];
+							}
+						}
+					} else if (lowerName === 'content-length' && hasTransferEncoding) {
+						// Transfer-Encoding takes precedence - don't set Content-Length
+						return res;
+					}
+					
+					return originalSetHeader(name, value);
 				};
 				
+				// Intercept writeHead - this is where headers are committed
+				// CRITICAL: Normalize headers right before they're sent
+				// Express writeHead has multiple signatures:
+				// - writeHead(statusCode)
+				// - writeHead(statusCode, headers)
+				// - writeHead(statusCode, statusMessage, headers)
+				res.writeHead = function(statusCode: number, statusMessageOrHeaders?: any, headers?: any) {
+					// Normalize headers before committing
+					normalizeHeaders();
+					
+					// Determine which signature was used
+					let actualHeaders: any = undefined;
+					let actualStatusMessage: string | undefined = undefined;
+					
+					if (arguments.length === 1) {
+						// writeHead(statusCode)
+						actualHeaders = undefined;
+					} else if (arguments.length === 2) {
+						// Could be writeHead(statusCode, headers) or writeHead(statusCode, statusMessage)
+						if (typeof statusMessageOrHeaders === 'string') {
+							// writeHead(statusCode, statusMessage)
+							actualStatusMessage = statusMessageOrHeaders;
+							actualHeaders = headers;
+						} else {
+							// writeHead(statusCode, headers)
+							actualHeaders = statusMessageOrHeaders;
+						}
+					} else {
+						// writeHead(statusCode, statusMessage, headers)
+						actualStatusMessage = statusMessageOrHeaders;
+						actualHeaders = headers;
+					}
+					
+					// Clean up headers object if provided
+					if (actualHeaders && typeof actualHeaders === 'object' && !Array.isArray(actualHeaders)) {
+						const transferEncoding = actualHeaders['transfer-encoding'] || actualHeaders['Transfer-Encoding'] || res.getHeader('transfer-encoding');
+						if (transferEncoding) {
+							delete actualHeaders['content-length'];
+							delete actualHeaders['Content-Length'];
+						}
+					}
+					
+					// Call original writeHead with normalized arguments
+					if (actualStatusMessage !== undefined) {
+						return originalWriteHead(statusCode, actualStatusMessage, actualHeaders);
+					} else if (actualHeaders !== undefined) {
+						return originalWriteHead(statusCode, actualHeaders);
+					} else {
+						return originalWriteHead(statusCode);
+					}
+				};
+				
+				// Intercept end to normalize headers one final time
 				res.end = function(...args: any[]) {
-					fixHeaders();
+					// CRITICAL: Normalize headers right before sending response
+					normalizeHeaders();
 					return originalEnd(...args);
 				};
 				
@@ -202,7 +308,11 @@ async function bootstrap() {
 		console.error('[BOOTSTRAP] Step 6: Configuring interceptors...')
 		try {
 			const environment = configService.get('NODE_ENV')
-			const includeQueryMetadata = environment === 'local' || environment === 'dev'
+			const includeQueryMetadata = environment === 'local'
+
+			// CRITICAL: ResponseHeaderFixInterceptor must run LAST to fix headers after all other interceptors
+			// This ensures Content-Length is removed when Transfer-Encoding is present
+			const headerFixInterceptor = new ResponseHeaderFixInterceptor();
 
 			if (includeQueryMetadata) {
 				app.useGlobalInterceptors(
@@ -213,6 +323,7 @@ async function bootstrap() {
 						captureExplain: true,
 						includeInResponse: includeQueryMetadata,
 					}),
+					headerFixInterceptor,
 				)
 				logger.info(`Query metadata enabled for environment: ${environment}`)
 			} else {
@@ -222,6 +333,7 @@ async function bootstrap() {
 						includeInBody: false,
 						logAllQueries: false,
 					}),
+					headerFixInterceptor,
 				)
 				logger.info(`Performance-only interceptor enabled for environment: ${environment}`)
 			}

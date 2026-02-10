@@ -121,15 +121,7 @@ export class SponsorChangedService {
 			});
 
 			// Send to Kafka
-			await this.kafkaProducer.sendSponsorChangedMessage(
-				message,
-				applicantUuid, // Use applicant UUID as message key for partitioning
-				{
-					'correlation-id': `sponsor-changed-${Date.now()}`,
-					'applicant-uuid': applicantUuid,
-					'sponsor-uuid': sponsorUuid,
-				},
-			);
+			await this.kafkaProducer.sendSponsorChangedMessage(message);
 
 			const duration = Date.now() - startTime;
 			this.logger.info(
@@ -248,15 +240,7 @@ export class SponsorChangedService {
 			});
 
 			// Send to Kafka
-			await this.kafkaProducer.sendSponsorChangedMessage(
-				message,
-				applicantUuid, // Use applicant UUID as message key for partitioning
-				{
-					'correlation-id': `sponsor-write-in-${Date.now()}`,
-					'applicant-uuid': applicantUuid,
-					'sponsor-write-in': 'true',
-				},
-			);
+			await this.kafkaProducer.sendSponsorChangedMessage(message);
 
 			const duration = Date.now() - startTime;
 			this.logger.info(

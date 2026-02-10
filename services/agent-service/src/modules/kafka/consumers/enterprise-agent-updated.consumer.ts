@@ -1,6 +1,7 @@
 import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { ZodError } from 'zod';
 import { Consumer, KafkaMessage } from 'kafkajs';
+import { KafkaMessageStatus } from '@exprealty/database';
 import { KafkaClientService } from '../kafka-client.service.js';
 import { KafkaMessageProcessingService } from '../kafka-message-processing.service.js';
 import { EnterpriseAgentUpsertService } from '../services/enterprise-agent-upsert.service.js';
@@ -248,24 +249,27 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 				}
 			}
 
-			// On message receive: Lookup SENT record and increment attempt_count
-			// Record should already exist from producer with SENT status
+			// On message receive: Lookup or create record and increment attempt_count
+			// For consumed messages, create with PROCESSED status if record doesn't exist
 			// This ensures we track every message attempt, even if processing fails
 			const allConfig = this.configService.getAll();
 			const serviceName = String((allConfig as Record<string, unknown>)['SERVICE_NAME'] || 'agent-service');
-			await this.kafkaMessageProcessingService.lookupOrUpdateSentAndIncrementAttempt({
-				topic,
-				partition,
-				offset: message.offset,
-				messageKey: messageKey || undefined,
-				eventId: (parsedMessage as any)?.eventId || (parsedMessage as any)?.uuid || undefined,
-				payload: translatedPayload,
-				headers: message.headers ? Object.fromEntries(
-					Object.entries(message.headers).map(([k, v]) => [k, v?.toString() || ''])
-				) : undefined,
-				consumerGroup: this.groupId,
-				serviceName,
-			});
+			await this.kafkaMessageProcessingService.lookupOrUpdateSentAndIncrementAttempt(
+				{
+					topic,
+					partition,
+					offset: message.offset,
+					messageKey: messageKey || undefined,
+					eventId: (parsedMessage as any)?.eventId || (parsedMessage as any)?.uuid || undefined,
+					payload: translatedPayload,
+					headers: message.headers ? Object.fromEntries(
+						Object.entries(message.headers).map(([k, v]) => [k, v?.toString() || ''])
+					) : undefined,
+					consumerGroup: this.groupId,
+					serviceName,
+				},
+				KafkaMessageStatus.PROCESSED,
+			);
 
 			// Process the message with retry logic
 			// For retries (throwOnError = true), re-throw errors so retryMessage can catch them
@@ -557,7 +561,7 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 			firstName: string;
 			middleName?: string;
 			lastName: string;
-			suffix?: string;
+			suffix?: 'Jr' | 'Sr' | 'II' | 'III' | 'IV' | 'V' | 'MD' | 'PhD' | 'Esq';
 			preferredName?: string;
 			title?: 'Mr' | 'Mrs' | 'Ms' | 'Miss';
 			birthDate?: Date;
@@ -566,7 +570,6 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 			anniversaryDate?: Date;
 			terminationDate?: Date;
 			isStaff: boolean;
-			agentCompanyId?: string;
 		};
 		contactMethods: Array<{
 			name: string;
@@ -611,14 +614,38 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 		}>;
 	} {
 		// Translate agent core fields
-		const agent = {
+		// Handle suffix: trim the raw value, validate against enum, and exclude if invalid
+		// Valid suffixes match the Zod schema enum: ['Jr', 'Sr', 'II', 'III', 'IV', 'V', 'MD', 'PhD', 'Esq']
+		const validSuffixes = ['Jr', 'Sr', 'II', 'III', 'IV', 'V', 'MD', 'PhD', 'Esq'] as const;
+		const rawSuffix = payload.suffix ? String(payload.suffix).trim() : null;
+		const suffix: typeof validSuffixes[number] | undefined = 
+			rawSuffix && rawSuffix.length > 0 && validSuffixes.includes(rawSuffix as any)
+				? (rawSuffix as typeof validSuffixes[number])
+				: undefined;
+		
+		const agent: {
+			id?: string;
+			agentId?: string;
+			systemId?: number;
+			firstName: string;
+			middleName?: string;
+			lastName: string;
+			suffix?: typeof validSuffixes[number];
+			preferredName?: string;
+			title?: 'Mr' | 'Mrs' | 'Ms' | 'Miss';
+			birthDate?: Date;
+			lifecycleStatus: string;
+			joinDate?: Date;
+			anniversaryDate?: Date;
+			terminationDate?: Date;
+			isStaff: boolean;
+		} = {
 			id: payload.uuid || undefined,
 			agentId: payload.source_system_member_key?.toString() || undefined,
 			systemId: payload.systemkey || undefined,
 			firstName: payload.member_first_name || '',
 			middleName: payload.member_middle_name || undefined,
 			lastName: payload.member_last_name || '',
-			suffix: payload.suffix || undefined,
 			preferredName: payload.preferred_name || undefined,
 			title: payload.title as 'Mr' | 'Mrs' | 'Ms' | 'Miss' | undefined,
 			birthDate: payload.Birthday ? new Date(payload.Birthday) : undefined,
@@ -627,8 +654,12 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 			anniversaryDate: payload.anniversary_date ? new Date(payload.anniversary_date) : undefined,
 			terminationDate: payload.termination_date ? new Date(payload.termination_date) : undefined,
 			isStaff: false, // Default or map from payload if available
-			agentCompanyId: payload.AgentCompany?.AgentCompanyID?.toString() || undefined,
 		};
+		
+		// Only include suffix if it's a valid enum value
+		if (suffix) {
+			agent.suffix = suffix;
+		}
 
 		// Translate contact methods
 		const contactMethods: Array<{

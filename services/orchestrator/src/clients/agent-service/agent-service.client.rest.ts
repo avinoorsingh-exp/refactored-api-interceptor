@@ -22,12 +22,14 @@ import type { LoggerService } from '../../core/logger.service.js'
  */
 export class AgentServiceRestClient implements AgentServiceClient {
   private readonly http: EcsHttpClient
+  private readonly logger: LoggerService
 
   constructor(
     baseUrl: string,          // e.g., http://agent-service:8090
     logger: LoggerService,
     s2sKey?: string,
   ) {
+    this.logger = logger
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     }
@@ -61,32 +63,101 @@ export class AgentServiceRestClient implements AgentServiceClient {
    */
   async proxy(request: ProxyRequest): Promise<ProxyResponse> {
     const { method, path, body, query, headers } = request
+    const startTime = Date.now()
 
     // Build Axios request config
+    // Explicitly set responseType to 'json' to ensure proper response handling
     const config = {
       method,
       url: path,
       data: body,
       params: query,
       headers,
+      responseType: 'json' as const,  // Explicit JSON response type
+      maxContentLength: Infinity,      // Allow large responses
+      maxBodyLength: Infinity,         // Allow large request bodies
+      validateStatus: () => true,      // Don't throw on any status code - handle in catch
     }
 
     try {
+      this.logger.info('[PROXY_DEBUG] Starting proxy request', {
+        method,
+        path,
+        hasBody: !!body,
+        bodySize: body ? JSON.stringify(body).length : 0,
+        queryKeys: query ? Object.keys(query) : [],
+        headerKeys: headers ? Object.keys(headers) : [],
+        timestamp: startTime,
+      })
+
       // Execute request via EcsHttpClient
       // This automatically:
       // - Adds x-request-id, x-service-id headers
       // - Records metrics
       // - Logs the request/response
-      const response = await this.http.instance.request(config)
+      const requestPromise = this.http.instance.request(config)
+      
+      this.logger.info('[PROXY_DEBUG] Axios request promise created, awaiting response', {
+        method,
+        path,
+        timestamp: Date.now(),
+      })
 
-      return {
+      const response = await requestPromise
+      const duration = Date.now() - startTime
+
+      this.logger.info('[PROXY_DEBUG] Axios response received', {
+        method,
+        path,
+        status: response.status,
+        statusText: response.statusText,
+        hasData: !!response.data,
+        dataType: typeof response.data,
+        dataSize: response.data ? JSON.stringify(response.data).length : 0,
+        headerCount: Object.keys(response.headers).length,
+        duration_ms: duration,
+        timestamp: Date.now(),
+      })
+
+      const result = {
         status: response.status,
         data: response.data,
         headers: response.headers as Record<string, string>,
       }
+
+      this.logger.info('[PROXY_DEBUG] Proxy response constructed, returning', {
+        method,
+        path,
+        status: result.status,
+        timestamp: Date.now(),
+      })
+
+      return result
     } catch (error: any) {
+      const duration = Date.now() - startTime
+      
+      this.logger.error('[PROXY_DEBUG] Proxy request failed', {
+        method,
+        path,
+        duration_ms: duration,
+        error_type: error?.constructor?.name,
+        error_code: error?.code,
+        error_message: error?.message,
+        has_response: !!error?.response,
+        response_status: error?.response?.status,
+        response_data_type: typeof error?.response?.data,
+        timestamp: Date.now(),
+      })
+
       // If we have a response, return it (even if error status)
       if (error.response) {
+        this.logger.info('[PROXY_DEBUG] Returning error response', {
+          method,
+          path,
+          status: error.response.status,
+          timestamp: Date.now(),
+        })
+        
         return {
           status: error.response.status,
           data: error.response.data,
@@ -95,6 +166,14 @@ export class AgentServiceRestClient implements AgentServiceClient {
       }
       
       // Re-throw if no response (network error, timeout, etc.)
+      this.logger.error('[PROXY_DEBUG] Re-throwing error (no response)', {
+        method,
+        path,
+        error_code: error?.code,
+        error_message: error?.message,
+        timestamp: Date.now(),
+      })
+      
       throw error
     }
   }

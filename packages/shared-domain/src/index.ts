@@ -231,7 +231,27 @@ export {
 	type CreateAgentCompanyInput as CreateAgentCompanyInputType,
 	UpdateAgentCompanyInput,
 	type UpdateAgentCompanyInput as UpdateAgentCompanyInputType,
+	AgentCompanyIdParamSchema,
+	type AgentCompanyIdParam,
 } from './schemas/agent-company.js'
+
+/**
+ * Agent Company Association entity schemas and types (junction table).
+ * @public
+ */
+export {
+	AgentCompanyAssociationBaseSchema,
+	AgentCompanyAssociationExpandedSchema,
+	type AgentCompanyAssociationBase,
+	type AgentCompanyAssociationExpanded,
+	type AgentCompanyAssociation,
+	CreateAgentCompanyAssociationSchema,
+	type CreateAgentCompanyAssociationInput,
+	UpdateAgentCompanyAssociationSchema,
+	type UpdateAgentCompanyAssociationInput,
+	AgentCompanyAssociationIdParamSchema,
+	type AgentCompanyAssociationIdParam,
+} from './schemas/agent-company-association.js'
 
 // ============================================================================
 // ENTITIES - EXTERNAL REFERENCE
@@ -577,6 +597,8 @@ export {
 	type CreateLicenseInput,
 	UpdateLicenseInputSchema,
 	type UpdateLicenseInput,
+	LicenseIdParamSchema,
+	type LicenseIdParam,
 } from './schemas/license.js'
 
 // ============================================================================
@@ -736,6 +758,58 @@ export {
 	CountryCodeParamSchema,
 	type CountryCodeParam,
 } from './schemas/country.js'
+
+// ============================================================================
+// ENTITIES - CURRENCY
+// ============================================================================
+
+/**
+ * Currency entity schemas and types.
+ * Conforms to ISO 4217 standard.
+ * @public
+ */
+export {
+	CurrencyBaseSchema,
+	CurrencyExpandedSchema,
+	type Currency,
+	type CurrencyBase,
+	type CurrencyExpanded,
+	type CurrencyApiResponse,
+	CreateCurrencyInputSchema,
+	type CreateCurrencyInput,
+	UpdateCurrencyInputSchema,
+	type UpdateCurrencyInput,
+	CurrencyIdParamSchema,
+	type CurrencyIdParam,
+} from './schemas/currency.js'
+
+// ============================================================================
+// ENTITIES - SYSTEM
+// ============================================================================
+
+/**
+ * System entity schemas and types.
+ * Represents system configurations within countries.
+ * @public
+ */
+export {
+	SystemBaseSchema,
+	SystemExpandedSchema,
+	type System,
+	type SystemBase,
+	type SystemExpanded,
+	type SystemApiResponse,
+	CreateSystemInputSchema,
+	type CreateSystemInput,
+	UpdateSystemInputSchema,
+	type UpdateSystemInput,
+	SystemIdParamSchema,
+	type SystemIdParam,
+	CountryIdParamSchema,
+	type CountryIdParam,
+	CountrySystemParamSchema,
+	type CountrySystemParam,
+} from './schemas/system.js'
 
 // ============================================================================
 // ENTITIES - REGION

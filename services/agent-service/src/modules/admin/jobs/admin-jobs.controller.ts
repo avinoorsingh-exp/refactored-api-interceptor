@@ -22,6 +22,163 @@ import { AdminJobNameParamDto } from './dto/admin-job-name-param.dto.js';
 import { LoggerService } from '../../../core/logger.service.js';
 
 /**
+ * Truncate JSON object intelligently to fit within size limit.
+ * Removes or truncates nested fields while preserving structure.
+ */
+function truncateJsonObject(obj: any, maxSize: number): any {
+	const jsonStr = JSON.stringify(obj, null, 2);
+	if (jsonStr.length <= maxSize) {
+		return obj;
+	}
+
+	// If it's an object, try truncating string values or removing fields
+	if (typeof obj === 'object' && obj !== null && !Array.isArray(obj)) {
+		const truncated: Record<string, any> = {};
+		let currentSize = 2; // Account for {}
+		
+		for (const [key, value] of Object.entries(obj)) {
+			const keySize = JSON.stringify(key).length + 4; // "key": 
+			let valueStr = JSON.stringify(value, null, 2);
+			
+			if (currentSize + keySize + valueStr.length > maxSize * 0.9) {
+				// Truncate this value or skip it
+				const remaining = maxSize - currentSize - keySize - 30; // 30 for "... [truncated]" and formatting
+				if (remaining > 50) { // Only add if we have meaningful space
+					if (typeof value === 'string' && value.length > remaining) {
+						truncated[key] = value.substring(0, remaining) + '... [truncated]';
+					} else if (typeof value === 'object') {
+						truncated[key] = truncateJsonObject(value, remaining);
+					} else {
+						truncated[key] = value;
+					}
+				}
+				break; // Stop adding more fields
+			} else {
+				truncated[key] = value;
+				currentSize += keySize + valueStr.length + 2; // Account for comma and newline
+			}
+		}
+		return truncated;
+	}
+
+	// For arrays, truncate by removing items
+	if (Array.isArray(obj)) {
+		const truncated: any[] = [];
+		let currentSize = 2; // Account for []
+		for (const item of obj) {
+			const itemStr = JSON.stringify(item, null, 2);
+			if (currentSize + itemStr.length > maxSize * 0.9) {
+				break;
+			}
+			truncated.push(item);
+			currentSize += itemStr.length + 4; // Account for comma, newline, and spacing
+		}
+		return truncated;
+	}
+
+	return obj;
+}
+
+/**
+ * Truncate string at the last complete JSON structure (matching braces/brackets).
+ * Ensures the result is valid JSON by finding where the last complete object/array ends.
+ * Only truncates after a complete structure - never in the middle of JSON.
+ */
+function truncateAtLastCompleteStructure(log: string, maxLength: number): string {
+	if (log.length <= maxLength) {
+		return log;
+	}
+
+	// Find the last complete JSON structure by matching braces/brackets
+	// We need to find where depth returns to 0 (complete root structure)
+	const truncated = log.substring(0, maxLength);
+	let depth = 0;
+	let lastCompleteIndex = -1;
+	let inString = false;
+	let escapeNext = false;
+
+	// Track the last position where depth was 0 (complete structure)
+	for (let i = 0; i < truncated.length; i++) {
+		const char = truncated[i];
+
+		if (escapeNext) {
+			escapeNext = false;
+			continue;
+		}
+
+		if (char === '\\') {
+			escapeNext = true;
+			continue;
+		}
+
+		if (char === '"' && !escapeNext) {
+			inString = !inString;
+			continue;
+		}
+
+		if (inString) {
+			continue;
+		}
+
+		if (char === '{' || char === '[') {
+			depth++;
+		} else if (char === '}' || char === ']') {
+			depth--;
+			// When depth returns to 0, we have a complete root-level structure
+			if (depth === 0) {
+				lastCompleteIndex = i;
+			}
+		}
+	}
+
+	// If we found a complete structure within reasonable range, truncate there
+	// Require it to be at least 80% of maxLength to avoid truncating too early
+	if (lastCompleteIndex > maxLength * 0.8 && lastCompleteIndex >= 0) {
+		// Verify the truncated JSON is valid by trying to parse it
+		const candidate = log.substring(0, lastCompleteIndex + 1);
+		try {
+			JSON.parse(candidate);
+			return candidate + `\n... [truncated ${log.length - lastCompleteIndex - 1} characters]`;
+		} catch {
+			// Not valid JSON, continue to fallback
+		}
+	}
+
+	// Fallback: try to find last newline (for pretty-printed JSON)
+	const lastNewline = truncated.lastIndexOf('\n');
+	if (lastNewline > maxLength * 0.9) {
+		// Try to parse up to the newline to ensure it's valid
+		const candidate = log.substring(0, lastNewline);
+		try {
+			JSON.parse(candidate);
+			return candidate + `\n... [truncated ${log.length - lastNewline} characters]`;
+		} catch {
+			// Not valid, continue
+		}
+	}
+
+	// Last resort: find any closing brace/bracket and verify it creates valid JSON
+	const lastBrace = Math.max(
+		truncated.lastIndexOf('}'),
+		truncated.lastIndexOf(']')
+	);
+
+	if (lastBrace > maxLength * 0.9) {
+		const candidate = log.substring(0, lastBrace + 1);
+		try {
+			JSON.parse(candidate);
+			return candidate + `\n... [truncated ${log.length - lastBrace - 1} characters]`;
+		} catch {
+			// Not valid, continue
+		}
+	}
+
+	// If all else fails, we can't safely truncate without breaking JSON
+	// Return the truncated version with a warning
+	return truncated + `\n... [truncated ${log.length - maxLength} characters - JSON structure may be incomplete]`;
+}
+
+/**
  * Controller for admin job management endpoints.
  */
 @ApiTags('admin-jobs')
@@ -111,6 +268,22 @@ export class AdminJobsController {
 			});
 		}
 
+		// Truncate log if too large (same logic as getJobStatus)
+		const MAX_LOG_LENGTH = 100000; // 100KB per log entry
+		let log = execution.log;
+		if (log && log.length > MAX_LOG_LENGTH) {
+			try {
+				const parsed = JSON.parse(log);
+				const truncated = truncateJsonObject(parsed, MAX_LOG_LENGTH);
+				log = JSON.stringify(truncated, null, 2);
+				if (log.length > MAX_LOG_LENGTH) {
+					log = truncateAtLastCompleteStructure(log, MAX_LOG_LENGTH);
+				}
+			} catch {
+				log = truncateAtLastCompleteStructure(log, MAX_LOG_LENGTH);
+			}
+		}
+
 		return {
 			id: execution.id,
 			jobName: execution.jobName,
@@ -119,7 +292,7 @@ export class AdminJobsController {
 			finishedAt: execution.finishedAt,
 			durationMs: execution.durationMs,
 			error: execution.error,
-			log: execution.log,
+			log: log,
 			createdAt: execution.createdAt,
 		};
 	}
@@ -166,6 +339,41 @@ export class AdminJobsController {
 
 		const executions = await this.adminJobService.getJobExecutions(name, 50);
 
+		// Truncate large log fields to prevent response size issues
+		// Ensures truncation only happens after the last complete JSON structure
+		const MAX_LOG_LENGTH = 100000; // 100KB per log entry
+		const truncatedExecutions = executions.map((exec) => {
+			let log = exec.log;
+			if (log && log.length > MAX_LOG_LENGTH) {
+				// Try to parse as JSON first - if valid, truncate intelligently
+				try {
+					const parsed = JSON.parse(log);
+					// Truncate the parsed object intelligently
+					const truncated = truncateJsonObject(parsed, MAX_LOG_LENGTH);
+					log = JSON.stringify(truncated, null, 2);
+					
+					// If still too large after intelligent truncation, use boundary detection
+					if (log.length > MAX_LOG_LENGTH) {
+						log = truncateAtLastCompleteStructure(log, MAX_LOG_LENGTH);
+					}
+				} catch {
+					// Not valid JSON - use boundary detection to find last complete structure
+					log = truncateAtLastCompleteStructure(log, MAX_LOG_LENGTH);
+				}
+			}
+			return {
+				id: exec.id,
+				jobName: exec.jobName,
+				status: exec.status,
+				startedAt: exec.startedAt,
+				finishedAt: exec.finishedAt,
+				durationMs: exec.durationMs,
+				error: exec.error,
+				log: log,
+				createdAt: exec.createdAt,
+			};
+		});
+
 		return {
 			job: {
 				name: job.name,
@@ -180,17 +388,7 @@ export class AdminJobsController {
 				createdAt: job.createdAt,
 				updatedAt: job.updatedAt,
 			},
-			executions: executions.map((exec) => ({
-				id: exec.id,
-				jobName: exec.jobName,
-				status: exec.status,
-				startedAt: exec.startedAt,
-				finishedAt: exec.finishedAt,
-				durationMs: exec.durationMs,
-				error: exec.error,
-				log: exec.log,
-				createdAt: exec.createdAt,
-			})),
+			executions: truncatedExecutions,
 		};
 	}
 
@@ -223,7 +421,29 @@ export class AdminJobsController {
 		const correlationId = this.getCorrelationId(req);
 		this.logger.info(`[${correlationId}] POST /v1/admin/jobs/${name}/trigger`);
 
-		await this.adminJobService.triggerJob(name);
+		try {
+			await this.adminJobService.triggerJob(name);
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			this.logger.error(`[${correlationId}] Failed to trigger job`, {
+				name,
+				error: errorMessage,
+			});
+
+			// Convert service errors to appropriate HTTP exceptions
+			if (errorMessage.includes('not found') || errorMessage.includes('Job handler not found')) {
+				throw new NotFoundException({
+					type: 'https://httpstatuses.io/404',
+					title: 'Job Not Found',
+					status: HttpStatus.NOT_FOUND,
+					detail: errorMessage,
+					instance: `/v1/admin/jobs/${name}/trigger`,
+				});
+			}
+
+			// Re-throw other errors (they'll be handled by global exception filter)
+			throw error;
+		}
 
 		return {
 			message: `Job ${name} triggered successfully`,

@@ -20,14 +20,14 @@ const AGENT_QUERY_CONFIG: BaseQueryConfig = {
 	allowedFilterFields: [
 		'id', 'agentId', 'title', 'firstName', 'middleName', 'lastName', 'suffix',
 		'preferredName', 'birthDate', 'lifecycleStatus', 'systemId', 'seedAgent',
-		'joinDate', 'anniversaryDate', 'terminationDate', 'isStaff', 'agentCompanyId',
+		'joinDate', 'anniversaryDate', 'terminationDate', 'isStaff',
 		// Relational filter fields (handled specially in findPage)
 		'email', 'country',
 	],
 	allowedSortFields: [
 		'id', 'agentId', 'title', 'firstName', 'middleName', 'lastName', 'suffix',
 		'preferredName', 'birthDate', 'lifecycleStatus', 'systemId', 'seedAgent',
-		'joinDate', 'anniversaryDate', 'terminationDate', 'isStaff', 'agentCompanyId',
+		'joinDate', 'anniversaryDate', 'terminationDate', 'isStaff',
 		'created', 'lastModified',
 		// Relational sort fields (handled specially in findPage)
 		'primaryEmail',
@@ -110,7 +110,6 @@ export class AgentTypeOrmRepository
 			lifecycleStatus: entity.lifecycleStatus,
 
 			// Optional string fields (always include, even if null/undefined)
-			agentCompanyId: entity.agentCompanyId ?? null,
 			title: entity.title ?? null,
 			middleName: entity.middleName ?? null,
 			suffix: entity.suffix ?? null,
@@ -140,7 +139,6 @@ export class AgentTypeOrmRepository
 		const requestedIncludes = selection?.include ?? [];
 
 		// Map relations only if loaded (singular names following GraphQL conventions)
-		if (entity.agentCompany) result.agentCompany = entity.agentCompany;
 		if (entity.agentOffice) result.agentOffice = entity.agentOffice;
 		if (entity.office) result.office = entity.office;
 		if (entity.mls) result.mls = entity.mls;
@@ -156,6 +154,9 @@ export class AgentTypeOrmRepository
 		if (entity.sponsorConfiguration) result.sponsorConfiguration = entity.sponsorConfiguration;
 		if (entity.activeLocations) result.activeLocation = entity.activeLocations;
 		if (entity.publicProfile) result.publicProfile = entity.publicProfile;
+		if (entity.licenses) result.license = entity.licenses;
+		// Direct access to companies (hides junction table)
+		if (entity.agentCompany) result.agentCompany = entity.agentCompany;
 
 		// Virtual relations - include as null if requested but not found
 		// This ensures consistent API responses when include= is specified
@@ -179,6 +180,35 @@ export class AgentTypeOrmRepository
 			result.primaryAddress = entity.primaryAddress;
 		}
 
+		if (requestedIncludes.includes('primaryLicense')) {
+			result.primaryLicense = entity.primaryLicense ?? null;
+		} else if (entity.primaryLicense) {
+			result.primaryLicense = entity.primaryLicense;
+		}
+
+		// licensedStates is a simple string array, include as empty array if requested but none found
+		if (requestedIncludes.includes('licensedStates')) {
+			result.licensedStates = entity.licensedStates ?? [];
+		} else if (entity.licensedStates) {
+			result.licensedStates = entity.licensedStates;
+		}
+
+		// agentCompanyAssociation - junction table with nested company
+		if (requestedIncludes.includes('agentCompanyAssociation') && entity.agentCompanyAssociations) {
+			result.agentCompanyAssociation = entity.agentCompanyAssociations;
+		}
+
+		// primaryAgentCompany - virtual relation for primary company
+		// The join maps the association to primaryAgentCompany, so we extract the nested company
+		if (requestedIncludes.includes('primaryAgentCompany')) {
+			// primaryAgentCompany is mapped as the association object with agentCompany nested
+			const association = entity.primaryAgentCompany as any;
+			result.primaryAgentCompany = association?.agentCompany ?? null;
+		} else if (entity.primaryAgentCompany) {
+			const association = entity.primaryAgentCompany as any;
+			result.primaryAgentCompany = association?.agentCompany ?? null;
+		}
+
 		return result as unknown as Agent;
 	}
 
@@ -195,7 +225,6 @@ export class AgentTypeOrmRepository
 		if (data.lifecycleStatus !== undefined) entityData.lifecycleStatus = data.lifecycleStatus as AgentEntity['lifecycleStatus'];
 
 		// Optional string fields
-		if (data.agentCompanyId !== undefined) entityData.agentCompanyId = data.agentCompanyId ?? undefined;
 		if (data.title !== undefined) entityData.title = data.title as AgentEntity['title'];
 		if (data.middleName !== undefined) entityData.middleName = data.middleName;
 		if (data.suffix !== undefined) entityData.suffix = data.suffix;
@@ -336,6 +365,97 @@ export class AgentTypeOrmRepository
 	}
 
 	/**
+	 * Loads the primary license for an agent with nested country and line of business.
+	 * Uses leftJoinAndMapOne to map directly to entity.primaryLicense.
+	 *
+	 * @param qb - Query builder
+	 * @param alias - Base entity alias (usually 'agent')
+	 */
+	protected loadPrimaryLicense<T>(
+		qb: SelectQueryBuilder<T>,
+		alias: string,
+	): void {
+		const licenseAlias = 'primaryLicense';
+		const countryAlias = 'primaryLicenseCountry';
+		const lobAlias = 'primaryLicenseLob';
+
+		// Join licenses where isPrimary = true
+		qb.leftJoinAndMapOne(
+			`${alias}.primaryLicense`,
+			`${alias}.licenses`,
+			licenseAlias,
+			`${licenseAlias}.isPrimary = true`,
+		);
+
+		// Join and select country from license
+		qb.leftJoinAndSelect(`${licenseAlias}.country`, countryAlias);
+
+		// Join and select line of business from license
+		qb.leftJoinAndSelect(`${licenseAlias}.lineOfBusiness`, lobAlias);
+	}
+
+	/**
+	 * Loads the primary agent company for an agent.
+	 * Uses leftJoinAndMapOne through the junction table where isPrimary = true.
+	 * The company is mapped directly to entity.primaryAgentCompany.
+	 *
+	 * @param qb - Query builder
+	 * @param alias - Base entity alias (usually 'agent')
+	 */
+	protected loadPrimaryAgentCompany<T>(
+		qb: SelectQueryBuilder<T>,
+		alias: string,
+	): void {
+		const associationAlias = 'primaryAgentCompanyAssoc';
+		const companyAlias = 'primaryAgentCompany';
+
+		// First join the junction table where isPrimary = true
+		// Then map the company entity directly to the virtual property
+		qb.leftJoinAndMapOne(
+			`${alias}.primaryAgentCompany`,
+			`${alias}.agentCompanyAssociations`,
+			associationAlias,
+			`${associationAlias}.isPrimary = true`,
+		);
+
+		// Join the company through the association
+		qb.leftJoinAndSelect(`${associationAlias}.agentCompany`, companyAlias);
+	}
+
+	/**
+	 * Loads licensed states for agents.
+	 * Uses a correlated subquery with array_agg for efficiency.
+	 * Results are loaded separately and merged with entities.
+	 *
+	 * @param agentIds - Array of agent IDs to load licensed states for
+	 * @returns Map of agent ID to array of state codes
+	 */
+	protected async loadLicensedStates(agentIds: string[]): Promise<Map<string, string[]>> {
+		if (agentIds.length === 0) {
+			return new Map();
+		}
+
+		// Use a raw query with array_agg for efficient grouping
+		// This gets all unique state codes per agent in a single query
+		const results = await this.repo.manager.query<{ agent_id: string; state_codes: string[] }[]>(
+			`SELECT 
+				l.agent_id,
+				array_agg(DISTINCT l.state_code) FILTER (WHERE l.state_code IS NOT NULL) as state_codes
+			FROM core.license l
+			WHERE l.agent_id = ANY($1)
+			GROUP BY l.agent_id`,
+			[agentIds],
+		);
+
+		const stateMap = new Map<string, string[]>();
+		for (const row of results) {
+			stateMap.set(row.agent_id, row.state_codes ?? []);
+		}
+
+		return stateMap;
+	}
+
+	/**
 	 * Load addresses with virtual state relations.
 	 * Used when include=address is specified.
 	 * Adds virtual state mapping to addresses already joined by ProjectionService.
@@ -387,7 +507,7 @@ export class AgentTypeOrmRepository
 
 		const primaryContactTypes: string[] = [];
 		for (const item of include) {
-			if (item.startsWith('primary') && item !== 'primaryAddress') {
+			if (item.startsWith('primary') && item !== 'primaryAddress' && item !== 'primaryLicense') {
 				// primaryEmail -> email, primaryPhone -> phone
 				const type = item.replace('primary', '').toLowerCase();
 				if (type) primaryContactTypes.push(type);
@@ -401,6 +521,27 @@ export class AgentTypeOrmRepository
 	 */
 	private hasPrimaryAddressInclude(include?: string[]): boolean {
 		return include?.includes('primaryAddress') ?? false;
+	}
+
+	/**
+	 * Check if primaryLicense is requested in includes.
+	 */
+	private hasPrimaryLicenseInclude(include?: string[]): boolean {
+		return include?.includes('primaryLicense') ?? false;
+	}
+
+	/**
+	 * Check if licensedStates is requested in includes.
+	 */
+	private hasLicensedStatesInclude(include?: string[]): boolean {
+		return include?.includes('licensedStates') ?? false;
+	}
+
+	/**
+	 * Check if primaryAgentCompany is requested in includes.
+	 */
+	private hasPrimaryAgentCompanyInclude(include?: string[]): boolean {
+		return include?.includes('primaryAgentCompany') ?? false;
 	}
 
 	/**
@@ -718,6 +859,7 @@ export class AgentTypeOrmRepository
 	 * Finds agents with pagination, filtering, sorting, and search.
 	 * Handles primary contact and address loading via custom joins.
 	 * Supports relational filtering (email, country) and sorting (primaryEmail).
+	 * Supports licensedStates virtual field via post-query loading.
 	 */
 	async findPage(
 		query: Partial<QueryParams>,
@@ -725,6 +867,9 @@ export class AgentTypeOrmRepository
 	): Promise<PageResult<Agent>> {
 		const primaryContactTypes = this.extractPrimaryContactTypes(selection?.include);
 		const hasPrimaryAddress = this.hasPrimaryAddressInclude(selection?.include);
+		const hasPrimaryLicense = this.hasPrimaryLicenseInclude(selection?.include);
+		const hasLicensedStates = this.hasLicensedStatesInclude(selection?.include);
+		const hasPrimaryAgentCompany = this.hasPrimaryAgentCompanyInclude(selection?.include);
 		const hasAddresses = selection?.include?.includes('address') || false;
 
 		// Parse filter if it's a JSON string (query params come in as strings)
@@ -744,6 +889,8 @@ export class AgentTypeOrmRepository
 		const needsCustomQuery =
 			primaryContactTypes.length > 0 ||
 			hasPrimaryAddress ||
+			hasPrimaryLicense ||
+			hasPrimaryAgentCompany ||
 			hasAddresses ||
 			hasRelationalFilters ||
 			hasRelationalSort;
@@ -759,17 +906,41 @@ export class AgentTypeOrmRepository
 			modifiedQuery.sort = JSON.stringify(standardSortConditions) as any;
 		}
 
+		// Helper to post-process results with licensedStates if requested
+		const addLicensedStates = async (result: PageResult<Agent>): Promise<PageResult<Agent>> => {
+			if (!hasLicensedStates || result.items.length === 0) {
+				return result;
+			}
+			
+			const agentIds = result.items.map(a => a.id);
+			const statesMap = await this.loadLicensedStates(agentIds);
+			
+			// Add licensedStates to each agent
+			const itemsWithStates = result.items.map(agent => ({
+				...agent,
+				licensedStates: statesMap.get(agent.id) ?? [],
+			}));
+			
+			return { ...result, items: itemsWithStates };
+		};
+
 		if (needsCustomQuery) {
 			// Check if primaryEmail is already being included (so we don't double-join)
 			const primaryEmailIncluded = primaryContactTypes.includes('email');
 
-			return this.findWithQuery(modifiedQuery, selection, (qb) => {
+			const result = await this.findWithQuery(modifiedQuery, selection, (qb) => {
 				// Add virtual relation joins for includes
 				if (primaryContactTypes.length > 0) {
 					this.loadPrimaryContacts(qb, this.getAlias(), primaryContactTypes);
 				}
 				if (hasPrimaryAddress) {
 					this.loadPrimaryAddress(qb, this.getAlias());
+				}
+				if (hasPrimaryLicense) {
+					this.loadPrimaryLicense(qb, this.getAlias());
+				}
+				if (hasPrimaryAgentCompany) {
+					this.loadPrimaryAgentCompany(qb, this.getAlias());
 				}
 				if (hasAddresses) {
 					this.loadAddressesWithVirtualState(qb, this.getAlias());
@@ -801,12 +972,16 @@ export class AgentTypeOrmRepository
 				//Apply UUID search if search query is provided
 				this.applyUuidSearch(qb, modifiedQuery.search);
 			}, { skipDefaultSort: hasRelationalSort });
+
+			return addLicensedStates(result);
 		}
 
-		return this.findWithQuery(modifiedQuery, selection,(qb) => {
+		const result = await this.findWithQuery(modifiedQuery, selection, (qb) => {
 			this.applyFullNameSearch(qb, modifiedQuery.search);
 			this.applyEmailSearch(qb, modifiedQuery.search);
 			this.applyUuidSearch(qb, modifiedQuery.search);
 		});
+
+		return addLicensedStates(result);
 	}
 }

@@ -11,8 +11,9 @@ import { LineOfBusinessEntity } from './line-of-business.entity.js'
 import { CountryEntity } from './country.entity.js'
 import { Searchable, Filterable, Sortable, SearchValidators } from '../../decorators/searchable-decorators.js'
 
-// Forward declaration for circular dependency
+// Forward declarations for circular dependencies
 import type { StateEntity } from './state.entity.js'
+import type { AgentEntity } from './agent.entity.js'
 
 /**
  * License type enum values.
@@ -150,9 +151,29 @@ export class LicenseEntity extends AuditableEntity {
 	@Sortable()
 	stateCode?: string
 
+	/**
+	 * Foreign key to Agent entity.
+	 * References agent.id (UUID primary key).
+	 * @public
+	 */
+	@Column({ name: 'agent_id', type: 'uuid' })
+	@Searchable({ weight: 4, behavior: 'exact', description: 'Agent ID (UUID)' })
+	@Filterable()
+	@Sortable()
+	agentId!: string
+
 	// ==========================================
 	// RELATIONSHIPS
 	// ==========================================
+
+	/**
+	 * Many-to-One relationship with Agent.
+	 * Each license belongs to one agent.
+	 * @public
+	 */
+	@ManyToOne('AgentEntity')
+	@JoinColumn({ name: 'agent_id' })
+	agent?: AgentEntity
 
 	/**
 	 * Many-to-One relationship with LineOfBusiness.

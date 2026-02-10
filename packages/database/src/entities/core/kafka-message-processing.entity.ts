@@ -15,6 +15,7 @@ export enum KafkaMessageStatus {
 	SENT = 'SENT',
 	PROCESSED = 'PROCESSED',
 	ERROR = 'ERROR',
+	RETRYING = 'RETRYING',
 }
 
 /**
