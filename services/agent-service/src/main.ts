@@ -308,7 +308,7 @@ async function bootstrap() {
 		console.error('[BOOTSTRAP] Step 6: Configuring interceptors...')
 		try {
 			const environment = configService.get('NODE_ENV')
-			const includeQueryMetadata = environment === 'local' || environment === 'dev'
+			const includeQueryMetadata = environment === 'local'
 
 			// CRITICAL: ResponseHeaderFixInterceptor must run LAST to fix headers after all other interceptors
 			// This ensures Content-Length is removed when Transfer-Encoding is present

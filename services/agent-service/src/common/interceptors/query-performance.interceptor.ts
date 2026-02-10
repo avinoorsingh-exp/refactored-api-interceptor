@@ -280,6 +280,9 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
         // Update performance duration
         queryMetadata.performance.durationMs = Date.now() - startTime;
 
+        // Skip wrapping for API monitoring routes (they return arrays directly)
+        const isApiMonitoringRoute = request.url.startsWith('/v1/api-monitoring');
+
         // If response has meta, merge it
         if (data && typeof data === 'object' && 'meta' in data) {
           return {
@@ -303,8 +306,12 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
           };
         }
 
-        // Wrap array responses
+        // Wrap array responses (but skip API monitoring routes)
         if (Array.isArray(data)) {
+          // API monitoring routes should return arrays directly (matching dev/test behavior)
+          if (isApiMonitoringRoute) {
+            return data;
+          }
           return {
             data,
             meta: {
