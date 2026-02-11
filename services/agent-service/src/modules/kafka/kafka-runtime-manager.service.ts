@@ -470,34 +470,28 @@ export class KafkaRuntimeManager {
 
 		const instance = await service.start() as Consumer;
 		
-		// CRITICAL: Subscribe to ALL topics that might be used by this groupId
-		// This ensures we don't have issues with dynamic subscriptions after consumer.run()
-		// Find all registered services with the same groupId to subscribe upfront
-		const allTopicsForGroup = Array.from(this.registry.values())
-			.filter(r => r.groupId === groupId && r.type === 'consumer')
-			.map(r => r.topic);
+		// CRITICAL: Only subscribe to topics that have handlers registered
+		// We start with just the first service's topic. Other services will attach
+		// via restartConsumerGroup, which will add their topics (with handlers) before routing starts.
+		// This ensures we never subscribe to topics without handlers, preventing runtime warnings.
+		const initialTopics = [runtime.topic];
 		
-		// Remove duplicates and ensure current topic is included
-		const uniqueTopics = Array.from(new Set([...allTopicsForGroup, runtime.topic]));
+		// Subscribe to the first service's topic only
+		await instance.subscribe({ 
+			topics: initialTopics,
+			fromBeginning: false 
+		});
+		this.logger.info(`Subscribed consumer to initial topic for group`, {
+			groupId,
+			topics: initialTopics,
+		});
 		
-		// Subscribe to all topics at once BEFORE calling consumer.run()
-		if (uniqueTopics.length > 0) {
-			await instance.subscribe({ 
-				topics: uniqueTopics,  // Subscribe to all topics upfront
-				fromBeginning: false 
-			});
-			this.logger.info(`Subscribed consumer to all topics for group`, {
-				groupId,
-				topics: uniqueTopics,
-			});
-		}
-		
-		// Create group registry entry with all topics
+		// Create handler for the first service
 		const handler = await this.createMessageHandler(service, runtime.topic);
 		const groupRegistry: GroupConsumerRegistry = {
 			consumerInstance: instance,
 			groupId,
-			topics: new Set(uniqueTopics),  // Track all subscribed topics
+			topics: new Set(initialTopics),  // Start with just the first topic
 			services: new Set([id]),
 			messageHandlers: new Map([[runtime.topic, handler]]),
 			status: KafkaServiceStatus.RUNNING,
@@ -514,14 +508,14 @@ export class KafkaRuntimeManager {
 		runtime.error = undefined;
 
 		// Set up message routing for the shared consumer
-		// This calls consumer.run() AFTER all topics are subscribed
+		// This calls consumer.run() AFTER handler is registered
 		this.setupMessageRouting(groupRegistry);
 
 		this.logger.info(`Consumer group created successfully`, {
 			serviceId: id,
 			groupId,
 			topic: runtime.topic,
-			allTopics: uniqueTopics,
+			subscribedTopics: Array.from(groupRegistry.topics),
 			registeredHandlers: Array.from(groupRegistry.messageHandlers.keys()),
 		});
 		
