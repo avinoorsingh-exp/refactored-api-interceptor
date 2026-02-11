@@ -674,25 +674,55 @@ export class KafkaRuntimeManager {
 			});
 		}
 		
-		// If restart is already in progress, queue the topic and return immediately (non-blocking)
+		// If restart is already in progress, queue the topic and wait for restart to complete
 		if (groupRegistry.restartState === RestartState.RESTARTING) {
 			groupRegistry.restartState = RestartState.QUEUED;
-			this.logger.info(`Restart in progress - topic queued for next restart`, {
+			this.logger.info(`Restart in progress - topic queued, waiting for current restart to complete`, {
 				groupId,
 				requestedTopic: newTopic,
 				queuedTopics: Array.from(groupRegistry.topicQueue.keys()),
 			});
-			return; // Return immediately - restart will be scheduled after current one completes
+			
+			// Wait for the current restart to complete
+			const currentRestartPromise = this.groupRestartLocks.get(groupId);
+			if (currentRestartPromise) {
+				await currentRestartPromise;
+				
+				// After restart completes, verify subscription and handle any additional restarts
+				// Only wait for subscription if we have a real topic to wait for
+				if (newTopic) {
+					await this.waitForTopicSubscription(groupId, newTopic, service);
+				}
+			} else {
+				// No restart promise found - this shouldn't happen, but handle gracefully
+				this.logger.warn(`Restart state is RESTARTING but no restart promise found`, {
+					groupId,
+					requestedTopic: newTopic,
+				});
+			}
+			return;
 		}
 		
-		// If restart is queued (waiting for current restart to complete), just queue and return
+		// If restart is queued (waiting for current restart to complete), queue and wait
 		if (groupRegistry.restartState === RestartState.QUEUED) {
-			this.logger.info(`Restart already queued - topic added to queue`, {
+			this.logger.info(`Restart already queued - topic added to queue, waiting for restart`, {
 				groupId,
 				requestedTopic: newTopic,
 				queuedTopics: Array.from(groupRegistry.topicQueue.keys()),
 			});
-			return; // Return immediately - restart will be scheduled after current one completes
+			
+			// Wait for any in-progress restart
+			const currentRestartPromise = this.groupRestartLocks.get(groupId);
+			if (currentRestartPromise) {
+				await currentRestartPromise;
+			}
+			
+			// Verify subscription and handle any additional restarts
+			// Only wait for subscription if we have a real topic to wait for
+			if (newTopic) {
+				await this.waitForTopicSubscription(groupId, newTopic, service);
+			}
+			return;
 		}
 		
 		// Restart is idle - start a new restart
@@ -811,6 +841,81 @@ export class KafkaRuntimeManager {
 		
 		// Wait for restart to complete
 		await restartPromise;
+	}
+
+	/**
+	 * Wait for a topic to be successfully subscribed, handling any additional restarts if needed.
+	 * This method will wait for all queued topics to be processed and subscribed.
+	 * 
+	 * @param groupId - The consumer group ID
+	 * @param topic - The topic to wait for
+	 * @param service - The service instance (for triggering additional restarts if needed)
+	 */
+	private async waitForTopicSubscription(groupId: string, topic: string, service: RegisterableKafkaService): Promise<void> {
+		const maxWaitTime = 30000; // 30 seconds max wait time
+		const startTime = Date.now();
+		const checkInterval = 100; // Check every 100ms
+		let lastRestartPromise: Promise<void> | undefined;
+		
+		while (Date.now() - startTime < maxWaitTime) {
+			const registry = this.groupConsumers.get(groupId);
+			if (!registry) {
+				throw new Error(`Consumer group ${groupId} was lost while waiting for topic subscription`);
+			}
+			
+			// Check if topic is now subscribed
+			if (registry.topics.has(topic)) {
+				this.logger.info(`Topic successfully subscribed after restart`, {
+					groupId,
+					topic,
+					subscribedTopics: Array.from(registry.topics),
+				});
+				return; // Success - topic is subscribed
+			}
+			
+			// If topic is still queued, wait for any in-progress restart
+			if (registry.restartState === RestartState.RESTARTING) {
+				const restartPromise = this.groupRestartLocks.get(groupId);
+				if (restartPromise && restartPromise !== lastRestartPromise) {
+					this.logger.info(`Topic still queued, waiting for additional restart to complete`, {
+						groupId,
+						topic,
+						queuedTopics: Array.from(registry.topicQueue.keys()),
+					});
+					lastRestartPromise = restartPromise;
+					await restartPromise;
+					// Continue loop to check if topic is now subscribed
+					continue;
+				}
+			}
+			
+			// If topic is queued but no restart is in progress, check if we need to trigger one
+			if (registry.topicQueue.has(topic) && registry.restartState === RestartState.IDLE) {
+				// Topic is queued but no restart is happening - trigger one
+				this.logger.info(`Topic is queued but no restart in progress - triggering restart`, {
+					groupId,
+					topic,
+					queuedTopics: Array.from(registry.topicQueue.keys()),
+				});
+				// Trigger restart (this will process all queued topics and wait for completion)
+				// Pass empty topic since it's already queued
+				await this.restartConsumerGroup(groupId, '', service);
+				// Continue loop to check if topic is now subscribed
+				continue;
+			}
+			
+			// If topic is not queued and not subscribed, something went wrong
+			if (!registry.topicQueue.has(topic) && !registry.topics.has(topic)) {
+				throw new Error(`Topic ${topic} is not queued and not subscribed - restart may have failed`);
+			}
+			
+			// Wait a bit before checking again
+			await new Promise(resolve => setTimeout(resolve, checkInterval));
+		}
+		
+		// Timeout - topic was not subscribed
+		const finalRegistry = this.groupConsumers.get(groupId);
+		throw new Error(`Timeout waiting for topic ${topic} to be subscribed. Current topics: ${finalRegistry ? Array.from(finalRegistry.topics).join(', ') : 'unknown'}, Queued topics: ${finalRegistry ? Array.from(finalRegistry.topicQueue.keys()).join(', ') : 'unknown'}`);
 	}
 
 	/**
