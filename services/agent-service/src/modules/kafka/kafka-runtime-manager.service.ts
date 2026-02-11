@@ -1123,9 +1123,9 @@ export class KafkaRuntimeManager {
 			const timeout = setTimeout(() => {
 				if (!resolved) {
 					resolved = true;
-					reject(new Error(`Consumer did not become ready within 5 seconds`));
+					reject(new Error(`Consumer did not become ready within 15 seconds`));
 				}
-			}, 5000);
+			}, 15000);
 			
 			let groupJoined = false;
 			let resolved = false;
