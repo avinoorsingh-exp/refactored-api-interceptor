@@ -36,6 +36,15 @@ export interface KafkaServiceRuntime {
 type MessageHandler = (payload: { topic: string; partition: number; message: KafkaMessage }) => Promise<void>;
 
 /**
+ * Restart state for a consumer group.
+ */
+enum RestartState {
+	IDLE = 'idle', // No restart in progress
+	RESTARTING = 'restarting', // Restart is currently executing
+	QUEUED = 'queued', // Topics are queued, waiting for current restart to complete
+}
+
+/**
  * Group-based consumer registry entry.
  * 
  * CRITICAL: Kafka consumer groups only allow ONE active consumer instance per groupId.
@@ -52,6 +61,8 @@ interface GroupConsumerRegistry {
 	status: KafkaServiceStatus;
 	startedAt: Date;
 	routingStartedAt?: Date; // Timestamp when message routing started (for startup window detection)
+	restartState: RestartState; // Current restart state
+	topicQueue: Map<string, MessageHandler>; // Topics queued for next restart (topic -> handler)
 }
 
 /**
@@ -145,13 +156,6 @@ export class KafkaRuntimeManager {
 	 */
 	private readonly groupRestartLocks = new Map<string, Promise<void>>();
 
-	/**
-	 * Pending restart requests per groupId.
-	 * Tracks topics and handlers that are waiting to be added during the next restart.
-	 * Key: groupId
-	 * Value: Map of topic -> handler
-	 */
-	private readonly pendingRestartRequests = new Map<string, Map<string, MessageHandler>>();
 
 	private readonly logger: LoggerService;
 	private readonly kafkaClientService: KafkaClientService;
@@ -575,6 +579,8 @@ export class KafkaRuntimeManager {
 			status: KafkaServiceStatus.RUNNING,
 			startedAt: new Date(),
 			routingStartedAt: undefined, // Will be set when routing starts
+			restartState: RestartState.IDLE,
+			topicQueue: new Map(), // Queue for topics waiting to be added
 		};
 
 		this.groupConsumers.set(groupId, groupRegistry);
@@ -652,157 +658,159 @@ export class KafkaRuntimeManager {
 	 * @param newTopicHandler - The handler for the new topic (must be registered before routing starts)
 	 */
 	private async restartConsumerGroup(groupId: string, newTopic: string, service: RegisterableKafkaService, newTopicHandler?: MessageHandler): Promise<void> {
-		// Step 1: Add this request to pending requests
-		if (!this.pendingRestartRequests.has(groupId)) {
-			this.pendingRestartRequests.set(groupId, new Map());
-		}
-		const pendingRequests = this.pendingRestartRequests.get(groupId)!;
-		
-		if (newTopicHandler) {
-			pendingRequests.set(newTopic, newTopicHandler);
+		const groupRegistry = this.groupConsumers.get(groupId);
+		if (!groupRegistry) {
+			throw new Error(`Consumer group ${groupId} not found`);
 		}
 		
-		// Log restart request
-		this.logger.info(`restart_requested`, {
-			groupId,
-			requestedTopic: newTopic,
-			pendingTopics: Array.from(pendingRequests.keys()),
-		});
+		// If handler is provided, add topic and handler to queue
+		if (newTopicHandler && newTopic) {
+			groupRegistry.topicQueue.set(newTopic, newTopicHandler);
+			this.logger.info(`Topic queued for restart`, {
+				groupId,
+				requestedTopic: newTopic,
+				queuedTopics: Array.from(groupRegistry.topicQueue.keys()),
+				restartState: groupRegistry.restartState,
+			});
+		}
 		
-		// Step 2: Acquire restart lock to prevent concurrent restarts
-		let restartPromise = this.groupRestartLocks.get(groupId);
+		// If restart is already in progress, queue the topic and return immediately (non-blocking)
+		if (groupRegistry.restartState === RestartState.RESTARTING) {
+			groupRegistry.restartState = RestartState.QUEUED;
+			this.logger.info(`Restart in progress - topic queued for next restart`, {
+				groupId,
+				requestedTopic: newTopic,
+				queuedTopics: Array.from(groupRegistry.topicQueue.keys()),
+			});
+			return; // Return immediately - restart will be scheduled after current one completes
+		}
 		
-		if (!restartPromise) {
-			// We're the first one to request restart - create the lock first to prevent others from starting
-			const groupRegistry = this.groupConsumers.get(groupId);
-			if (!groupRegistry) {
-				throw new Error(`Consumer group ${groupId} not found`);
-			}
-			
-			// Create a promise that will execute the restart
-			// This ensures the lock is set immediately, preventing other services from starting a new restart
-			const executeRestart = async (): Promise<void> => {
-				// Step 3: Add a short delay (~10ms) to allow other services to enqueue their pending topics
-				// This ensures we collect all simultaneous requests in a single batch
+		// If restart is queued (waiting for current restart to complete), just queue and return
+		if (groupRegistry.restartState === RestartState.QUEUED) {
+			this.logger.info(`Restart already queued - topic added to queue`, {
+				groupId,
+				requestedTopic: newTopic,
+				queuedTopics: Array.from(groupRegistry.topicQueue.keys()),
+			});
+			return; // Return immediately - restart will be scheduled after current one completes
+		}
+		
+		// Restart is idle - start a new restart
+		// Check if there are any topics to process
+		if (groupRegistry.topicQueue.size === 0) {
+			this.logger.warn(`Restart requested but no topics in queue`, {
+				groupId,
+				requestedTopic: newTopic,
+			});
+			return;
+		}
+		
+		// Mark restart as in progress
+		groupRegistry.restartState = RestartState.RESTARTING;
+		
+		// Create restart promise
+		const executeRestart = async (): Promise<void> => {
+			try {
+				// Add a short delay to allow other services to enqueue their topics
 				await new Promise(resolve => setTimeout(resolve, 10));
 				
-				// Step 4: Re-read pendingRestartRequests after the delay to collect all topics waiting for restart
-				const currentPendingRequests = this.pendingRestartRequests.get(groupId);
-				if (!currentPendingRequests || currentPendingRequests.size === 0) {
-					// No pending requests - this shouldn't happen, but handle gracefully
-					this.logger.warn(`No pending requests found after lock acquisition`, {
+				// Re-read the queue after delay to collect all topics
+				const currentRegistry = this.groupConsumers.get(groupId);
+				if (!currentRegistry) {
+					throw new Error(`Consumer group ${groupId} was lost during restart`);
+				}
+				
+				// Collect all queued topics that need to be added
+				const topicsToAdd = new Set<string>();
+				const handlersToAdd = new Map<string, MessageHandler>();
+				
+				for (const [topic, handler] of currentRegistry.topicQueue.entries()) {
+					if (!currentRegistry.topics.has(topic)) {
+						topicsToAdd.add(topic);
+						handlersToAdd.set(topic, handler);
+					}
+				}
+				
+				if (topicsToAdd.size === 0) {
+					this.logger.info(`No new topics to add after collecting queue`, {
 						groupId,
-						initialRequest: newTopic,
+						queuedTopics: Array.from(currentRegistry.topicQueue.keys()),
+						existingTopics: Array.from(currentRegistry.topics),
 					});
+					// Clear queue since all topics are already subscribed
+					currentRegistry.topicQueue.clear();
+					currentRegistry.restartState = RestartState.IDLE;
 					return;
 				}
 				
-				// Step 5: Collect ALL pending topics that have handlers ready
-				// CRITICAL: Only include topics with handlers to avoid subscribing without handlers
-				const allPendingTopics = new Set<string>();
-				const allPendingHandlers = new Map<string, MessageHandler>();
-				
-				for (const [topic, handler] of currentPendingRequests.entries()) {
-					if (!groupRegistry.topics.has(topic)) {
-						allPendingTopics.add(topic);
-						allPendingHandlers.set(topic, handler);
-					}
-				}
-				
-				// Log collected pending topics
-				this.logger.info(`pending_topics_collected`, {
+				this.logger.info(`Restart started - processing queued topics`, {
 					groupId,
-					pendingTopics: Array.from(allPendingTopics),
-					pendingHandlers: Array.from(allPendingHandlers.keys()),
-					existingTopics: Array.from(groupRegistry.topics),
+					topicsToAdd: Array.from(topicsToAdd),
+					existingTopics: Array.from(currentRegistry.topics),
+					queuedTopics: Array.from(currentRegistry.topicQueue.keys()),
 				});
 				
-				// Step 6: Clear pending requests since we're processing them
-				currentPendingRequests.clear();
+				// Execute restart with all queued topics
+				await this.executeRestartWithMultipleTopics(groupId, Array.from(topicsToAdd), service, handlersToAdd);
 				
-				// Step 7: Execute restart with all pending topics
-				// This will subscribe to all topics at once and register all handlers before calling consumer.run()
-				await this.executeRestartWithMultipleTopics(groupId, Array.from(allPendingTopics), service, allPendingHandlers);
-			};
-			
-			// Set the lock immediately to prevent concurrent restarts
-			restartPromise = executeRestart();
-			this.groupRestartLocks.set(groupId, restartPromise);
-			
-			// Clean up lock after restart completes
-			restartPromise.finally(() => {
-				this.groupRestartLocks.delete(groupId);
-				// Clear any remaining pending requests
-				this.pendingRestartRequests.delete(groupId);
-			});
-		} else {
-			// Another restart is in progress - wait for it to complete
-			// CRITICAL: Capture the consumer instance ID before waiting to detect if a new restart started
-			const groupRegistryBeforeWait = this.groupConsumers.get(groupId);
-			if (!groupRegistryBeforeWait) {
-				throw new Error(`Consumer group ${groupId} not found`);
-			}
-			const consumerInstanceIdBeforeWait = groupRegistryBeforeWait.consumerInstanceId;
-			
-			this.logger.info(`Consumer group restart already in progress - waiting for completion`, {
-				groupId,
-				newTopic,
-				consumerInstanceIdBeforeWait,
-			});
-			await restartPromise;
-			
-			// After restart promise resolves, verify we're still on the same consumer instance
-			// If a new restart started, the instance ID will have changed and we should continue waiting
-			const updatedGroup = this.groupConsumers.get(groupId);
-			if (!updatedGroup) {
-				throw new Error(`Consumer group ${groupId} was lost during restart`);
-			}
-			
-			// Check if consumer instance changed (meaning a new restart started)
-			if (updatedGroup.consumerInstanceId !== consumerInstanceIdBeforeWait) {
-				// Consumer instance changed - a new restart started after the promise resolved
-				// Check if there's a new restart in progress
-				const newRestartPromise = this.groupRestartLocks.get(groupId);
-				if (newRestartPromise) {
-					this.logger.info(`Consumer instance changed during wait - new restart in progress, continuing to wait`, {
+				// After restart completes, check if new topics were queued during restart
+				const finalRegistry = this.groupConsumers.get(groupId);
+				if (!finalRegistry) {
+					throw new Error(`Consumer group ${groupId} was lost after restart`);
+				}
+				
+				// Clear processed topics from queue
+				for (const topic of topicsToAdd) {
+					finalRegistry.topicQueue.delete(topic);
+				}
+				
+				this.logger.info(`Restart completed successfully`, {
+					groupId,
+					topicsAdded: Array.from(topicsToAdd),
+					remainingQueuedTopics: Array.from(finalRegistry.topicQueue.keys()),
+					consumerAssignment: Array.from(finalRegistry.topics),
+				});
+				
+				// If new topics were queued during restart, schedule another restart
+				if (finalRegistry.topicQueue.size > 0) {
+					this.logger.info(`New topics queued during restart - scheduling another restart`, {
 						groupId,
-						newTopic,
-						oldConsumerInstanceId: consumerInstanceIdBeforeWait,
-						newConsumerInstanceId: updatedGroup.consumerInstanceId,
+						queuedTopics: Array.from(finalRegistry.topicQueue.keys()),
 					});
-					// Continue waiting for the new restart
-					await newRestartPromise;
-					// Re-check after new restart completes
-					const finalGroup = this.groupConsumers.get(groupId);
-					if (!finalGroup) {
-						throw new Error(`Consumer group ${groupId} was lost during restart`);
-					}
-					// Verify topic is now subscribed
-					if (!finalGroup.topics.has(newTopic)) {
-						// Topic still not added - trigger another restart
-						this.logger.warn(`Topic not found after restart - will be included in next restart batch`, {
-							groupId,
-							newTopic,
-							subscribedTopics: Array.from(finalGroup.topics),
-						});
-						await this.restartConsumerGroup(groupId, newTopic, service, newTopicHandler);
-					}
-					return;
+					// Reset state to IDLE so next restart can start
+					finalRegistry.restartState = RestartState.IDLE;
+					// Schedule another restart (this will be non-blocking if restart is already in progress)
+					await this.restartConsumerGroup(groupId, '', service); // Empty topic since it's already queued
+				} else {
+					// No more topics queued - mark as idle
+					finalRegistry.restartState = RestartState.IDLE;
 				}
-			}
-			
-			// Consumer instance matches - verify our topic was added
-			if (!updatedGroup.topics.has(newTopic)) {
-				// Topic wasn't added - this means it wasn't in the batch, trigger another restart
-				this.logger.warn(`Topic not found after restart - will be included in next restart batch`, {
+			} catch (error) {
+				// On error, mark as idle and log
+				const errorRegistry = this.groupConsumers.get(groupId);
+				if (errorRegistry) {
+					errorRegistry.restartState = RestartState.IDLE;
+				}
+				this.logger.error(`Restart failed`, {
 					groupId,
-					newTopic,
-					subscribedTopics: Array.from(updatedGroup.topics),
+					error: error instanceof Error ? error.message : 'Unknown error',
+					stack: error instanceof Error ? error.stack : undefined,
 				});
-				// Re-request restart - it will be batched with other pending requests
-				await this.restartConsumerGroup(groupId, newTopic, service, newTopicHandler);
+				throw error;
 			}
-		}
+		};
+		
+		// Set the lock immediately to prevent concurrent restarts
+		const restartPromise = executeRestart();
+		this.groupRestartLocks.set(groupId, restartPromise);
+		
+		// Clean up lock after restart completes
+		restartPromise.finally(() => {
+			this.groupRestartLocks.delete(groupId);
+		});
+		
+		// Wait for restart to complete
+		await restartPromise;
 	}
 
 	/**
@@ -963,7 +971,15 @@ export class KafkaRuntimeManager {
 		// STEP 11: Restart message routing with the new consumer
 		// This must happen AFTER all handlers are registered
 		// CRITICAL: Await until consumer has fully joined the group before resolving restart
+		// The setupMessageRouting method awaits readyPromise, which only resolves when:
+		// - Consumer has joined the group (GROUP_JOIN event)
+		// - All expected topics are subscribed/assigned
+		// This ensures the restart promise does not resolve until the consumer is truly ready
 		await this.setupMessageRouting(groupRegistry);
+
+		// At this point, the consumer has fully joined the group and all topics are subscribed
+		// The "Consumer joined group - restart complete" log has been emitted in setupMessageRouting
+		// This is the correct resolution point for the restart promise
 
 		this.logger.info(`consumer_created`, {
 			groupId,
@@ -1128,6 +1144,7 @@ export class KafkaRuntimeManager {
 			}, 15000);
 			
 			let groupJoined = false;
+			let memberAssignment: Record<string, number[]> | null = null;
 			let resolved = false;
 			let pendingCheckTimeout: NodeJS.Timeout | null = null;
 			
@@ -1137,11 +1154,14 @@ export class KafkaRuntimeManager {
 					return; // Already resolved/rejected
 				}
 				groupJoined = true;
+				memberAssignment = event.payload.memberAssignment || {};
 				this.logger.info('Consumer joined group', {
 					groupId: groupRegistry.groupId,
 					consumerInstanceId: groupRegistry.consumerInstanceId,
 					memberId: event.payload.memberId,
 					isLeader: event.payload.isLeader,
+					consumerAssignment: memberAssignment, // Full partition assignment per topic
+					assignedTopics: Object.keys(memberAssignment),
 				});
 				// After GROUP_JOIN, verify all topics are subscribed and consumer is running
 				checkReadiness();
@@ -1178,10 +1198,17 @@ export class KafkaRuntimeManager {
 					return;
 				}
 				
+				// Verify topics are in the registry AND actually assigned to this consumer
 				const subscribedTopics = currentRegistry.topics;
-				const allTopicsSubscribed = Array.from(expectedTopics).every(topic => subscribedTopics.has(topic));
+				const assignedTopics = memberAssignment ? new Set(Object.keys(memberAssignment)) : new Set<string>();
 				
-				if (allTopicsSubscribed) {
+				// All expected topics must be:
+				// 1. In the registry's topics set (we subscribed to them)
+				// 2. Actually assigned to this consumer (from GROUP_JOIN event)
+				const allTopicsInRegistry = Array.from(expectedTopics).every(topic => subscribedTopics.has(topic));
+				const allTopicsAssigned = memberAssignment ? Array.from(expectedTopics).every(topic => assignedTopics.has(topic)) : false;
+				
+				if (allTopicsInRegistry && allTopicsAssigned) {
 					resolved = true;
 					clearTimeout(timeout);
 					if (pendingCheckTimeout) {
@@ -1192,10 +1219,12 @@ export class KafkaRuntimeManager {
 						consumerInstanceId: groupRegistry.consumerInstanceId,
 						expectedTopics: Array.from(expectedTopics),
 						subscribedTopics: Array.from(subscribedTopics),
+						assignedTopics: Array.from(assignedTopics),
+						consumerAssignment: memberAssignment, // Full partition assignment per topic
 					});
 					resolve();
 				} else {
-					// Not all topics subscribed yet - check again after a short delay
+					// Not all topics subscribed/assigned yet - check again after a short delay
 					pendingCheckTimeout = setTimeout(checkReadiness, 50);
 				}
 			};
