@@ -24,7 +24,7 @@ export class KafkaClientService implements OnModuleDestroy {
 		const config = configService.getAll();
 		
 		// Build Kafka config - match transaction-service approach
-		// For plaintext connections, only set clientId and brokers
+		// For plaintext connections, explicitly set ssl: false to prevent TLS handshake
 		// Only add ssl/sasl if explicitly enabled
 		const kafkaConfig: KafkaConfig = {
 			clientId: config.KAFKA_CLIENT_ID,
@@ -32,8 +32,8 @@ export class KafkaClientService implements OnModuleDestroy {
 		};
 		
 		// Only add SSL/SASL if KAFKA_SSL is explicitly true
-		// For plaintext connections (port 9092), omit ssl and sasl entirely
-		const kafkaSslEnabled = config.KAFKA_SSL || String(config.KAFKA_SSL).toLowerCase() === 'true' || String(config.KAFKA_SSL) === '1';
+		// For plaintext connections (port 9092), explicitly set ssl: false
+		const kafkaSslEnabled = config.KAFKA_SSL === true || String(config.KAFKA_SSL).toLowerCase() === 'true' || String(config.KAFKA_SSL) === '1';
 		
 		if (kafkaSslEnabled) {
 			kafkaConfig.ssl = true;
@@ -47,12 +47,15 @@ export class KafkaClientService implements OnModuleDestroy {
 				};
 				kafkaConfig.sasl = sasl;
 			}
+		} else {
+			// Explicitly disable SSL to prevent KafkaJS from attempting TLS handshake
+			kafkaConfig.ssl = false;
 		}
 
 		this.logger.info('Creating Kafka client', {
 			clientId: kafkaConfig.clientId,
 			brokers: kafkaConfig.brokers,
-			ssl: kafkaConfig.ssl ?? false,
+			ssl: kafkaConfig.ssl,
 			saslEnabled: !!kafkaConfig.sasl,
 			KAFKA_SSL_raw: config.KAFKA_SSL,
 			KAFKA_SSL_type: typeof config.KAFKA_SSL,
