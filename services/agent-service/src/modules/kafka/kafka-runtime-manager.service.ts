@@ -44,6 +44,7 @@ type MessageHandler = (payload: { topic: string; partition: number; message: Kaf
  */
 interface GroupConsumerRegistry {
 	consumerInstance: Consumer;
+	consumerInstanceId: string; // Unique ID for this consumer instance (for tracking)
 	groupId: string;
 	topics: Set<string>; // Topics currently subscribed
 	services: Set<string>; // Service IDs attached to this consumer
@@ -136,6 +137,13 @@ export class KafkaRuntimeManager {
 	 * Value: Promise that resolves when the group is ready
 	 */
 	private readonly groupCreationLocks = new Map<string, Promise<GroupConsumerRegistry>>();
+
+	/**
+	 * Locks for consumer group restarts to prevent concurrent restarts.
+	 * Key: groupId
+	 * Value: Promise that resolves when the restart completes
+	 */
+	private readonly groupRestartLocks = new Map<string, Promise<void>>();
 
 	private readonly logger: LoggerService;
 	private readonly kafkaClientService: KafkaClientService;
@@ -304,9 +312,16 @@ export class KafkaRuntimeManager {
 					throw new Error(`Failed to create message handler for topic ${runtime.topic}`);
 				}
 				
+				// DEFENSIVE CHECK: Verify group still exists and we have the right consumer
+				const groupBeforeRestart = this.groupConsumers.get(groupId);
+				if (!groupBeforeRestart || groupBeforeRestart !== existingGroup) {
+					throw new Error(`Consumer group changed during handler creation - concurrent modification detected`);
+				}
+				
 				// Always restart the consumer group when attaching a new service
 				// This ensures the consumer is properly subscribed to all topics before run()
 				// Pass the handler so it can be registered before routing starts
+				// The restartConsumerGroup method uses a lock to prevent concurrent restarts
 				await this.restartConsumerGroup(groupId, runtime.topic, service, handler);
 				
 				// Get the updated group registry after restart
@@ -468,7 +483,23 @@ export class KafkaRuntimeManager {
 			topic: runtime.topic,
 		});
 
+		// DEFENSIVE CHECK: Verify no consumer already exists for this groupId
+		const existingGroup = this.groupConsumers.get(groupId);
+		if (existingGroup && existingGroup.consumerInstance) {
+			throw new Error(`Consumer already exists for groupId ${groupId} - cannot create another`);
+		}
+
 		const instance = await service.start() as Consumer;
+		
+		// Generate unique consumer instance ID for tracking
+		const consumerInstanceId = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+		
+		this.logger.info(`consumer_created`, {
+			groupId,
+			consumerInstanceId,
+			serviceId: id,
+			topic: runtime.topic,
+		});
 		
 		// CRITICAL: Only subscribe to topics that have handlers registered
 		// We start with just the first service's topic. Other services will attach
@@ -483,13 +514,16 @@ export class KafkaRuntimeManager {
 		});
 		this.logger.info(`Subscribed consumer to initial topic for group`, {
 			groupId,
+			consumerInstanceId,
 			topics: initialTopics,
 		});
 		
 		// Create handler for the first service
 		const handler = await this.createMessageHandler(service, runtime.topic);
+		
 		const groupRegistry: GroupConsumerRegistry = {
 			consumerInstance: instance,
+			consumerInstanceId,
 			groupId,
 			topics: new Set(initialTopics),  // Start with just the first topic
 			services: new Set([id]),
@@ -514,6 +548,7 @@ export class KafkaRuntimeManager {
 		this.logger.info(`Consumer group created successfully`, {
 			serviceId: id,
 			groupId,
+			consumerInstanceId: groupRegistry.consumerInstanceId,
 			topic: runtime.topic,
 			subscribedTopics: Array.from(groupRegistry.topics),
 			registeredHandlers: Array.from(groupRegistry.messageHandlers.keys()),
@@ -558,20 +593,13 @@ export class KafkaRuntimeManager {
 	/**
 	 * Restart a consumer group to add a new topic.
 	 * 
-	 * CRITICAL: KafkaJS does not allow topics to be added after consumer.run() has started.
-	 * Any change to the logical subscription set MUST result in a consumer restart
-	 * so KafkaJS re-subscribes correctly.
+	 * CRITICAL INVARIANT: There must be exactly ONE Consumer instance per groupId at any time.
 	 * 
-	 * This method is idempotent - calling it multiple times with the same topic is safe.
-	 * It preserves all existing handlers and services, ensuring no message processing is lost.
-	 * 
-	 * The restart process:
-	 * 1. Preserves all existing handlers and services
-	 * 2. Disconnects the current consumer cleanly
-	 * 3. Creates a new consumer instance
-	 * 4. Subscribes to all topics (existing + new) BEFORE calling run()
-	 * 5. Restores all handlers and services, registers new handler
-	 * 6. Restarts message routing
+	 * This method enforces the invariant by:
+	 * 1. Acquiring a per-groupId restart lock to prevent concurrent restarts
+	 * 2. Properly tearing down the old consumer: stop() → disconnect() → remove from registry
+	 * 3. Creating exactly ONE new consumer instance
+	 * 4. Registering all handlers before starting routing
 	 * 
 	 * @param groupId - The consumer group ID
 	 * @param newTopic - The new topic to add (will be added to existing topics)
@@ -579,44 +607,138 @@ export class KafkaRuntimeManager {
 	 * @param newTopicHandler - The handler for the new topic (must be registered before routing starts)
 	 */
 	private async restartConsumerGroup(groupId: string, newTopic: string, service: RegisterableKafkaService, newTopicHandler?: MessageHandler): Promise<void> {
+		// Acquire restart lock to prevent concurrent restarts
+		let restartPromise = this.groupRestartLocks.get(groupId);
+		
+		if (!restartPromise) {
+			// We're the first one to request restart - create the lock
+			restartPromise = this.executeRestart(groupId, newTopic, service, newTopicHandler);
+			this.groupRestartLocks.set(groupId, restartPromise);
+			
+			// Clean up lock after restart completes
+			restartPromise.finally(() => {
+				this.groupRestartLocks.delete(groupId);
+			});
+		} else {
+			// Another restart is in progress - wait for it to complete
+			this.logger.info(`Consumer group restart already in progress - waiting for completion`, {
+				groupId,
+				newTopic,
+			});
+			await restartPromise;
+			
+			// After restart completes, verify our topic was added
+			const updatedGroup = this.groupConsumers.get(groupId);
+			if (!updatedGroup) {
+				throw new Error(`Consumer group ${groupId} was lost during restart`);
+			}
+			
+			if (!updatedGroup.topics.has(newTopic)) {
+				// Topic wasn't added - this shouldn't happen, but handle gracefully
+				this.logger.error(`Topic not found after restart - restart may have been for different topic`, {
+					groupId,
+					newTopic,
+					subscribedTopics: Array.from(updatedGroup.topics),
+				});
+				// Re-request restart for our specific topic
+				await this.restartConsumerGroup(groupId, newTopic, service, newTopicHandler);
+			}
+		}
+	}
+
+	/**
+	 * Execute the actual consumer restart with proper teardown.
+	 * This method is called with a lock to ensure only one restart happens at a time.
+	 */
+	private async executeRestart(groupId: string, newTopic: string, service: RegisterableKafkaService, newTopicHandler?: MessageHandler): Promise<void> {
 		const groupRegistry = this.groupConsumers.get(groupId);
 		if (!groupRegistry) {
 			throw new Error(`Consumer group ${groupId} not found`);
 		}
 
+		const oldConsumerInstanceId = groupRegistry.consumerInstanceId;
+		const oldConsumer = groupRegistry.consumerInstance;
+
 		this.logger.info(`Restarting consumer group to add new topic`, {
 			groupId,
 			newTopic,
+			oldConsumerInstanceId,
 			existingTopics: Array.from(groupRegistry.topics),
 			services: Array.from(groupRegistry.services),
 		});
+
+		// DEFENSIVE CHECK: Verify we have the current consumer
+		if (this.groupConsumers.get(groupId)?.consumerInstance !== oldConsumer) {
+			throw new Error(`Consumer instance mismatch - another restart may have occurred`);
+		}
 
 		// Preserve existing handlers and services
 		const existingHandlers = new Map(groupRegistry.messageHandlers);
 		const existingServices = new Set(groupRegistry.services);
 		const existingStartTime = groupRegistry.startedAt;
 
-		// Disconnect the current consumer
+		// STEP 1: Stop the current consumer (CRITICAL: must stop before disconnect)
 		try {
-			await groupRegistry.consumerInstance.disconnect();
-			this.logger.info(`Disconnected existing consumer for group restart`, {
+			this.logger.info(`Stopping consumer for group restart`, {
 				groupId,
+				consumerInstanceId: oldConsumerInstanceId,
+			});
+			await oldConsumer.stop();
+			this.logger.info(`consumer_stopped`, {
+				groupId,
+				consumerInstanceId: oldConsumerInstanceId,
 			});
 		} catch (error) {
-			this.logger.warn(`Error disconnecting consumer during restart (may already be disconnected)`, {
+			this.logger.warn(`Error stopping consumer during restart (may already be stopped)`, {
 				groupId,
+				consumerInstanceId: oldConsumerInstanceId,
 				error: error instanceof Error ? error.message : 'Unknown error',
 			});
 		}
 
-		// Get all topics that should be subscribed (existing + new)
+		// STEP 2: Disconnect the current consumer
+		try {
+			this.logger.info(`Disconnecting consumer for group restart`, {
+				groupId,
+				consumerInstanceId: oldConsumerInstanceId,
+			});
+			await oldConsumer.disconnect();
+			this.logger.info(`consumer_disconnected`, {
+				groupId,
+				consumerInstanceId: oldConsumerInstanceId,
+			});
+		} catch (error) {
+			this.logger.warn(`Error disconnecting consumer during restart (may already be disconnected)`, {
+				groupId,
+				consumerInstanceId: oldConsumerInstanceId,
+				error: error instanceof Error ? error.message : 'Unknown error',
+			});
+		}
+
+		// STEP 3: Clear routing start time (consumer will be replaced below)
+		groupRegistry.routingStartedAt = undefined;
+
+		// STEP 4: Get all topics that should be subscribed (existing + new)
 		const allTopics = Array.from(new Set([...Array.from(groupRegistry.topics), newTopic]));
 
-		// Create a new consumer instance using the service
-		// The service.start() method will create a new consumer with the same groupId
-		const newConsumer = await service.start() as Consumer;
+		// STEP 5: Create exactly ONE new consumer instance
+		// DEFENSIVE CHECK: Verify we still have the same consumer (no concurrent restart)
+		const currentRegistry = this.groupConsumers.get(groupId);
+		if (!currentRegistry || currentRegistry.consumerInstance !== oldConsumer) {
+			throw new Error(`Consumer instance changed during restart - concurrent restart detected`);
+		}
 
-		// Subscribe to all topics (including the new one) BEFORE calling consumer.run()
+		this.logger.info(`Creating new consumer instance for group restart`, {
+			groupId,
+			topics: allTopics,
+		});
+
+		const newConsumer = await service.start() as Consumer;
+		
+		// Generate unique consumer instance ID for tracking
+		const newConsumerInstanceId = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+
+		// STEP 6: Subscribe to all topics (including the new one) BEFORE calling consumer.run()
 		await newConsumer.subscribe({
 			topics: allTopics,
 			fromBeginning: false,
@@ -624,17 +746,19 @@ export class KafkaRuntimeManager {
 
 		this.logger.info(`Subscribed new consumer to all topics (including new topic)`, {
 			groupId,
+			consumerInstanceId: newConsumerInstanceId,
 			topics: allTopics,
 		});
 
-		// Update the group registry with the new consumer and topics
+		// STEP 7: Update the group registry with the new consumer and topics
 		groupRegistry.consumerInstance = newConsumer;
+		groupRegistry.consumerInstanceId = newConsumerInstanceId;
 		groupRegistry.topics = new Set(allTopics);
 		// Restore preserved handlers and services
 		groupRegistry.messageHandlers = existingHandlers;
 		groupRegistry.services = existingServices;
 		
-		// CRITICAL: Register new topic handler BEFORE starting message routing
+		// STEP 8: Register new topic handler BEFORE starting message routing
 		// This ensures messages for the new topic are handled immediately when routing starts
 		if (newTopicHandler) {
 			groupRegistry.messageHandlers.set(newTopic, newTopicHandler);
@@ -644,7 +768,7 @@ export class KafkaRuntimeManager {
 			});
 		}
 
-		// Update all service runtimes to point to the new consumer instance
+		// STEP 9: Update all service runtimes to point to the new consumer instance
 		for (const serviceId of existingServices) {
 			const serviceRuntime = this.registry.get(serviceId);
 			if (serviceRuntime) {
@@ -653,13 +777,21 @@ export class KafkaRuntimeManager {
 			}
 		}
 
-		// Restart message routing with the new consumer
+		// STEP 10: Restart message routing with the new consumer
 		// This must happen AFTER handlers are restored and new handler is registered
 		this.setupMessageRouting(groupRegistry);
+
+		this.logger.info(`consumer_created`, {
+			groupId,
+			consumerInstanceId: newConsumerInstanceId,
+			topics: allTopics,
+		});
 
 		this.logger.info(`Consumer group restarted successfully with new topic`, {
 			groupId,
 			newTopic,
+			oldConsumerInstanceId,
+			newConsumerInstanceId,
 			allTopics: Array.from(allTopics),
 			totalServices: existingServices.size,
 		});
@@ -677,15 +809,30 @@ export class KafkaRuntimeManager {
 	 */
 	private setupMessageRouting(groupRegistry: GroupConsumerRegistry): void {
 		const consumer = groupRegistry.consumerInstance;
+		const expectedConsumerInstanceId = groupRegistry.consumerInstanceId;
 		
 		// Create a router that dispatches messages to the correct handler
 		const router: MessageHandler = async (payload: { topic: string; partition: number; message: KafkaMessage }) => {
+			// DEFENSIVE CHECK: Verify we're using the current consumer instance
+			const currentRegistry = this.groupConsumers.get(groupRegistry.groupId);
+			if (!currentRegistry || currentRegistry.consumerInstance !== consumer) {
+				this.logger.error('Message received from non-current consumer instance - dropping message', {
+					groupId: groupRegistry.groupId,
+					expectedConsumerInstanceId,
+					currentConsumerInstanceId: currentRegistry?.consumerInstanceId,
+					topic: payload.topic,
+					partition: payload.partition,
+					offset: payload.message.offset,
+				});
+				return; // Drop the message - it's from a stale consumer
+			}
+			
 			// Wrap each message in its own async context to ensure logger context isolation
 			// Each message gets its own correlation ID and logger context
 			const correlationId = CorrelationIdHelper.generateCorrelationId();
 			
 			// Get the service name from the handler's topic (for logger context)
-			const handler = groupRegistry.messageHandlers.get(payload.topic);
+			const handler = currentRegistry.messageHandlers.get(payload.topic);
 			const serviceName = this.getServiceNameForTopic(payload.topic);
 			
 			// Create async context for this message with logger context
@@ -704,49 +851,50 @@ export class KafkaRuntimeManager {
 			await AsyncContextStorage.run(context, async () => {
 				try {
 					this.logger.debug('Message router received message', {
-						groupId: groupRegistry.groupId,
+						groupId: currentRegistry.groupId,
+						consumerInstanceId: currentRegistry.consumerInstanceId,
 						topic: payload.topic,
 						partition: payload.partition,
 						offset: payload.message.offset,
-						registeredHandlers: Array.from(groupRegistry.messageHandlers.keys()),
-						subscribedTopics: Array.from(groupRegistry.topics),
+						registeredHandlers: Array.from(currentRegistry.messageHandlers.keys()),
+						subscribedTopics: Array.from(currentRegistry.topics),
 					});
 					
 					if (handler) {
 						this.logger.debug('Calling handler for topic', {
-							groupId: groupRegistry.groupId,
+							groupId: currentRegistry.groupId,
 							topic: payload.topic,
 						});
 						await handler(payload);
 					} else {
 						// Check if we're in a startup/restart window (first 5 seconds after routing starts)
 						// During this window, missing handlers are expected during consumer group rebalancing
-						const isStartupWindow = groupRegistry.routingStartedAt 
-							&& (Date.now() - groupRegistry.routingStartedAt.getTime()) < 5000;
+						const isStartupWindow = currentRegistry.routingStartedAt 
+							&& (Date.now() - currentRegistry.routingStartedAt.getTime()) < 5000;
 						
 						if (isStartupWindow) {
 							// During startup/restart window, this is expected - log at debug level
 							this.logger.debug('Message received during startup window - handler may be registering', {
-								groupId: groupRegistry.groupId,
+								groupId: currentRegistry.groupId,
 								topic: payload.topic,
-								registeredTopics: Array.from(groupRegistry.messageHandlers.keys()),
-								subscribedTopics: Array.from(groupRegistry.topics),
-								timeSinceRoutingStart: Date.now() - (groupRegistry.routingStartedAt?.getTime() || 0),
+								registeredTopics: Array.from(currentRegistry.messageHandlers.keys()),
+								subscribedTopics: Array.from(currentRegistry.topics),
+								timeSinceRoutingStart: Date.now() - (currentRegistry.routingStartedAt?.getTime() || 0),
 							});
 						} else {
 							// Outside startup window, this indicates a real misconfiguration
 							this.logger.warn('Message received for topic with no registered handler', {
-								groupId: groupRegistry.groupId,
+								groupId: currentRegistry.groupId,
 								topic: payload.topic,
-								registeredTopics: Array.from(groupRegistry.messageHandlers.keys()),
-								subscribedTopics: Array.from(groupRegistry.topics),
+								registeredTopics: Array.from(currentRegistry.messageHandlers.keys()),
+								subscribedTopics: Array.from(currentRegistry.topics),
 							});
 						}
 					}
 				} catch (error) {
 					// Catch any unhandled errors in message processing to prevent consumer crash
 					this.logger.error('Error in message router - handler threw unhandled exception', {
-						groupId: groupRegistry.groupId,
+						groupId: currentRegistry.groupId,
 						topic: payload.topic,
 						partition: payload.partition,
 						offset: payload.message.offset,
@@ -762,15 +910,29 @@ export class KafkaRuntimeManager {
 		// Mark routing start time for startup window detection
 		groupRegistry.routingStartedAt = new Date();
 		
+		// DEFENSIVE CHECK: Verify consumer instance matches registry
+		if (this.groupConsumers.get(groupRegistry.groupId)?.consumerInstance !== consumer) {
+			throw new Error(`Consumer instance mismatch in setupMessageRouting - consumer may have been replaced`);
+		}
+		
 		// Start the consumer with the router
 		// NOTE: Consumers should NOT call consumer.run() in their start() method.
 		// The runtime manager handles this to ensure proper multi-topic routing.
+		
+		// Log before starting consumer.run() - memberId will be available after join
+		this.logger.info('consumer_run_started', {
+			groupId: groupRegistry.groupId,
+			consumerInstanceId: groupRegistry.consumerInstanceId,
+			topics: Array.from(groupRegistry.topics),
+			registeredHandlers: Array.from(groupRegistry.messageHandlers.keys()),
+		});
 		
 		consumer.run({
 			eachMessage: router,
 		}).catch((error) => {
 			this.logger.error('Consumer run() promise rejected', {
 				groupId: groupRegistry.groupId,
+				consumerInstanceId: groupRegistry.consumerInstanceId,
 				error: error instanceof Error ? error.message : 'Unknown error',
 				stack: error instanceof Error ? error.stack : undefined,
 			});
@@ -778,6 +940,7 @@ export class KafkaRuntimeManager {
 
 		this.logger.info('Message routing set up for consumer group', {
 			groupId: groupRegistry.groupId,
+			consumerInstanceId: groupRegistry.consumerInstanceId,
 			topics: Array.from(groupRegistry.topics),
 			registeredHandlers: Array.from(groupRegistry.messageHandlers.keys()),
 		});
