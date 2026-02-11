@@ -834,12 +834,21 @@ export class KafkaRuntimeManager {
 		const restartPromise = executeRestart();
 		this.groupRestartLocks.set(groupId, restartPromise);
 		
-		// Clean up lock after restart completes
-		restartPromise.finally(() => {
+		// Clean up lock after restart completes (success or failure)
+		// CRITICAL: Add catch handler to prevent unhandled rejections
+		restartPromise.catch((error) => {
+			// Error is already logged in executeRestart catch block
+			// This catch is just to prevent unhandled rejection
+			this.logger.debug('Restart promise rejected (error already logged)', {
+				groupId,
+				error: error instanceof Error ? error.message : 'Unknown error',
+			});
+		}).finally(() => {
 			this.groupRestartLocks.delete(groupId);
 		});
 		
 		// Wait for restart to complete
+		// Errors will be caught and re-thrown by executeRestart, so they propagate to the caller
 		await restartPromise;
 	}
 
@@ -883,7 +892,19 @@ export class KafkaRuntimeManager {
 						queuedTopics: Array.from(registry.topicQueue.keys()),
 					});
 					lastRestartPromise = restartPromise;
-					await restartPromise;
+					// Wrap in try-catch to handle restart failures gracefully
+					try {
+						await restartPromise;
+					} catch (error) {
+						this.logger.error(`Restart failed while waiting for topic subscription`, {
+							groupId,
+							topic,
+							error: error instanceof Error ? error.message : 'Unknown error',
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+						// Continue waiting - check if another restart is needed
+						// Don't throw immediately, allow the loop to continue
+					}
 					// Continue loop to check if topic is now subscribed
 					continue;
 				}
@@ -899,7 +920,19 @@ export class KafkaRuntimeManager {
 				});
 				// Trigger restart (this will process all queued topics and wait for completion)
 				// Pass empty topic since it's already queued
-				await this.restartConsumerGroup(groupId, '', service);
+				// Wrap in try-catch to handle restart failures gracefully
+				try {
+					await this.restartConsumerGroup(groupId, '', service);
+				} catch (error) {
+					this.logger.error(`Restart failed while waiting for topic subscription`, {
+						groupId,
+						topic,
+						error: error instanceof Error ? error.message : 'Unknown error',
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+					// Continue waiting - the topic might still be queued for another restart attempt
+					// Don't throw immediately, allow the loop to continue and check again
+				}
 				// Continue loop to check if topic is now subscribed
 				continue;
 			}
@@ -1244,9 +1277,13 @@ export class KafkaRuntimeManager {
 			const timeout = setTimeout(() => {
 				if (!resolved) {
 					resolved = true;
-					reject(new Error(`Consumer did not become ready within 15 seconds`));
+					clearTimeout(timeout);
+					if (pendingCheckTimeout) {
+						clearTimeout(pendingCheckTimeout);
+					}
+					reject(new Error(`Consumer did not become ready within 30 seconds`));
 				}
-			}, 15000);
+			}, 30000); // Increased to 30 seconds
 			
 			let groupJoined = false;
 			let memberAssignment: Record<string, number[]> | null = null;
@@ -1254,10 +1291,25 @@ export class KafkaRuntimeManager {
 			let pendingCheckTimeout: NodeJS.Timeout | null = null;
 			
 			// Listen for GROUP_JOIN event
+			// CRITICAL: Verify this event is from the correct consumer instance
 			const onGroupJoin = (event: any) => {
 				if (resolved) {
 					return; // Already resolved/rejected
 				}
+				
+				// Verify this is the correct consumer instance by checking the registry
+				const currentRegistry = this.groupConsumers.get(groupRegistry.groupId);
+				if (!currentRegistry || currentRegistry.consumerInstance !== consumer) {
+					// This event is from a different consumer instance - ignore it
+					this.logger.debug('GROUP_JOIN event from different consumer instance - ignoring', {
+						groupId: groupRegistry.groupId,
+						expectedConsumerInstanceId: groupRegistry.consumerInstanceId,
+						currentConsumerInstanceId: currentRegistry?.consumerInstanceId,
+						eventMemberId: event.payload.memberId,
+					});
+					return;
+				}
+				
 				groupJoined = true;
 				memberAssignment = event.payload.memberAssignment || {};
 				this.logger.info('Consumer joined group', {
@@ -1353,7 +1405,21 @@ export class KafkaRuntimeManager {
 		});
 
 		// Wait for consumer to be fully ready (joined group + all topics subscribed) before resolving
-		await readyPromise;
+		// CRITICAL: Wrap in try-catch to ensure errors are properly handled and don't become unhandled rejections
+		try {
+			await readyPromise;
+		} catch (error) {
+			// Log the error with full context
+			this.logger.error('Consumer readiness check failed', {
+				groupId: groupRegistry.groupId,
+				consumerInstanceId: groupRegistry.consumerInstanceId,
+				expectedTopics: Array.from(expectedTopics),
+				error: error instanceof Error ? error.message : 'Unknown error',
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			// Re-throw to be caught by the restart promise's error handler
+			throw error;
+		}
 
 		this.logger.info('Message routing set up for consumer group', {
 			groupId: groupRegistry.groupId,
