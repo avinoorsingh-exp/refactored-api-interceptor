@@ -326,6 +326,9 @@ export class KafkaRuntimeManager {
 					throw new Error(`Consumer group changed during handler creation - concurrent modification detected`);
 				}
 				
+				// Capture consumer instance ID before restart to verify it matches after
+				const consumerInstanceIdBeforeRestart = groupBeforeRestart.consumerInstanceId;
+				
 				// Always restart the consumer group when attaching a new service
 				// This ensures the consumer is properly subscribed to all topics before run()
 				// Pass the handler so it can be registered before routing starts
@@ -333,9 +336,42 @@ export class KafkaRuntimeManager {
 				await this.restartConsumerGroup(groupId, runtime.topic, service, handler);
 				
 				// Get the updated group registry after restart
-				const updatedGroup = this.groupConsumers.get(groupId);
+				let updatedGroup = this.groupConsumers.get(groupId);
 				if (!updatedGroup) {
 					throw new Error(`Consumer group ${groupId} was lost during restart`);
+				}
+				
+				// CRITICAL: Verify the consumer instance ID matches (or is newer)
+				// If it doesn't match, a new restart may have started - check if we need to wait
+				if (updatedGroup.consumerInstanceId !== consumerInstanceIdBeforeRestart) {
+					// Consumer instance changed - check if there's a newer restart in progress
+					const newRestartPromise = this.groupRestartLocks.get(groupId);
+					if (newRestartPromise) {
+						this.logger.info(`Consumer instance changed after restart - new restart in progress, continuing to wait`, {
+							groupId,
+							topic: runtime.topic,
+							oldConsumerInstanceId: consumerInstanceIdBeforeRestart,
+							newConsumerInstanceId: updatedGroup.consumerInstanceId,
+						});
+						// Wait for the newer restart to complete
+						await newRestartPromise;
+						// Re-check after newer restart completes
+						const finalGroup = this.groupConsumers.get(groupId);
+						if (!finalGroup) {
+							throw new Error(`Consumer group ${groupId} was lost during restart`);
+						}
+						// Verify the topic is now in the subscribed topics
+						if (!finalGroup.topics.has(runtime.topic)) {
+							this.logger.error(`Failed to add topic to consumer group after restart`, {
+								groupId,
+								topic: runtime.topic,
+								subscribedTopics: Array.from(finalGroup.topics),
+							});
+							throw new Error(`Failed to subscribe to topic ${runtime.topic} - consumer group restart failed`);
+						}
+						// Update reference to final group for handler verification below
+						updatedGroup = finalGroup;
+					}
 				}
 				
 				// Verify the topic is now in the subscribed topics after restart
@@ -701,18 +737,61 @@ export class KafkaRuntimeManager {
 			});
 		} else {
 			// Another restart is in progress - wait for it to complete
+			// CRITICAL: Capture the consumer instance ID before waiting to detect if a new restart started
+			const groupRegistryBeforeWait = this.groupConsumers.get(groupId);
+			if (!groupRegistryBeforeWait) {
+				throw new Error(`Consumer group ${groupId} not found`);
+			}
+			const consumerInstanceIdBeforeWait = groupRegistryBeforeWait.consumerInstanceId;
+			
 			this.logger.info(`Consumer group restart already in progress - waiting for completion`, {
 				groupId,
 				newTopic,
+				consumerInstanceIdBeforeWait,
 			});
 			await restartPromise;
 			
-			// After restart completes, verify our topic was added
+			// After restart promise resolves, verify we're still on the same consumer instance
+			// If a new restart started, the instance ID will have changed and we should continue waiting
 			const updatedGroup = this.groupConsumers.get(groupId);
 			if (!updatedGroup) {
 				throw new Error(`Consumer group ${groupId} was lost during restart`);
 			}
 			
+			// Check if consumer instance changed (meaning a new restart started)
+			if (updatedGroup.consumerInstanceId !== consumerInstanceIdBeforeWait) {
+				// Consumer instance changed - a new restart started after the promise resolved
+				// Check if there's a new restart in progress
+				const newRestartPromise = this.groupRestartLocks.get(groupId);
+				if (newRestartPromise) {
+					this.logger.info(`Consumer instance changed during wait - new restart in progress, continuing to wait`, {
+						groupId,
+						newTopic,
+						oldConsumerInstanceId: consumerInstanceIdBeforeWait,
+						newConsumerInstanceId: updatedGroup.consumerInstanceId,
+					});
+					// Continue waiting for the new restart
+					await newRestartPromise;
+					// Re-check after new restart completes
+					const finalGroup = this.groupConsumers.get(groupId);
+					if (!finalGroup) {
+						throw new Error(`Consumer group ${groupId} was lost during restart`);
+					}
+					// Verify topic is now subscribed
+					if (!finalGroup.topics.has(newTopic)) {
+						// Topic still not added - trigger another restart
+						this.logger.warn(`Topic not found after restart - will be included in next restart batch`, {
+							groupId,
+							newTopic,
+							subscribedTopics: Array.from(finalGroup.topics),
+						});
+						await this.restartConsumerGroup(groupId, newTopic, service, newTopicHandler);
+					}
+					return;
+				}
+			}
+			
+			// Consumer instance matches - verify our topic was added
 			if (!updatedGroup.topics.has(newTopic)) {
 				// Topic wasn't added - this means it wasn't in the batch, trigger another restart
 				this.logger.warn(`Topic not found after restart - will be included in next restart batch`, {
