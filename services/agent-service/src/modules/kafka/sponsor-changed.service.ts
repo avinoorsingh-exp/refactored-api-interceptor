@@ -120,8 +120,8 @@ export class SponsorChangedService {
 				message: message,
 			});
 
-			// Send to Kafka
-			await this.kafkaProducer.sendSponsorChangedMessage(message);
+			// Send to Kafka with applicantUuid as the message key for proper partitioning
+			await this.kafkaProducer.sendSponsorChangedMessage(message, applicantUuid);
 
 			const duration = Date.now() - startTime;
 			this.logger.info(
@@ -239,8 +239,8 @@ export class SponsorChangedService {
 				message: message,
 			});
 
-			// Send to Kafka
-			await this.kafkaProducer.sendSponsorChangedMessage(message);
+			// Send to Kafka with applicantUuid as the message key for proper partitioning
+			await this.kafkaProducer.sendSponsorChangedMessage(message, applicantUuid);
 
 			const duration = Date.now() - startTime;
 			this.logger.info(
