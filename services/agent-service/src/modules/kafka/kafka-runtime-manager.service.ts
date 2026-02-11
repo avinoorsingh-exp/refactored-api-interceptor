@@ -1047,8 +1047,8 @@ export class KafkaRuntimeManager {
 			// Listen for GROUP_JOIN event
 			const onGroupJoin = (event: any) => {
 				clearTimeout(timeout);
-				consumer.off(consumer.events.GROUP_JOIN, onGroupJoin);
-				consumer.off(consumer.events.CRASH, onCrash);
+				(consumer as any).removeListener(consumer.events.GROUP_JOIN, onGroupJoin);
+				(consumer as any).removeListener(consumer.events.CRASH, onCrash);
 				this.logger.info('Consumer joined group - restart complete', {
 					groupId: groupRegistry.groupId,
 					consumerInstanceId: groupRegistry.consumerInstanceId,
@@ -1061,8 +1061,8 @@ export class KafkaRuntimeManager {
 			// Listen for CRASH event to fail fast
 			const onCrash = (event: any) => {
 				clearTimeout(timeout);
-				consumer.off(consumer.events.GROUP_JOIN, onGroupJoin);
-				consumer.off(consumer.events.CRASH, onCrash);
+				(consumer as any).removeListener(consumer.events.GROUP_JOIN, onGroupJoin);
+				(consumer as any).removeListener(consumer.events.CRASH, onCrash);
 				reject(new Error(`Consumer crashed during startup: ${event.payload.error.message}`));
 			};
 			
