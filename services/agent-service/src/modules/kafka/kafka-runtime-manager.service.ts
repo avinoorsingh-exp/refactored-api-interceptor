@@ -50,6 +50,7 @@ interface GroupConsumerRegistry {
 	messageHandlers: Map<string, MessageHandler>; // topic -> handler function
 	status: KafkaServiceStatus;
 	startedAt: Date;
+	routingStartedAt?: Date; // Timestamp when message routing started (for startup window detection)
 }
 
 /**
@@ -296,9 +297,17 @@ export class KafkaRuntimeManager {
 					});
 				}
 				
+				// CRITICAL: Create handler BEFORE restart to ensure it's registered before routing starts
+				// This prevents "no handler" warnings during the restart window
+				const handler = await this.createMessageHandler(service, runtime.topic);
+				if (!handler) {
+					throw new Error(`Failed to create message handler for topic ${runtime.topic}`);
+				}
+				
 				// Always restart the consumer group when attaching a new service
 				// This ensures the consumer is properly subscribed to all topics before run()
-				await this.restartConsumerGroup(groupId, runtime.topic, service);
+				// Pass the handler so it can be registered before routing starts
+				await this.restartConsumerGroup(groupId, runtime.topic, service, handler);
 				
 				// Get the updated group registry after restart
 				const updatedGroup = this.groupConsumers.get(groupId);
@@ -316,18 +325,12 @@ export class KafkaRuntimeManager {
 					throw new Error(`Failed to subscribe to topic ${runtime.topic} - consumer group restart failed`);
 				}
 
-				// Register message handler for this topic
-				// This is what actually enables message processing for this service
-				// CRITICAL: Always register/re-register the handler to ensure it's present
-				// This handles cases where the handler might have been lost or not registered
-				const handler = await this.createMessageHandler(service, runtime.topic);
-				if (!handler) {
-					throw new Error(`Failed to create message handler for topic ${runtime.topic}`);
-				}
-				
-				// Always set the handler (even if one exists, replace it to ensure it's correct)
+				// Verify handler was registered during restart
 				const hadExistingHandler = updatedGroup.messageHandlers.has(runtime.topic);
-				updatedGroup.messageHandlers.set(runtime.topic, handler);
+				if (!updatedGroup.messageHandlers.has(runtime.topic)) {
+					// Handler should have been registered in restartConsumerGroup, but ensure it's there
+					updatedGroup.messageHandlers.set(runtime.topic, handler);
+				}
 				
 				this.logger.info(`Registered message handler for topic`, {
 					groupId,
@@ -499,6 +502,7 @@ export class KafkaRuntimeManager {
 			messageHandlers: new Map([[runtime.topic, handler]]),
 			status: KafkaServiceStatus.RUNNING,
 			startedAt: new Date(),
+			routingStartedAt: undefined, // Will be set when routing starts
 		};
 
 		this.groupConsumers.set(groupId, groupRegistry);
@@ -572,14 +576,15 @@ export class KafkaRuntimeManager {
 	 * 2. Disconnects the current consumer cleanly
 	 * 3. Creates a new consumer instance
 	 * 4. Subscribes to all topics (existing + new) BEFORE calling run()
-	 * 5. Restores all handlers and services
+	 * 5. Restores all handlers and services, registers new handler
 	 * 6. Restarts message routing
 	 * 
 	 * @param groupId - The consumer group ID
 	 * @param newTopic - The new topic to add (will be added to existing topics)
 	 * @param service - The service instance to use for creating a new consumer
+	 * @param newTopicHandler - The handler for the new topic (must be registered before routing starts)
 	 */
-	private async restartConsumerGroup(groupId: string, newTopic: string, service: RegisterableKafkaService): Promise<void> {
+	private async restartConsumerGroup(groupId: string, newTopic: string, service: RegisterableKafkaService, newTopicHandler?: MessageHandler): Promise<void> {
 		const groupRegistry = this.groupConsumers.get(groupId);
 		if (!groupRegistry) {
 			throw new Error(`Consumer group ${groupId} not found`);
@@ -634,6 +639,16 @@ export class KafkaRuntimeManager {
 		// Restore preserved handlers and services
 		groupRegistry.messageHandlers = existingHandlers;
 		groupRegistry.services = existingServices;
+		
+		// CRITICAL: Register new topic handler BEFORE starting message routing
+		// This ensures messages for the new topic are handled immediately when routing starts
+		if (newTopicHandler) {
+			groupRegistry.messageHandlers.set(newTopic, newTopicHandler);
+			this.logger.debug('Registered handler for new topic before routing start', {
+				groupId,
+				topic: newTopic,
+			});
+		}
 
 		// Update all service runtimes to point to the new consumer instance
 		for (const serviceId of existingServices) {
@@ -645,7 +660,7 @@ export class KafkaRuntimeManager {
 		}
 
 		// Restart message routing with the new consumer
-		// This must happen AFTER handlers are restored so the router can find them
+		// This must happen AFTER handlers are restored and new handler is registered
 		this.setupMessageRouting(groupRegistry);
 
 		this.logger.info(`Consumer group restarted successfully with new topic`, {
@@ -710,12 +725,29 @@ export class KafkaRuntimeManager {
 						});
 						await handler(payload);
 					} else {
-						this.logger.warn('Message received for topic with no registered handler', {
-							groupId: groupRegistry.groupId,
-							topic: payload.topic,
-							registeredTopics: Array.from(groupRegistry.messageHandlers.keys()),
-							subscribedTopics: Array.from(groupRegistry.topics),
-						});
+						// Check if we're in a startup/restart window (first 5 seconds after routing starts)
+						// During this window, missing handlers are expected during consumer group rebalancing
+						const isStartupWindow = groupRegistry.routingStartedAt 
+							&& (Date.now() - groupRegistry.routingStartedAt.getTime()) < 5000;
+						
+						if (isStartupWindow) {
+							// During startup/restart window, this is expected - log at debug level
+							this.logger.debug('Message received during startup window - handler may be registering', {
+								groupId: groupRegistry.groupId,
+								topic: payload.topic,
+								registeredTopics: Array.from(groupRegistry.messageHandlers.keys()),
+								subscribedTopics: Array.from(groupRegistry.topics),
+								timeSinceRoutingStart: Date.now() - (groupRegistry.routingStartedAt?.getTime() || 0),
+							});
+						} else {
+							// Outside startup window, this indicates a real misconfiguration
+							this.logger.warn('Message received for topic with no registered handler', {
+								groupId: groupRegistry.groupId,
+								topic: payload.topic,
+								registeredTopics: Array.from(groupRegistry.messageHandlers.keys()),
+								subscribedTopics: Array.from(groupRegistry.topics),
+							});
+						}
 					}
 				} catch (error) {
 					// Catch any unhandled errors in message processing to prevent consumer crash
@@ -733,6 +765,9 @@ export class KafkaRuntimeManager {
 			});
 		};
 
+		// Mark routing start time for startup window detection
+		groupRegistry.routingStartedAt = new Date();
+		
 		// Start the consumer with the router
 		// NOTE: Consumers should NOT call consumer.run() in their start() method.
 		// The runtime manager handles this to ensure proper multi-topic routing.
@@ -750,6 +785,7 @@ export class KafkaRuntimeManager {
 		this.logger.info('Message routing set up for consumer group', {
 			groupId: groupRegistry.groupId,
 			topics: Array.from(groupRegistry.topics),
+			registeredHandlers: Array.from(groupRegistry.messageHandlers.keys()),
 		});
 	}
 
