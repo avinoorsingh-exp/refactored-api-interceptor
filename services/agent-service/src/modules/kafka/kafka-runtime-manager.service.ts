@@ -551,7 +551,7 @@ export class KafkaRuntimeManager {
 
 		// Set up message routing for the shared consumer
 		// This calls consumer.run() AFTER handler is registered
-		this.setupMessageRouting(groupRegistry);
+		await this.setupMessageRouting(groupRegistry);
 
 		this.logger.info(`Consumer group created successfully`, {
 			serviceId: id,
@@ -883,7 +883,8 @@ export class KafkaRuntimeManager {
 
 		// STEP 11: Restart message routing with the new consumer
 		// This must happen AFTER all handlers are registered
-		this.setupMessageRouting(groupRegistry);
+		// CRITICAL: Await until consumer has fully joined the group before resolving restart
+		await this.setupMessageRouting(groupRegistry);
 
 		this.logger.info(`consumer_created`, {
 			groupId,
@@ -913,8 +914,10 @@ export class KafkaRuntimeManager {
 	 * 
 	 * CRITICAL: Consumers should NOT call consumer.run() themselves.
 	 * The runtime manager handles this to ensure proper message routing.
+	 * 
+	 * Returns a promise that resolves when the consumer has fully joined the group.
 	 */
-	private setupMessageRouting(groupRegistry: GroupConsumerRegistry): void {
+	private async setupMessageRouting(groupRegistry: GroupConsumerRegistry): Promise<void> {
 		const consumer = groupRegistry.consumerInstance;
 		const expectedConsumerInstanceId = groupRegistry.consumerInstanceId;
 		
@@ -1034,6 +1037,42 @@ export class KafkaRuntimeManager {
 			registeredHandlers: Array.from(groupRegistry.messageHandlers.keys()),
 		});
 		
+		// CRITICAL: Wait for consumer to join the group before resolving
+		// This ensures the restart promise only resolves after the consumer is fully operational
+		const joinPromise = new Promise<void>((resolve, reject) => {
+			const timeout = setTimeout(() => {
+				reject(new Error(`Consumer did not join group within 5 seconds`));
+			}, 5000);
+			
+			// Listen for GROUP_JOIN event
+			const onGroupJoin = (event: any) => {
+				clearTimeout(timeout);
+				consumer.removeListener(consumer.events.GROUP_JOIN, onGroupJoin);
+				consumer.removeListener(consumer.events.CRASH, onCrash);
+				this.logger.info('Consumer joined group - restart complete', {
+					groupId: groupRegistry.groupId,
+					consumerInstanceId: groupRegistry.consumerInstanceId,
+					memberId: event.payload.memberId,
+					isLeader: event.payload.isLeader,
+				});
+				resolve();
+			};
+			
+			// Listen for CRASH event to fail fast
+			const onCrash = (event: any) => {
+				clearTimeout(timeout);
+				consumer.removeListener(consumer.events.GROUP_JOIN, onGroupJoin);
+				consumer.removeListener(consumer.events.CRASH, onCrash);
+				reject(new Error(`Consumer crashed during startup: ${event.payload.error.message}`));
+			};
+			
+			consumer.on(consumer.events.GROUP_JOIN, onGroupJoin);
+			consumer.on(consumer.events.CRASH, onCrash);
+		});
+		
+		// Start the consumer with the router
+		// NOTE: Consumers should NOT call consumer.run() in their start() method.
+		// The runtime manager handles this to ensure proper multi-topic routing.
 		consumer.run({
 			eachMessage: router,
 		}).catch((error) => {
@@ -1044,6 +1083,9 @@ export class KafkaRuntimeManager {
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 		});
+
+		// Wait for consumer to join the group before resolving
+		await joinPromise;
 
 		this.logger.info('Message routing set up for consumer group', {
 			groupId: groupRegistry.groupId,
