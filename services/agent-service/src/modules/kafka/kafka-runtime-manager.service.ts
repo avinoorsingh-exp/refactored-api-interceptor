@@ -1037,29 +1037,88 @@ export class KafkaRuntimeManager {
 			registeredHandlers: Array.from(groupRegistry.messageHandlers.keys()),
 		});
 		
-		// CRITICAL: Wait for consumer to join the group before resolving
-		// This ensures the restart promise only resolves after the consumer is fully operational
-		const joinPromise = new Promise<void>((resolve, reject) => {
+		// CRITICAL: Wait for consumer to be fully ready before resolving
+		// Readiness = consumer.run() started AND consumer joined group AND all expected topics are subscribed
+		const expectedTopics = new Set(groupRegistry.topics);
+		const readyPromise = new Promise<void>((resolve, reject) => {
 			const timeout = setTimeout(() => {
-				reject(new Error(`Consumer did not join group within 5 seconds`));
+				if (!resolved) {
+					resolved = true;
+					reject(new Error(`Consumer did not become ready within 5 seconds`));
+				}
 			}, 5000);
+			
+			let groupJoined = false;
+			let resolved = false;
+			let pendingCheckTimeout: NodeJS.Timeout | null = null;
 			
 			// Listen for GROUP_JOIN event
 			const onGroupJoin = (event: any) => {
-				clearTimeout(timeout);
-				this.logger.info('Consumer joined group - restart complete', {
+				if (resolved) {
+					return; // Already resolved/rejected
+				}
+				groupJoined = true;
+				this.logger.info('Consumer joined group', {
 					groupId: groupRegistry.groupId,
 					consumerInstanceId: groupRegistry.consumerInstanceId,
 					memberId: event.payload.memberId,
 					isLeader: event.payload.isLeader,
 				});
-				resolve();
+				// After GROUP_JOIN, verify all topics are subscribed and consumer is running
+				checkReadiness();
 			};
 			
 			// Listen for CRASH event to fail fast
 			const onCrash = (event: any) => {
+				if (resolved) {
+					return; // Already resolved/rejected
+				}
+				resolved = true;
 				clearTimeout(timeout);
+				if (pendingCheckTimeout) {
+					clearTimeout(pendingCheckTimeout);
+				}
 				reject(new Error(`Consumer crashed during startup: ${event.payload.error.message}`));
+			};
+			
+			// Check if consumer is fully ready (joined group + all topics subscribed)
+			const checkReadiness = () => {
+				if (resolved) {
+					return; // Already resolved/rejected
+				}
+				
+				if (!groupJoined) {
+					return; // Not ready yet - waiting for GROUP_JOIN
+				}
+				
+				// Verify all expected topics are in the subscribed topics set
+				const currentRegistry = this.groupConsumers.get(groupRegistry.groupId);
+				if (!currentRegistry) {
+					// Registry not found - check again after a short delay
+					pendingCheckTimeout = setTimeout(checkReadiness, 50);
+					return;
+				}
+				
+				const subscribedTopics = currentRegistry.topics;
+				const allTopicsSubscribed = Array.from(expectedTopics).every(topic => subscribedTopics.has(topic));
+				
+				if (allTopicsSubscribed) {
+					resolved = true;
+					clearTimeout(timeout);
+					if (pendingCheckTimeout) {
+						clearTimeout(pendingCheckTimeout);
+					}
+					this.logger.info('Consumer joined group - restart complete', {
+						groupId: groupRegistry.groupId,
+						consumerInstanceId: groupRegistry.consumerInstanceId,
+						expectedTopics: Array.from(expectedTopics),
+						subscribedTopics: Array.from(subscribedTopics),
+					});
+					resolve();
+				} else {
+					// Not all topics subscribed yet - check again after a short delay
+					pendingCheckTimeout = setTimeout(checkReadiness, 50);
+				}
 			};
 			
 			consumer.on(consumer.events.GROUP_JOIN, onGroupJoin);
@@ -1080,8 +1139,8 @@ export class KafkaRuntimeManager {
 			});
 		});
 
-		// Wait for consumer to join the group before resolving
-		await joinPromise;
+		// Wait for consumer to be fully ready (joined group + all topics subscribed) before resolving
+		await readyPromise;
 
 		this.logger.info('Message routing set up for consumer group', {
 			groupId: groupRegistry.groupId,
