@@ -616,7 +616,7 @@ export class KafkaRuntimeManager {
 	 * @param newTopicHandler - The handler for the new topic (must be registered before routing starts)
 	 */
 	private async restartConsumerGroup(groupId: string, newTopic: string, service: RegisterableKafkaService, newTopicHandler?: MessageHandler): Promise<void> {
-		// Add this request to pending requests
+		// Step 1: Add this request to pending requests
 		if (!this.pendingRestartRequests.has(groupId)) {
 			this.pendingRestartRequests.set(groupId, new Map());
 		}
@@ -633,12 +633,11 @@ export class KafkaRuntimeManager {
 			pendingTopics: Array.from(pendingRequests.keys()),
 		});
 		
-		// Acquire restart lock to prevent concurrent restarts
+		// Step 2: Acquire restart lock to prevent concurrent restarts
 		let restartPromise = this.groupRestartLocks.get(groupId);
 		
 		if (!restartPromise) {
 			// We're the first one to request restart - create the lock first to prevent others from starting
-			// Then collect all pending topics and execute
 			const groupRegistry = this.groupConsumers.get(groupId);
 			if (!groupRegistry) {
 				throw new Error(`Consumer group ${groupId} not found`);
@@ -647,26 +646,32 @@ export class KafkaRuntimeManager {
 			// Create a promise that will execute the restart
 			// This ensures the lock is set immediately, preventing other services from starting a new restart
 			const executeRestart = async (): Promise<void> => {
-				// Collect ALL pending topics that have handlers ready
+				// Step 3: Add a short delay (~10ms) to allow other services to enqueue their pending topics
+				// This ensures we collect all simultaneous requests in a single batch
+				await new Promise(resolve => setTimeout(resolve, 10));
+				
+				// Step 4: Re-read pendingRestartRequests after the delay to collect all topics waiting for restart
+				const currentPendingRequests = this.pendingRestartRequests.get(groupId);
+				if (!currentPendingRequests || currentPendingRequests.size === 0) {
+					// No pending requests - this shouldn't happen, but handle gracefully
+					this.logger.warn(`No pending requests found after lock acquisition`, {
+						groupId,
+						initialRequest: newTopic,
+					});
+					return;
+				}
+				
+				// Step 5: Collect ALL pending topics that have handlers ready
 				// CRITICAL: Only include topics with handlers to avoid subscribing without handlers
-				// We collect AFTER setting the lock to catch any requests that came in during the check
 				const allPendingTopics = new Set<string>();
 				const allPendingHandlers = new Map<string, MessageHandler>();
 				
-				// Re-read pendingRequests to catch any that were added after we checked the lock
-				const currentPendingRequests = this.pendingRestartRequests.get(groupId);
-				if (currentPendingRequests) {
-					for (const [topic, handler] of currentPendingRequests.entries()) {
-						if (!groupRegistry.topics.has(topic)) {
-							allPendingTopics.add(topic);
-							allPendingHandlers.set(topic, handler);
-						}
+				for (const [topic, handler] of currentPendingRequests.entries()) {
+					if (!groupRegistry.topics.has(topic)) {
+						allPendingTopics.add(topic);
+						allPendingHandlers.set(topic, handler);
 					}
 				}
-				
-				// Note: We only include topics with handlers ready (from pendingRequests)
-				// Services whose topics aren't in pendingRequests haven't called restartConsumerGroup yet
-				// They will trigger another restart when they call restartConsumerGroup with their handlers
 				
 				// Log collected pending topics
 				this.logger.info(`pending_topics_collected`, {
@@ -676,12 +681,11 @@ export class KafkaRuntimeManager {
 					existingTopics: Array.from(groupRegistry.topics),
 				});
 				
-				// Clear pending requests since we're processing them
-				if (currentPendingRequests) {
-					currentPendingRequests.clear();
-				}
+				// Step 6: Clear pending requests since we're processing them
+				currentPendingRequests.clear();
 				
-				// Execute restart with all pending topics
+				// Step 7: Execute restart with all pending topics
+				// This will subscribe to all topics at once and register all handlers before calling consumer.run()
 				await this.executeRestartWithMultipleTopics(groupId, Array.from(allPendingTopics), service, allPendingHandlers);
 			};
 			
