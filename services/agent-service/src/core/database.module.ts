@@ -56,10 +56,11 @@ import { LoggerModule } from './logger.module.js'
           
           // Connection pool settings
           extra: {
-            max: 20, // Maximum pool size
-            min: 2,  // Minimum pool size
+            max: 30,  // Maximum pool size (1 ECS task, RDS max_connections=181, ~10 reserved for admin)
+            min: 10,  // Minimum pool size - pre-warm connections for Kafka + API + cron
             idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 10000,
+            connectionTimeoutMillis: 5000,
+            allowExitOnIdle: true, // Allow process to exit if idle (important for ECS task shutdown) 
           },
           
           // SSL configuration

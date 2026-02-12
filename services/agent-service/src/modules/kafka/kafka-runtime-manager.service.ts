@@ -36,6 +36,15 @@ export interface KafkaServiceRuntime {
 type MessageHandler = (payload: { topic: string; partition: number; message: KafkaMessage }) => Promise<void>;
 
 /**
+ * Restart state for a consumer group.
+ */
+enum RestartState {
+	IDLE = 'idle', // No restart in progress
+	RESTARTING = 'restarting', // Restart is currently executing
+	QUEUED = 'queued', // Topics are queued, waiting for current restart to complete
+}
+
+/**
  * Group-based consumer registry entry.
  * 
  * CRITICAL: Kafka consumer groups only allow ONE active consumer instance per groupId.
@@ -44,12 +53,16 @@ type MessageHandler = (payload: { topic: string; partition: number; message: Kaf
  */
 interface GroupConsumerRegistry {
 	consumerInstance: Consumer;
+	consumerInstanceId: string; // Unique ID for this consumer instance (for tracking)
 	groupId: string;
 	topics: Set<string>; // Topics currently subscribed
 	services: Set<string>; // Service IDs attached to this consumer
 	messageHandlers: Map<string, MessageHandler>; // topic -> handler function
 	status: KafkaServiceStatus;
 	startedAt: Date;
+	routingStartedAt?: Date; // Timestamp when message routing started (for startup window detection)
+	restartState: RestartState; // Current restart state
+	topicQueue: Map<string, MessageHandler>; // Topics queued for next restart (topic -> handler)
 }
 
 /**
@@ -135,6 +148,14 @@ export class KafkaRuntimeManager {
 	 * Value: Promise that resolves when the group is ready
 	 */
 	private readonly groupCreationLocks = new Map<string, Promise<GroupConsumerRegistry>>();
+
+	/**
+	 * Locks for consumer group restarts to prevent concurrent restarts.
+	 * Key: groupId
+	 * Value: Promise that resolves when the restart completes
+	 */
+	private readonly groupRestartLocks = new Map<string, Promise<void>>();
+
 
 	private readonly logger: LoggerService;
 	private readonly kafkaClientService: KafkaClientService;
@@ -296,14 +317,65 @@ export class KafkaRuntimeManager {
 					});
 				}
 				
+				// CRITICAL: Create handler BEFORE restart to ensure it's registered before routing starts
+				// This prevents "no handler" warnings during the restart window
+				const handler = await this.createMessageHandler(service, runtime.topic);
+				if (!handler) {
+					throw new Error(`Failed to create message handler for topic ${runtime.topic}`);
+				}
+				
+				// DEFENSIVE CHECK: Verify group still exists and we have the right consumer
+				const groupBeforeRestart = this.groupConsumers.get(groupId);
+				if (!groupBeforeRestart || groupBeforeRestart !== existingGroup) {
+					throw new Error(`Consumer group changed during handler creation - concurrent modification detected`);
+				}
+				
+				// Capture consumer instance ID before restart to verify it matches after
+				const consumerInstanceIdBeforeRestart = groupBeforeRestart.consumerInstanceId;
+				
 				// Always restart the consumer group when attaching a new service
 				// This ensures the consumer is properly subscribed to all topics before run()
-				await this.restartConsumerGroup(groupId, runtime.topic, service);
+				// Pass the handler so it can be registered before routing starts
+				// The restartConsumerGroup method uses a lock to prevent concurrent restarts
+				await this.restartConsumerGroup(groupId, runtime.topic, service, handler);
 				
 				// Get the updated group registry after restart
-				const updatedGroup = this.groupConsumers.get(groupId);
+				let updatedGroup = this.groupConsumers.get(groupId);
 				if (!updatedGroup) {
 					throw new Error(`Consumer group ${groupId} was lost during restart`);
+				}
+				
+				// CRITICAL: Verify the consumer instance ID matches (or is newer)
+				// If it doesn't match, a new restart may have started - check if we need to wait
+				if (updatedGroup.consumerInstanceId !== consumerInstanceIdBeforeRestart) {
+					// Consumer instance changed - check if there's a newer restart in progress
+					const newRestartPromise = this.groupRestartLocks.get(groupId);
+					if (newRestartPromise) {
+						this.logger.info(`Consumer instance changed after restart - new restart in progress, continuing to wait`, {
+							groupId,
+							topic: runtime.topic,
+							oldConsumerInstanceId: consumerInstanceIdBeforeRestart,
+							newConsumerInstanceId: updatedGroup.consumerInstanceId,
+						});
+						// Wait for the newer restart to complete
+						await newRestartPromise;
+						// Re-check after newer restart completes
+						const finalGroup = this.groupConsumers.get(groupId);
+						if (!finalGroup) {
+							throw new Error(`Consumer group ${groupId} was lost during restart`);
+						}
+						// Verify the topic is now in the subscribed topics
+						if (!finalGroup.topics.has(runtime.topic)) {
+							this.logger.error(`Failed to add topic to consumer group after restart`, {
+								groupId,
+								topic: runtime.topic,
+								subscribedTopics: Array.from(finalGroup.topics),
+							});
+							throw new Error(`Failed to subscribe to topic ${runtime.topic} - consumer group restart failed`);
+						}
+						// Update reference to final group for handler verification below
+						updatedGroup = finalGroup;
+					}
 				}
 				
 				// Verify the topic is now in the subscribed topics after restart
@@ -316,18 +388,12 @@ export class KafkaRuntimeManager {
 					throw new Error(`Failed to subscribe to topic ${runtime.topic} - consumer group restart failed`);
 				}
 
-				// Register message handler for this topic
-				// This is what actually enables message processing for this service
-				// CRITICAL: Always register/re-register the handler to ensure it's present
-				// This handles cases where the handler might have been lost or not registered
-				const handler = await this.createMessageHandler(service, runtime.topic);
-				if (!handler) {
-					throw new Error(`Failed to create message handler for topic ${runtime.topic}`);
-				}
-				
-				// Always set the handler (even if one exists, replace it to ensure it's correct)
+				// Verify handler was registered during restart
 				const hadExistingHandler = updatedGroup.messageHandlers.has(runtime.topic);
-				updatedGroup.messageHandlers.set(runtime.topic, handler);
+				if (!updatedGroup.messageHandlers.has(runtime.topic)) {
+					// Handler should have been registered in restartConsumerGroup, but ensure it's there
+					updatedGroup.messageHandlers.set(runtime.topic, handler);
+				}
 				
 				this.logger.info(`Registered message handler for topic`, {
 					groupId,
@@ -465,40 +531,56 @@ export class KafkaRuntimeManager {
 			topic: runtime.topic,
 		});
 
+		// DEFENSIVE CHECK: Verify no consumer already exists for this groupId
+		const existingGroup = this.groupConsumers.get(groupId);
+		if (existingGroup && existingGroup.consumerInstance) {
+			throw new Error(`Consumer already exists for groupId ${groupId} - cannot create another`);
+		}
+
 		const instance = await service.start() as Consumer;
 		
-		// CRITICAL: Subscribe to ALL topics that might be used by this groupId
-		// This ensures we don't have issues with dynamic subscriptions after consumer.run()
-		// Find all registered services with the same groupId to subscribe upfront
-		const allTopicsForGroup = Array.from(this.registry.values())
-			.filter(r => r.groupId === groupId && r.type === 'consumer')
-			.map(r => r.topic);
+		// Generate unique consumer instance ID for tracking
+		const consumerInstanceId = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
 		
-		// Remove duplicates and ensure current topic is included
-		const uniqueTopics = Array.from(new Set([...allTopicsForGroup, runtime.topic]));
+		this.logger.info(`consumer_created`, {
+			groupId,
+			consumerInstanceId,
+			serviceId: id,
+			topic: runtime.topic,
+		});
 		
-		// Subscribe to all topics at once BEFORE calling consumer.run()
-		if (uniqueTopics.length > 0) {
-			await instance.subscribe({ 
-				topics: uniqueTopics,  // Subscribe to all topics upfront
-				fromBeginning: false 
-			});
-			this.logger.info(`Subscribed consumer to all topics for group`, {
-				groupId,
-				topics: uniqueTopics,
-			});
-		}
+		// CRITICAL: Only subscribe to topics that have handlers registered
+		// We start with just the first service's topic. Other services will attach
+		// via restartConsumerGroup, which will add their topics (with handlers) before routing starts.
+		// This ensures we never subscribe to topics without handlers, preventing runtime warnings.
+		const initialTopics = [runtime.topic];
 		
-		// Create group registry entry with all topics
+		// Subscribe to the first service's topic only
+		await instance.subscribe({ 
+			topics: initialTopics,
+			fromBeginning: false 
+		});
+		this.logger.info(`Subscribed consumer to initial topic for group`, {
+			groupId,
+			consumerInstanceId,
+			topics: initialTopics,
+		});
+		
+		// Create handler for the first service
 		const handler = await this.createMessageHandler(service, runtime.topic);
+		
 		const groupRegistry: GroupConsumerRegistry = {
 			consumerInstance: instance,
+			consumerInstanceId,
 			groupId,
-			topics: new Set(uniqueTopics),  // Track all subscribed topics
+			topics: new Set(initialTopics),  // Start with just the first topic
 			services: new Set([id]),
 			messageHandlers: new Map([[runtime.topic, handler]]),
 			status: KafkaServiceStatus.RUNNING,
 			startedAt: new Date(),
+			routingStartedAt: undefined, // Will be set when routing starts
+			restartState: RestartState.IDLE,
+			topicQueue: new Map(), // Queue for topics waiting to be added
 		};
 
 		this.groupConsumers.set(groupId, groupRegistry);
@@ -510,14 +592,15 @@ export class KafkaRuntimeManager {
 		runtime.error = undefined;
 
 		// Set up message routing for the shared consumer
-		// This calls consumer.run() AFTER all topics are subscribed
-		this.setupMessageRouting(groupRegistry);
+		// This calls consumer.run() AFTER handler is registered
+		await this.setupMessageRouting(groupRegistry);
 
 		this.logger.info(`Consumer group created successfully`, {
 			serviceId: id,
 			groupId,
+			consumerInstanceId: groupRegistry.consumerInstanceId,
 			topic: runtime.topic,
-			allTopics: uniqueTopics,
+			subscribedTopics: Array.from(groupRegistry.topics),
 			registeredHandlers: Array.from(groupRegistry.messageHandlers.keys()),
 		});
 		
@@ -558,84 +641,463 @@ export class KafkaRuntimeManager {
 	}
 
 	/**
-	 * Restart a consumer group to add a new topic.
+	 * Restart a consumer group to add new topics.
 	 * 
-	 * CRITICAL: KafkaJS does not allow topics to be added after consumer.run() has started.
-	 * Any change to the logical subscription set MUST result in a consumer restart
-	 * so KafkaJS re-subscribes correctly.
+	 * CRITICAL INVARIANT: There must be exactly ONE Consumer instance per groupId at any time.
 	 * 
-	 * This method is idempotent - calling it multiple times with the same topic is safe.
-	 * It preserves all existing handlers and services, ensuring no message processing is lost.
-	 * 
-	 * The restart process:
-	 * 1. Preserves all existing handlers and services
-	 * 2. Disconnects the current consumer cleanly
-	 * 3. Creates a new consumer instance
-	 * 4. Subscribes to all topics (existing + new) BEFORE calling run()
-	 * 5. Restores all handlers and services
-	 * 6. Restarts message routing
+	 * This method enforces the invariant by:
+	 * 1. Collecting ALL pending topics from all waiting services
+	 * 2. Acquiring a per-groupId restart lock to prevent concurrent restarts
+	 * 3. Performing ONE atomic restart that subscribes to all pending topics
+	 * 4. Registering all handlers before starting routing
+	 * 5. Keeping the lock until the consumer is fully running
 	 * 
 	 * @param groupId - The consumer group ID
 	 * @param newTopic - The new topic to add (will be added to existing topics)
 	 * @param service - The service instance to use for creating a new consumer
+	 * @param newTopicHandler - The handler for the new topic (must be registered before routing starts)
 	 */
-	private async restartConsumerGroup(groupId: string, newTopic: string, service: RegisterableKafkaService): Promise<void> {
+	private async restartConsumerGroup(groupId: string, newTopic: string, service: RegisterableKafkaService, newTopicHandler?: MessageHandler): Promise<void> {
+		const groupRegistry = this.groupConsumers.get(groupId);
+		if (!groupRegistry) {
+			throw new Error(`Consumer group ${groupId} not found`);
+		}
+		
+		// If handler is provided, add topic and handler to queue
+		if (newTopicHandler && newTopic) {
+			groupRegistry.topicQueue.set(newTopic, newTopicHandler);
+			this.logger.info(`Topic queued for restart`, {
+				groupId,
+				requestedTopic: newTopic,
+				queuedTopics: Array.from(groupRegistry.topicQueue.keys()),
+				restartState: groupRegistry.restartState,
+			});
+		}
+		
+		// If restart is already in progress, queue the topic and wait for restart to complete
+		if (groupRegistry.restartState === RestartState.RESTARTING) {
+			groupRegistry.restartState = RestartState.QUEUED;
+			this.logger.info(`Restart in progress - topic queued, waiting for current restart to complete`, {
+				groupId,
+				requestedTopic: newTopic,
+				queuedTopics: Array.from(groupRegistry.topicQueue.keys()),
+			});
+			
+			// Wait for the current restart to complete
+			const currentRestartPromise = this.groupRestartLocks.get(groupId);
+			if (currentRestartPromise) {
+				await currentRestartPromise;
+				
+				// After restart completes, verify subscription and handle any additional restarts
+				// Only wait for subscription if we have a real topic to wait for
+				if (newTopic) {
+					await this.waitForTopicSubscription(groupId, newTopic, service);
+				}
+			} else {
+				// No restart promise found - this shouldn't happen, but handle gracefully
+				this.logger.warn(`Restart state is RESTARTING but no restart promise found`, {
+					groupId,
+					requestedTopic: newTopic,
+				});
+			}
+			return;
+		}
+		
+		// If restart is queued (waiting for current restart to complete), queue and wait
+		if (groupRegistry.restartState === RestartState.QUEUED) {
+			this.logger.info(`Restart already queued - topic added to queue, waiting for restart`, {
+				groupId,
+				requestedTopic: newTopic,
+				queuedTopics: Array.from(groupRegistry.topicQueue.keys()),
+			});
+			
+			// Wait for any in-progress restart
+			const currentRestartPromise = this.groupRestartLocks.get(groupId);
+			if (currentRestartPromise) {
+				await currentRestartPromise;
+			}
+			
+			// Verify subscription and handle any additional restarts
+			// Only wait for subscription if we have a real topic to wait for
+			if (newTopic) {
+				await this.waitForTopicSubscription(groupId, newTopic, service);
+			}
+			return;
+		}
+		
+		// Restart is idle - start a new restart
+		// Check if there are any topics to process
+		if (groupRegistry.topicQueue.size === 0) {
+			this.logger.warn(`Restart requested but no topics in queue`, {
+				groupId,
+				requestedTopic: newTopic,
+			});
+			return;
+		}
+		
+		// Mark restart as in progress
+		groupRegistry.restartState = RestartState.RESTARTING;
+		
+		// Create restart promise
+		const executeRestart = async (): Promise<void> => {
+			try {
+				// Add a short delay to allow other services to enqueue their topics
+				await new Promise(resolve => setTimeout(resolve, 10));
+				
+				// Re-read the queue after delay to collect all topics
+				const currentRegistry = this.groupConsumers.get(groupId);
+				if (!currentRegistry) {
+					throw new Error(`Consumer group ${groupId} was lost during restart`);
+				}
+				
+				// Collect all queued topics that need to be added
+				const topicsToAdd = new Set<string>();
+				const handlersToAdd = new Map<string, MessageHandler>();
+				
+				for (const [topic, handler] of currentRegistry.topicQueue.entries()) {
+					if (!currentRegistry.topics.has(topic)) {
+						topicsToAdd.add(topic);
+						handlersToAdd.set(topic, handler);
+					}
+				}
+				
+				if (topicsToAdd.size === 0) {
+					this.logger.info(`No new topics to add after collecting queue`, {
+						groupId,
+						queuedTopics: Array.from(currentRegistry.topicQueue.keys()),
+						existingTopics: Array.from(currentRegistry.topics),
+					});
+					// Clear queue since all topics are already subscribed
+					currentRegistry.topicQueue.clear();
+					currentRegistry.restartState = RestartState.IDLE;
+					return;
+				}
+				
+				this.logger.info(`Restart started - processing queued topics`, {
+					groupId,
+					topicsToAdd: Array.from(topicsToAdd),
+					existingTopics: Array.from(currentRegistry.topics),
+					queuedTopics: Array.from(currentRegistry.topicQueue.keys()),
+				});
+				
+				// Execute restart with all queued topics
+				await this.executeRestartWithMultipleTopics(groupId, Array.from(topicsToAdd), service, handlersToAdd);
+				
+				// After restart completes, check if new topics were queued during restart
+				const finalRegistry = this.groupConsumers.get(groupId);
+				if (!finalRegistry) {
+					throw new Error(`Consumer group ${groupId} was lost after restart`);
+				}
+				
+				// Clear processed topics from queue
+				for (const topic of topicsToAdd) {
+					finalRegistry.topicQueue.delete(topic);
+				}
+				
+				this.logger.info(`Restart completed successfully`, {
+					groupId,
+					topicsAdded: Array.from(topicsToAdd),
+					remainingQueuedTopics: Array.from(finalRegistry.topicQueue.keys()),
+					consumerAssignment: Array.from(finalRegistry.topics),
+				});
+				
+				// If new topics were queued during restart, schedule another restart
+				if (finalRegistry.topicQueue.size > 0) {
+					this.logger.info(`New topics queued during restart - scheduling another restart`, {
+						groupId,
+						queuedTopics: Array.from(finalRegistry.topicQueue.keys()),
+					});
+					// Reset state to IDLE so next restart can start
+					finalRegistry.restartState = RestartState.IDLE;
+					// Schedule another restart (this will be non-blocking if restart is already in progress)
+					await this.restartConsumerGroup(groupId, '', service); // Empty topic since it's already queued
+				} else {
+					// No more topics queued - mark as idle
+					finalRegistry.restartState = RestartState.IDLE;
+				}
+			} catch (error) {
+				// On error, mark as idle and log
+				const errorRegistry = this.groupConsumers.get(groupId);
+				if (errorRegistry) {
+					errorRegistry.restartState = RestartState.IDLE;
+				}
+				this.logger.error(`Restart failed`, {
+					groupId,
+					error: error instanceof Error ? error.message : 'Unknown error',
+					stack: error instanceof Error ? error.stack : undefined,
+				});
+				throw error;
+			}
+		};
+		
+		// Set the lock immediately to prevent concurrent restarts
+		const restartPromise = executeRestart();
+		this.groupRestartLocks.set(groupId, restartPromise);
+		
+		// Clean up lock after restart completes (success or failure)
+		// CRITICAL: Add catch handler to prevent unhandled rejections
+		restartPromise.catch((error) => {
+			// Error is already logged in executeRestart catch block
+			// This catch is just to prevent unhandled rejection
+			this.logger.debug('Restart promise rejected (error already logged)', {
+				groupId,
+				error: error instanceof Error ? error.message : 'Unknown error',
+			});
+		}).finally(() => {
+			this.groupRestartLocks.delete(groupId);
+		});
+		
+		// Wait for restart to complete
+		// Errors will be caught and re-thrown by executeRestart, so they propagate to the caller
+		await restartPromise;
+	}
+
+	/**
+	 * Wait for a topic to be successfully subscribed, handling any additional restarts if needed.
+	 * This method will wait for all queued topics to be processed and subscribed.
+	 * 
+	 * @param groupId - The consumer group ID
+	 * @param topic - The topic to wait for
+	 * @param service - The service instance (for triggering additional restarts if needed)
+	 */
+	private async waitForTopicSubscription(groupId: string, topic: string, service: RegisterableKafkaService): Promise<void> {
+		const maxWaitTime = 30000; // 30 seconds max wait time
+		const startTime = Date.now();
+		const checkInterval = 100; // Check every 100ms
+		let lastRestartPromise: Promise<void> | undefined;
+		
+		while (Date.now() - startTime < maxWaitTime) {
+			const registry = this.groupConsumers.get(groupId);
+			if (!registry) {
+				throw new Error(`Consumer group ${groupId} was lost while waiting for topic subscription`);
+			}
+			
+			// Check if topic is now subscribed
+			if (registry.topics.has(topic)) {
+				this.logger.info(`Topic successfully subscribed after restart`, {
+					groupId,
+					topic,
+					subscribedTopics: Array.from(registry.topics),
+				});
+				return; // Success - topic is subscribed
+			}
+			
+			// If topic is still queued, wait for any in-progress restart
+			if (registry.restartState === RestartState.RESTARTING) {
+				const restartPromise = this.groupRestartLocks.get(groupId);
+				if (restartPromise && restartPromise !== lastRestartPromise) {
+					this.logger.info(`Topic still queued, waiting for additional restart to complete`, {
+						groupId,
+						topic,
+						queuedTopics: Array.from(registry.topicQueue.keys()),
+					});
+					lastRestartPromise = restartPromise;
+					// Wrap in try-catch to handle restart failures gracefully
+					try {
+						await restartPromise;
+					} catch (error) {
+						this.logger.error(`Restart failed while waiting for topic subscription`, {
+							groupId,
+							topic,
+							error: error instanceof Error ? error.message : 'Unknown error',
+							stack: error instanceof Error ? error.stack : undefined,
+						});
+						// Continue waiting - check if another restart is needed
+						// Don't throw immediately, allow the loop to continue
+					}
+					// Continue loop to check if topic is now subscribed
+					continue;
+				}
+			}
+			
+			// If topic is queued but no restart is in progress, check if we need to trigger one
+			if (registry.topicQueue.has(topic) && registry.restartState === RestartState.IDLE) {
+				// Topic is queued but no restart is happening - trigger one
+				this.logger.info(`Topic is queued but no restart in progress - triggering restart`, {
+					groupId,
+					topic,
+					queuedTopics: Array.from(registry.topicQueue.keys()),
+				});
+				// Trigger restart (this will process all queued topics and wait for completion)
+				// Pass empty topic since it's already queued
+				// Wrap in try-catch to handle restart failures gracefully
+				try {
+					await this.restartConsumerGroup(groupId, '', service);
+				} catch (error) {
+					this.logger.error(`Restart failed while waiting for topic subscription`, {
+						groupId,
+						topic,
+						error: error instanceof Error ? error.message : 'Unknown error',
+						stack: error instanceof Error ? error.stack : undefined,
+					});
+					// Continue waiting - the topic might still be queued for another restart attempt
+					// Don't throw immediately, allow the loop to continue and check again
+				}
+				// Continue loop to check if topic is now subscribed
+				continue;
+			}
+			
+			// If topic is not queued and not subscribed, something went wrong
+			if (!registry.topicQueue.has(topic) && !registry.topics.has(topic)) {
+				throw new Error(`Topic ${topic} is not queued and not subscribed - restart may have failed`);
+			}
+			
+			// Wait a bit before checking again
+			await new Promise(resolve => setTimeout(resolve, checkInterval));
+		}
+		
+		// Timeout - topic was not subscribed
+		const finalRegistry = this.groupConsumers.get(groupId);
+		throw new Error(`Timeout waiting for topic ${topic} to be subscribed. Current topics: ${finalRegistry ? Array.from(finalRegistry.topics).join(', ') : 'unknown'}, Queued topics: ${finalRegistry ? Array.from(finalRegistry.topicQueue.keys()).join(', ') : 'unknown'}`);
+	}
+
+	/**
+	 * Execute the actual consumer restart with proper teardown for multiple topics.
+	 * This method is called with a lock to ensure only one restart happens at a time.
+	 * 
+	 * @param groupId - The consumer group ID
+	 * @param pendingTopics - Array of all topics to add in this restart
+	 * @param service - The service instance to use for creating a new consumer
+	 * @param pendingHandlers - Map of topic -> handler for topics that have handlers ready
+	 */
+	private async executeRestartWithMultipleTopics(
+		groupId: string,
+		pendingTopics: string[],
+		service: RegisterableKafkaService,
+		pendingHandlers: Map<string, MessageHandler>,
+	): Promise<void> {
 		const groupRegistry = this.groupConsumers.get(groupId);
 		if (!groupRegistry) {
 			throw new Error(`Consumer group ${groupId} not found`);
 		}
 
-		this.logger.info(`Restarting consumer group to add new topic`, {
+		const oldConsumerInstanceId = groupRegistry.consumerInstanceId;
+		const oldConsumer = groupRegistry.consumerInstance;
+
+		this.logger.info(`Restarting consumer group to add multiple topics`, {
 			groupId,
-			newTopic,
+			pendingTopics,
+			oldConsumerInstanceId,
 			existingTopics: Array.from(groupRegistry.topics),
 			services: Array.from(groupRegistry.services),
 		});
+
+		// DEFENSIVE CHECK: Verify we have the current consumer
+		if (this.groupConsumers.get(groupId)?.consumerInstance !== oldConsumer) {
+			throw new Error(`Consumer instance mismatch - another restart may have occurred`);
+		}
 
 		// Preserve existing handlers and services
 		const existingHandlers = new Map(groupRegistry.messageHandlers);
 		const existingServices = new Set(groupRegistry.services);
 		const existingStartTime = groupRegistry.startedAt;
 
-		// Disconnect the current consumer
+		// STEP 1: Stop the current consumer (CRITICAL: must stop before disconnect)
 		try {
-			await groupRegistry.consumerInstance.disconnect();
-			this.logger.info(`Disconnected existing consumer for group restart`, {
+			this.logger.info(`Stopping consumer for group restart`, {
 				groupId,
+				consumerInstanceId: oldConsumerInstanceId,
+			});
+			await oldConsumer.stop();
+			this.logger.info(`consumer_stopped`, {
+				groupId,
+				consumerInstanceId: oldConsumerInstanceId,
 			});
 		} catch (error) {
-			this.logger.warn(`Error disconnecting consumer during restart (may already be disconnected)`, {
+			this.logger.warn(`Error stopping consumer during restart (may already be stopped)`, {
 				groupId,
+				consumerInstanceId: oldConsumerInstanceId,
 				error: error instanceof Error ? error.message : 'Unknown error',
 			});
 		}
 
-		// Get all topics that should be subscribed (existing + new)
-		const allTopics = Array.from(new Set([...Array.from(groupRegistry.topics), newTopic]));
+		// STEP 2: Disconnect the current consumer
+		try {
+			this.logger.info(`Disconnecting consumer for group restart`, {
+				groupId,
+				consumerInstanceId: oldConsumerInstanceId,
+			});
+			await oldConsumer.disconnect();
+			this.logger.info(`consumer_disconnected`, {
+				groupId,
+				consumerInstanceId: oldConsumerInstanceId,
+			});
+		} catch (error) {
+			this.logger.warn(`Error disconnecting consumer during restart (may already be disconnected)`, {
+				groupId,
+				consumerInstanceId: oldConsumerInstanceId,
+				error: error instanceof Error ? error.message : 'Unknown error',
+			});
+		}
 
-		// Create a new consumer instance using the service
-		// The service.start() method will create a new consumer with the same groupId
+		// STEP 3: Clear routing start time (consumer will be replaced below)
+		groupRegistry.routingStartedAt = undefined;
+
+		// STEP 4: Get all topics that should be subscribed (existing + all pending)
+		const allTopics = Array.from(new Set([...Array.from(groupRegistry.topics), ...pendingTopics]));
+
+		// STEP 5: Create exactly ONE new consumer instance
+		// DEFENSIVE CHECK: Verify we still have the same consumer (no concurrent restart)
+		const currentRegistry = this.groupConsumers.get(groupId);
+		if (!currentRegistry || currentRegistry.consumerInstance !== oldConsumer) {
+			throw new Error(`Consumer instance changed during restart - concurrent restart detected`);
+		}
+
+		this.logger.info(`Creating new consumer instance for group restart`, {
+			groupId,
+			topics: allTopics,
+		});
+
 		const newConsumer = await service.start() as Consumer;
+		
+		// Generate unique consumer instance ID for tracking
+		const newConsumerInstanceId = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
 
-		// Subscribe to all topics (including the new one) BEFORE calling consumer.run()
+		// STEP 6: Subscribe to all topics BEFORE calling consumer.run()
 		await newConsumer.subscribe({
 			topics: allTopics,
 			fromBeginning: false,
 		});
 
-		this.logger.info(`Subscribed new consumer to all topics (including new topic)`, {
+		this.logger.info(`Subscribed new consumer to all topics`, {
 			groupId,
+			consumerInstanceId: newConsumerInstanceId,
 			topics: allTopics,
 		});
 
-		// Update the group registry with the new consumer and topics
+		// STEP 7: Update the group registry with the new consumer and topics
 		groupRegistry.consumerInstance = newConsumer;
+		groupRegistry.consumerInstanceId = newConsumerInstanceId;
 		groupRegistry.topics = new Set(allTopics);
-		// Restore preserved handlers and services
+		// Restore preserved handlers
 		groupRegistry.messageHandlers = existingHandlers;
 		groupRegistry.services = existingServices;
+		
+		// STEP 8: Register ALL pending topic handlers BEFORE starting message routing
+		// This ensures messages for all new topics are handled immediately when routing starts
+		// CRITICAL: All pending topics should have handlers (we only collect topics with handlers)
+		for (const [topic, handler] of pendingHandlers.entries()) {
+			groupRegistry.messageHandlers.set(topic, handler);
+			this.logger.debug('Registered handler for pending topic before routing start', {
+				groupId,
+				topic,
+			});
+		}
+		
+		// Verify all pending topics have handlers (defensive check)
+		for (const topic of pendingTopics) {
+			if (!groupRegistry.messageHandlers.has(topic)) {
+				this.logger.error(`Pending topic missing handler - this should not happen`, {
+					groupId,
+					topic,
+					pendingTopics,
+					registeredHandlers: Array.from(groupRegistry.messageHandlers.keys()),
+				});
+				throw new Error(`Pending topic ${topic} does not have a handler registered`);
+			}
+		}
 
-		// Update all service runtimes to point to the new consumer instance
+		// STEP 10: Update all service runtimes to point to the new consumer instance
 		for (const serviceId of existingServices) {
 			const serviceRuntime = this.registry.get(serviceId);
 			if (serviceRuntime) {
@@ -644,17 +1106,37 @@ export class KafkaRuntimeManager {
 			}
 		}
 
-		// Restart message routing with the new consumer
-		// This must happen AFTER handlers are restored so the router can find them
-		this.setupMessageRouting(groupRegistry);
+		// STEP 11: Restart message routing with the new consumer
+		// This must happen AFTER all handlers are registered
+		// CRITICAL: Await until consumer has fully joined the group before resolving restart
+		// The setupMessageRouting method awaits readyPromise, which only resolves when:
+		// - Consumer has joined the group (GROUP_JOIN event)
+		// - All expected topics are subscribed/assigned
+		// This ensures the restart promise does not resolve until the consumer is truly ready
+		await this.setupMessageRouting(groupRegistry);
 
-		this.logger.info(`Consumer group restarted successfully with new topic`, {
+		// At this point, the consumer has fully joined the group and all topics are subscribed
+		// The "Consumer joined group - restart complete" log has been emitted in setupMessageRouting
+		// This is the correct resolution point for the restart promise
+
+		this.logger.info(`consumer_created`, {
 			groupId,
-			newTopic,
+			consumerInstanceId: newConsumerInstanceId,
+			topics: allTopics,
+		});
+
+		// Note: consumer_run_started is logged in setupMessageRouting
+
+		this.logger.info(`Consumer group restarted successfully with multiple topics`, {
+			groupId,
+			pendingTopics,
+			oldConsumerInstanceId,
+			newConsumerInstanceId,
 			allTopics: Array.from(allTopics),
 			totalServices: existingServices.size,
 		});
 	}
+
 
 	/**
 	 * Set up message routing for a consumer group.
@@ -665,18 +1147,35 @@ export class KafkaRuntimeManager {
 	 * 
 	 * CRITICAL: Consumers should NOT call consumer.run() themselves.
 	 * The runtime manager handles this to ensure proper message routing.
+	 * 
+	 * Returns a promise that resolves when the consumer has fully joined the group.
 	 */
-	private setupMessageRouting(groupRegistry: GroupConsumerRegistry): void {
+	private async setupMessageRouting(groupRegistry: GroupConsumerRegistry): Promise<void> {
 		const consumer = groupRegistry.consumerInstance;
+		const expectedConsumerInstanceId = groupRegistry.consumerInstanceId;
 		
 		// Create a router that dispatches messages to the correct handler
 		const router: MessageHandler = async (payload: { topic: string; partition: number; message: KafkaMessage }) => {
+			// DEFENSIVE CHECK: Verify we're using the current consumer instance
+			const currentRegistry = this.groupConsumers.get(groupRegistry.groupId);
+			if (!currentRegistry || currentRegistry.consumerInstance !== consumer) {
+				this.logger.error('Message received from non-current consumer instance - dropping message', {
+					groupId: groupRegistry.groupId,
+					expectedConsumerInstanceId,
+					currentConsumerInstanceId: currentRegistry?.consumerInstanceId,
+					topic: payload.topic,
+					partition: payload.partition,
+					offset: payload.message.offset,
+				});
+				return; // Drop the message - it's from a stale consumer
+			}
+			
 			// Wrap each message in its own async context to ensure logger context isolation
 			// Each message gets its own correlation ID and logger context
 			const correlationId = CorrelationIdHelper.generateCorrelationId();
 			
 			// Get the service name from the handler's topic (for logger context)
-			const handler = groupRegistry.messageHandlers.get(payload.topic);
+			const handler = currentRegistry.messageHandlers.get(payload.topic);
 			const serviceName = this.getServiceNameForTopic(payload.topic);
 			
 			// Create async context for this message with logger context
@@ -695,32 +1194,50 @@ export class KafkaRuntimeManager {
 			await AsyncContextStorage.run(context, async () => {
 				try {
 					this.logger.debug('Message router received message', {
-						groupId: groupRegistry.groupId,
+						groupId: currentRegistry.groupId,
+						consumerInstanceId: currentRegistry.consumerInstanceId,
 						topic: payload.topic,
 						partition: payload.partition,
 						offset: payload.message.offset,
-						registeredHandlers: Array.from(groupRegistry.messageHandlers.keys()),
-						subscribedTopics: Array.from(groupRegistry.topics),
+						registeredHandlers: Array.from(currentRegistry.messageHandlers.keys()),
+						subscribedTopics: Array.from(currentRegistry.topics),
 					});
 					
 					if (handler) {
 						this.logger.debug('Calling handler for topic', {
-							groupId: groupRegistry.groupId,
+							groupId: currentRegistry.groupId,
 							topic: payload.topic,
 						});
 						await handler(payload);
 					} else {
-						this.logger.warn('Message received for topic with no registered handler', {
-							groupId: groupRegistry.groupId,
-							topic: payload.topic,
-							registeredTopics: Array.from(groupRegistry.messageHandlers.keys()),
-							subscribedTopics: Array.from(groupRegistry.topics),
-						});
+						// Check if we're in a startup/restart window (first 5 seconds after routing starts)
+						// During this window, missing handlers are expected during consumer group rebalancing
+						const isStartupWindow = currentRegistry.routingStartedAt 
+							&& (Date.now() - currentRegistry.routingStartedAt.getTime()) < 5000;
+						
+						if (isStartupWindow) {
+							// During startup/restart window, this is expected - log at debug level
+							this.logger.debug('Message received during startup window - handler may be registering', {
+								groupId: currentRegistry.groupId,
+								topic: payload.topic,
+								registeredTopics: Array.from(currentRegistry.messageHandlers.keys()),
+								subscribedTopics: Array.from(currentRegistry.topics),
+								timeSinceRoutingStart: Date.now() - (currentRegistry.routingStartedAt?.getTime() || 0),
+							});
+						} else {
+							// Outside startup window, this indicates a real misconfiguration
+							this.logger.warn('Message received for topic with no registered handler', {
+								groupId: currentRegistry.groupId,
+								topic: payload.topic,
+								registeredTopics: Array.from(currentRegistry.messageHandlers.keys()),
+								subscribedTopics: Array.from(currentRegistry.topics),
+							});
+						}
 					}
 				} catch (error) {
 					// Catch any unhandled errors in message processing to prevent consumer crash
 					this.logger.error('Error in message router - handler threw unhandled exception', {
-						groupId: groupRegistry.groupId,
+						groupId: currentRegistry.groupId,
 						topic: payload.topic,
 						partition: payload.partition,
 						offset: payload.message.offset,
@@ -733,23 +1250,182 @@ export class KafkaRuntimeManager {
 			});
 		};
 
+		// Mark routing start time for startup window detection
+		groupRegistry.routingStartedAt = new Date();
+		
+		// DEFENSIVE CHECK: Verify consumer instance matches registry
+		if (this.groupConsumers.get(groupRegistry.groupId)?.consumerInstance !== consumer) {
+			throw new Error(`Consumer instance mismatch in setupMessageRouting - consumer may have been replaced`);
+		}
+		
 		// Start the consumer with the router
 		// NOTE: Consumers should NOT call consumer.run() in their start() method.
 		// The runtime manager handles this to ensure proper multi-topic routing.
 		
+		// Log before starting consumer.run() - memberId will be available after join
+		this.logger.info('consumer_run_started', {
+			groupId: groupRegistry.groupId,
+			consumerInstanceId: groupRegistry.consumerInstanceId,
+			topics: Array.from(groupRegistry.topics),
+			registeredHandlers: Array.from(groupRegistry.messageHandlers.keys()),
+		});
+		
+		// CRITICAL: Wait for consumer to be fully ready before resolving
+		// Readiness = consumer.run() started AND consumer joined group AND all expected topics are subscribed
+		const expectedTopics = new Set(groupRegistry.topics);
+		const readyPromise = new Promise<void>((resolve, reject) => {
+			const timeout = setTimeout(() => {
+				if (!resolved) {
+					resolved = true;
+					clearTimeout(timeout);
+					if (pendingCheckTimeout) {
+						clearTimeout(pendingCheckTimeout);
+					}
+					reject(new Error(`Consumer did not become ready within 30 seconds`));
+				}
+			}, 30000); // Increased to 30 seconds
+			
+			let groupJoined = false;
+			let memberAssignment: Record<string, number[]> | null = null;
+			let resolved = false;
+			let pendingCheckTimeout: NodeJS.Timeout | null = null;
+			
+			// Listen for GROUP_JOIN event
+			// CRITICAL: Verify this event is from the correct consumer instance
+			const onGroupJoin = (event: any) => {
+				if (resolved) {
+					return; // Already resolved/rejected
+				}
+				
+				// Verify this is the correct consumer instance by checking the registry
+				const currentRegistry = this.groupConsumers.get(groupRegistry.groupId);
+				if (!currentRegistry || currentRegistry.consumerInstance !== consumer) {
+					// This event is from a different consumer instance - ignore it
+					this.logger.debug('GROUP_JOIN event from different consumer instance - ignoring', {
+						groupId: groupRegistry.groupId,
+						expectedConsumerInstanceId: groupRegistry.consumerInstanceId,
+						currentConsumerInstanceId: currentRegistry?.consumerInstanceId,
+						eventMemberId: event.payload.memberId,
+					});
+					return;
+				}
+				
+				groupJoined = true;
+				memberAssignment = event.payload.memberAssignment || {};
+				this.logger.info('Consumer joined group', {
+					groupId: groupRegistry.groupId,
+					consumerInstanceId: groupRegistry.consumerInstanceId,
+					memberId: event.payload.memberId,
+					isLeader: event.payload.isLeader,
+					consumerAssignment: memberAssignment, // Full partition assignment per topic
+					assignedTopics: Object.keys(memberAssignment),
+				});
+				// After GROUP_JOIN, verify all topics are subscribed and consumer is running
+				checkReadiness();
+			};
+			
+			// Listen for CRASH event to fail fast
+			const onCrash = (event: any) => {
+				if (resolved) {
+					return; // Already resolved/rejected
+				}
+				resolved = true;
+				clearTimeout(timeout);
+				if (pendingCheckTimeout) {
+					clearTimeout(pendingCheckTimeout);
+				}
+				reject(new Error(`Consumer crashed during startup: ${event.payload.error.message}`));
+			};
+			
+			// Check if consumer is fully ready (joined group + all topics subscribed)
+			const checkReadiness = () => {
+				if (resolved) {
+					return; // Already resolved/rejected
+				}
+				
+				if (!groupJoined) {
+					return; // Not ready yet - waiting for GROUP_JOIN
+				}
+				
+				// Verify all expected topics are in the subscribed topics set
+				const currentRegistry = this.groupConsumers.get(groupRegistry.groupId);
+				if (!currentRegistry) {
+					// Registry not found - check again after a short delay
+					pendingCheckTimeout = setTimeout(checkReadiness, 50);
+					return;
+				}
+				
+				// Verify topics are in the registry AND actually assigned to this consumer
+				const subscribedTopics = currentRegistry.topics;
+				const assignedTopics = memberAssignment ? new Set(Object.keys(memberAssignment)) : new Set<string>();
+				
+				// All expected topics must be:
+				// 1. In the registry's topics set (we subscribed to them)
+				// 2. Actually assigned to this consumer (from GROUP_JOIN event)
+				const allTopicsInRegistry = Array.from(expectedTopics).every(topic => subscribedTopics.has(topic));
+				const allTopicsAssigned = memberAssignment ? Array.from(expectedTopics).every(topic => assignedTopics.has(topic)) : false;
+				
+				if (allTopicsInRegistry && allTopicsAssigned) {
+					resolved = true;
+					clearTimeout(timeout);
+					if (pendingCheckTimeout) {
+						clearTimeout(pendingCheckTimeout);
+					}
+					this.logger.info('Consumer joined group - restart complete', {
+						groupId: groupRegistry.groupId,
+						consumerInstanceId: groupRegistry.consumerInstanceId,
+						expectedTopics: Array.from(expectedTopics),
+						subscribedTopics: Array.from(subscribedTopics),
+						assignedTopics: Array.from(assignedTopics),
+						consumerAssignment: memberAssignment, // Full partition assignment per topic
+					});
+					resolve();
+				} else {
+					// Not all topics subscribed/assigned yet - check again after a short delay
+					pendingCheckTimeout = setTimeout(checkReadiness, 50);
+				}
+			};
+			
+			consumer.on(consumer.events.GROUP_JOIN, onGroupJoin);
+			consumer.on(consumer.events.CRASH, onCrash);
+		});
+		
+		// Start the consumer with the router
+		// NOTE: Consumers should NOT call consumer.run() in their start() method.
+		// The runtime manager handles this to ensure proper multi-topic routing.
 		consumer.run({
 			eachMessage: router,
 		}).catch((error) => {
 			this.logger.error('Consumer run() promise rejected', {
 				groupId: groupRegistry.groupId,
+				consumerInstanceId: groupRegistry.consumerInstanceId,
 				error: error instanceof Error ? error.message : 'Unknown error',
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 		});
 
+		// Wait for consumer to be fully ready (joined group + all topics subscribed) before resolving
+		// CRITICAL: Wrap in try-catch to ensure errors are properly handled and don't become unhandled rejections
+		try {
+			await readyPromise;
+		} catch (error) {
+			// Log the error with full context
+			this.logger.error('Consumer readiness check failed', {
+				groupId: groupRegistry.groupId,
+				consumerInstanceId: groupRegistry.consumerInstanceId,
+				expectedTopics: Array.from(expectedTopics),
+				error: error instanceof Error ? error.message : 'Unknown error',
+				stack: error instanceof Error ? error.stack : undefined,
+			});
+			// Re-throw to be caught by the restart promise's error handler
+			throw error;
+		}
+
 		this.logger.info('Message routing set up for consumer group', {
 			groupId: groupRegistry.groupId,
+			consumerInstanceId: groupRegistry.consumerInstanceId,
 			topics: Array.from(groupRegistry.topics),
+			registeredHandlers: Array.from(groupRegistry.messageHandlers.keys()),
 		});
 	}
 
