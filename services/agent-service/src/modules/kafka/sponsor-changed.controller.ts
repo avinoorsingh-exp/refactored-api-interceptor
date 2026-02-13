@@ -8,6 +8,7 @@ import {
 	Logger,
 	Param,
 	Body,
+	Query,
 } from '@nestjs/common';
 import { Request } from 'express';
 import {
@@ -16,6 +17,7 @@ import {
 	ApiResponse,
 	ApiParam,
 	ApiBody,
+	ApiQuery,
 } from '@nestjs/swagger';
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js';
 import { SponsorChangedService } from './sponsor-changed.service.js';
@@ -27,6 +29,7 @@ import {
 	SponsorWriteInRequestDto,
 	SponsorWriteInRequestSchema,
 } from './dto/sponsor-write-in-request.dto.js';
+import { parseSponsorSubjectType, type SponsorSubjectType } from './dto/sponsor-subject-type.dto.js';
 
 /**
  * Controller for sponsor changed Kafka events.
@@ -79,6 +82,12 @@ export class SponsorChangedController {
 		status: 404,
 		description: 'Sponsor agent not found',
 	})
+	@ApiQuery({
+		name: 'type',
+		required: false,
+		description: 'Subject type: "applicant" (payload uses ApplicantUuid) or "agent" (payload uses AgentUuid). Defaults to "applicant".',
+		enum: ['applicant', 'agent'],
+	})
 	async sponsorChanged(
 		@Param(
 			new ZodValidationPipe(
@@ -87,19 +96,22 @@ export class SponsorChangedController {
 			),
 		)
 		params: SponsorAssignedParamsDto,
+		@Query('type') typeParam: string | undefined,
 		@Req() req: Request,
 	): Promise<{ message: string }> {
 		const startTime = Date.now();
 		const correlationId = this.getCorrelationId(req);
+		const type: SponsorSubjectType = parseSponsorSubjectType(typeParam);
 
 		this.logger.log(
-			`[${correlationId}] POST /v1/kafka/sponsor-assigned/${params.applicantUuid}/${params.sponsorUuid} - Processing sponsor changed event for applicant ${params.applicantUuid} and sponsor ${params.sponsorUuid}`,
+			`[${correlationId}] POST /v1/kafka/sponsor-assigned/${params.applicantUuid}/${params.sponsorUuid} - Processing sponsor changed event for ${type} ${params.applicantUuid} and sponsor ${params.sponsorUuid}`,
 		);
 
 		try {
 			await this.sponsorChangedService.processSponsorChanged(
 				params.applicantUuid,
 				params.sponsorUuid,
+				type,
 			);
 
 			const duration = Date.now() - startTime;
@@ -162,8 +174,15 @@ export class SponsorChangedController {
 		status: 400,
 		description: 'Validation error - malformed or invalid data',
 	})
+	@ApiQuery({
+		name: 'type',
+		required: false,
+		description: 'Subject type: "applicant" (payload uses ApplicantUuid) or "agent" (payload uses AgentUuid). Defaults to "applicant".',
+		enum: ['applicant', 'agent'],
+	})
 	async sponsorWriteIn(
 		@Param('applicantUuid') applicantUuid: string,
+		@Query('type') typeParam: string | undefined,
 		@Body(
 			new ZodValidationPipe(
 				SponsorWriteInRequestSchema,
@@ -175,9 +194,10 @@ export class SponsorChangedController {
 	): Promise<{ message: string }> {
 		const startTime = Date.now();
 		const correlationId = this.getCorrelationId(req);
+		const type: SponsorSubjectType = parseSponsorSubjectType(typeParam);
 
 		this.logger.log(
-			`[${correlationId}] POST /v1/kafka/sponsor-assigned/${applicantUuid}/write-in - Processing sponsor write-in event for applicant ${applicantUuid} with sponsor name "${body.name}"`,
+			`[${correlationId}] POST /v1/kafka/sponsor-assigned/${applicantUuid}/write-in - Processing sponsor write-in event for ${type} ${applicantUuid} with sponsor name "${body.name}"`,
 		);
 
 		try {
@@ -193,7 +213,7 @@ export class SponsorChangedController {
 				);
 			}
 
-			await this.sponsorChangedService.processSponsorWriteIn(applicantUuid, body.name);
+			await this.sponsorChangedService.processSponsorWriteIn(applicantUuid, body.name, type);
 
 			const duration = Date.now() - startTime;
 			this.logger.log(

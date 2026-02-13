@@ -48,12 +48,14 @@ describe('SponsorChangedController', () => {
 					applicantUuid,
 					sponsorUuid,
 				},
+				undefined, // type query - defaults to 'applicant'
 				mockRequest as Request,
 			);
 
 			expect(mockSponsorChangedService.processSponsorChanged).toHaveBeenCalledWith(
 				applicantUuid,
 				sponsorUuid,
+				'applicant',
 			);
 			expect(result).toEqual({
 				message: 'Sponsor changed message sent successfully',
@@ -70,9 +72,24 @@ describe('SponsorChangedController', () => {
 						applicantUuid,
 						sponsorUuid,
 					},
+					undefined,
 					mockRequest as Request,
 				),
 			).rejects.toThrow(error);
+		});
+
+		it('should pass type=agent when query type is agent', async () => {
+			await controller.sponsorChanged(
+				{ applicantUuid, sponsorUuid },
+				'agent',
+				mockRequest as Request,
+			);
+
+			expect(mockSponsorChangedService.processSponsorChanged).toHaveBeenCalledWith(
+				applicantUuid,
+				sponsorUuid,
+				'agent',
+			);
 		});
 	});
 
@@ -83,6 +100,7 @@ describe('SponsorChangedController', () => {
 		it('should process sponsor write-in event successfully', async () => {
 			const result = await controller.sponsorWriteIn(
 				applicantUuid,
+				undefined, // type query - defaults to 'applicant'
 				{ name: sponsorName },
 				mockRequest as Request,
 			);
@@ -90,6 +108,7 @@ describe('SponsorChangedController', () => {
 			expect(mockSponsorChangedService.processSponsorWriteIn).toHaveBeenCalledWith(
 				applicantUuid,
 				sponsorName,
+				'applicant',
 			);
 			expect(result).toEqual({
 				message: 'Sponsor write-in message sent successfully',
@@ -100,6 +119,7 @@ describe('SponsorChangedController', () => {
 			const sponsorNameWithSpaces = 'John Michael Doe';
 			const result = await controller.sponsorWriteIn(
 				applicantUuid,
+				undefined,
 				{ name: sponsorNameWithSpaces },
 				mockRequest as Request,
 			);
@@ -107,6 +127,7 @@ describe('SponsorChangedController', () => {
 			expect(mockSponsorChangedService.processSponsorWriteIn).toHaveBeenCalledWith(
 				applicantUuid,
 				sponsorNameWithSpaces,
+				'applicant',
 			);
 			expect(result).toEqual({
 				message: 'Sponsor write-in message sent successfully',
@@ -119,6 +140,7 @@ describe('SponsorChangedController', () => {
 			await expect(
 				controller.sponsorWriteIn(
 					invalidUuid,
+					undefined,
 					{ name: sponsorName },
 					mockRequest as Request,
 				),
@@ -134,6 +156,7 @@ describe('SponsorChangedController', () => {
 			await expect(
 				controller.sponsorWriteIn(
 					applicantUuid,
+					undefined,
 					{ name: sponsorName },
 					mockRequest as Request,
 				),
@@ -150,6 +173,7 @@ describe('SponsorChangedController', () => {
 
 			await controller.sponsorWriteIn(
 				applicantUuid,
+				undefined,
 				{ name: sponsorName },
 				customRequest as Request,
 			);
@@ -164,11 +188,27 @@ describe('SponsorChangedController', () => {
 
 			await controller.sponsorWriteIn(
 				applicantUuid,
+				undefined,
 				{ name: sponsorName },
 				requestWithoutCorrelationId as Request,
 			);
 
 			expect(mockSponsorChangedService.processSponsorWriteIn).toHaveBeenCalled();
+		});
+
+		it('should pass type=agent when query type is agent', async () => {
+			await controller.sponsorWriteIn(
+				applicantUuid,
+				'agent',
+				{ name: sponsorName },
+				mockRequest as Request,
+			);
+
+			expect(mockSponsorChangedService.processSponsorWriteIn).toHaveBeenCalledWith(
+				applicantUuid,
+				sponsorName,
+				'agent',
+			);
 		});
 	});
 });
