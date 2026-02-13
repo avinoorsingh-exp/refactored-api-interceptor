@@ -3,12 +3,15 @@ import type { IAgentRepository } from '../agents/ports/agent.repository.port.js'
 import type { Agent } from '@exprealty/shared-domain';
 import { LoggerService } from '../../core/logger.service.js';
 import { KafkaProducerService } from './kafka-producer.service.js';
+import type { SponsorSubjectType } from './dto/sponsor-subject-type.dto.js';
 
 /**
  * Interface for the sponsor changed Kafka message payload.
+ * Top-level subject is either ApplicantUuid (type=applicant) or AgentUuid (type=agent).
  */
 interface SponsorChangedMessage {
-	ApplicantUuid: string;
+	ApplicantUuid?: string;
+	AgentUuid?: string;
 	Sponsor: {
 		Uuid: string;
 		AgentUuid: string;
@@ -34,9 +37,11 @@ interface SponsorChangedMessage {
 
 /**
  * Interface for the sponsor write-in Kafka message payload.
+ * Top-level subject is either ApplicantUuid (type=applicant) or AgentUuid (type=agent).
  */
 interface SponsorWriteInMessage {
-	ApplicantUuid: string;
+	ApplicantUuid?: string;
+	AgentUuid?: string;
 	SponsorWriteIn: {
 		Name: string;
 	};
@@ -62,11 +67,16 @@ export class SponsorChangedService {
 	 * Queries the sponsor agent with contact methods and addresses,
 	 * builds the Kafka payload, and sends it to Global_SMS_SponsorChanged_V2.
 	 *
-	 * @param applicantUuid - UUID of the applicant agent
+	 * @param subjectUuid - UUID of the subject (applicant or agent)
 	 * @param sponsorUuid - UUID of the sponsor agent
+	 * @param type - 'applicant' (payload uses ApplicantUuid) or 'agent' (payload uses AgentUuid)
 	 * @throws NotFoundException if sponsor agent is not found
 	 */
-	async processSponsorChanged(applicantUuid: string, sponsorUuid: string): Promise<void> {
+	async processSponsorChanged(
+		subjectUuid: string,
+		sponsorUuid: string,
+		type: SponsorSubjectType,
+	): Promise<void> {
 		const startTime = Date.now();
 
 		try {
@@ -110,22 +120,23 @@ export class SponsorChangedService {
 				}>;
 			};
 
-			// Build Kafka payload
-			const message = this.buildSponsorChangedMessage(applicantUuid, agent);
+			// Build Kafka payload (ApplicantUuid or AgentUuid by type)
+			const message = this.buildSponsorChangedMessage(subjectUuid, agent, type);
 
 			// Log the message payload before sending (for CloudWatch visibility)
 			this.logger.info('Sponsor changed message payload - ready to send', {
-				applicantUuid,
+				subjectUuid,
 				sponsorUuid,
+				type,
 				message: message,
 			});
 
-			// Send to Kafka with applicantUuid as the message key for proper partitioning
-			await this.kafkaProducer.sendSponsorChangedMessage(message, applicantUuid);
+			// Send to Kafka with subjectUuid as the message key for proper partitioning
+			await this.kafkaProducer.sendSponsorChangedMessage(message, subjectUuid);
 
 			const duration = Date.now() - startTime;
 			this.logger.info(
-				`Sponsor changed message sent successfully for applicant ${applicantUuid} and sponsor ${sponsorUuid} in ${duration}ms`,
+				`Sponsor changed message sent successfully for ${type} ${subjectUuid} and sponsor ${sponsorUuid} in ${duration}ms`,
 			);
 		} catch (error) {
 			const duration = Date.now() - startTime;
@@ -137,7 +148,7 @@ export class SponsorChangedService {
 			this.logger.error(
 				`Failed to process sponsor changed event: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
 				{
-					applicantUuid,
+					subjectUuid,
 					sponsorUuid,
 					stack: error instanceof Error ? error.stack : undefined,
 				},
@@ -150,12 +161,13 @@ export class SponsorChangedService {
 	/**
 	 * Builds the sponsor changed Kafka message payload from agent data.
 	 *
-	 * @param applicantUuid - UUID of the applicant agent
+	 * @param subjectUuid - UUID of the subject (applicant or agent)
 	 * @param agent - Sponsor agent with contact methods and addresses
+	 * @param type - 'applicant' (payload uses ApplicantUuid) or 'agent' (payload uses AgentUuid)
 	 * @returns The formatted Kafka message payload
 	 */
 	private buildSponsorChangedMessage(
-		applicantUuid: string,
+		subjectUuid: string,
 		agent: Agent & {
 			contactMethod?: Array<{
 				channel: string;
@@ -172,6 +184,7 @@ export class SponsorChangedService {
 				};
 			}>;
 		},
+		type: SponsorSubjectType,
 	): SponsorChangedMessage {
 		// Extract primary email: first contact method where channel=email and isPrimary=true
 		const primaryEmail = agent.contactMethod?.find(
@@ -199,8 +212,7 @@ export class SponsorChangedService {
 			State: addr.state?.code || undefined,
 		}));
 
-		return {
-			ApplicantUuid: applicantUuid,
+		const payload: SponsorChangedMessage = {
 			Sponsor: {
 				Uuid: agent.id,
 				AgentUuid: agent.id,
@@ -215,36 +227,48 @@ export class SponsorChangedService {
 				AddressList: addressList,
 			},
 		};
+		if (type === 'applicant') {
+			payload.ApplicantUuid = subjectUuid;
+		} else {
+			payload.AgentUuid = subjectUuid;
+		}
+		return payload;
 	}
 
 	/**
 	 * Processes a sponsor write-in event.
-	 * Builds the Kafka payload with applicant UUID and sponsor write-in name,
+	 * Builds the Kafka payload with subject UUID and sponsor write-in name,
 	 * and sends it to Global_SMS_SponsorChanged_V2.
 	 *
-	 * @param applicantUuid - UUID of the applicant agent
+	 * @param subjectUuid - UUID of the subject (applicant or agent)
 	 * @param sponsorName - Sponsor name (write-in text value, may contain spaces)
+	 * @param type - 'applicant' (payload uses ApplicantUuid) or 'agent' (payload uses AgentUuid)
 	 */
-	async processSponsorWriteIn(applicantUuid: string, sponsorName: string): Promise<void> {
+	async processSponsorWriteIn(
+		subjectUuid: string,
+		sponsorName: string,
+		type: SponsorSubjectType,
+	): Promise<void> {
 		const startTime = Date.now();
 
 		try {
-			// Build Kafka payload
-			const message = this.buildSponsorWriteInMessage(applicantUuid, sponsorName);
+			// Build Kafka payload (ApplicantUuid or AgentUuid by type)
+			const message = this.buildSponsorWriteInMessage(subjectUuid, sponsorName, type);
 
 			// Log the message payload before sending (for CloudWatch visibility)
 			this.logger.info('Sponsor write-in message payload - ready to send', {
-				applicantUuid,
+				subjectUuid,
 				sponsorName,
+				type,
 				message: message,
 			});
 
-			// Send to Kafka with applicantUuid as the message key for proper partitioning
-			await this.kafkaProducer.sendSponsorChangedMessage(message, applicantUuid);
+			// Send to Kafka with subjectUuid as the message key for proper partitioning
+			await this.kafkaProducer.sendSponsorChangedMessage(message, subjectUuid);
 
 			const duration = Date.now() - startTime;
 			this.logger.info(
-				`Sponsor write-in message sent successfully for applicant ${applicantUuid} with sponsor name "${sponsorName}" in ${duration}ms`,
+				`Sponsor write-in message sent successfully for ${type} ${subjectUuid} with sponsor name "${sponsorName}" in ${duration}ms`,
 			);
 		} catch (error) {
 			const duration = Date.now() - startTime;
@@ -252,7 +276,7 @@ export class SponsorChangedService {
 			this.logger.error(
 				`Failed to process sponsor write-in event: ${error instanceof Error ? error.message : 'Unknown error'} (${duration}ms)`,
 				{
-					applicantUuid,
+					subjectUuid,
 					sponsorName,
 					stack: error instanceof Error ? error.stack : undefined,
 				},
@@ -265,20 +289,27 @@ export class SponsorChangedService {
 	/**
 	 * Builds the sponsor write-in Kafka message payload.
 	 *
-	 * @param applicantUuid - UUID of the applicant agent
+	 * @param subjectUuid - UUID of the subject (applicant or agent)
 	 * @param sponsorName - Sponsor name (write-in text value, may contain spaces)
+	 * @param type - 'applicant' (payload uses ApplicantUuid) or 'agent' (payload uses AgentUuid)
 	 * @returns The formatted Kafka message payload
 	 */
 	private buildSponsorWriteInMessage(
-		applicantUuid: string,
+		subjectUuid: string,
 		sponsorName: string,
+		type: SponsorSubjectType,
 	): SponsorWriteInMessage {
-		return {
-			ApplicantUuid: applicantUuid,
+		const payload: SponsorWriteInMessage = {
 			SponsorWriteIn: {
 				Name: sponsorName,
 			},
 		};
+		if (type === 'applicant') {
+			payload.ApplicantUuid = subjectUuid;
+		} else {
+			payload.AgentUuid = subjectUuid;
+		}
+		return payload;
 	}
 }
 

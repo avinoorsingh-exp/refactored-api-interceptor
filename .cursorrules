@@ -220,26 +220,67 @@ When writing TypeORM QueryBuilder code that uses GROUP BY or aggregate functions
 
 **KafkaJS consumers do not support dynamic topic subscription after `consumer.run()` has been called.**
 
+Any change to the logical subscription set (adding, removing, or modifying topics) **MUST** trigger a full consumer restart. KafkaJS will silently ignore subscription changes made after `consumer.run()` is invoked, leading to message loss and false-positive subscription state.
+
 ### Enforced Invariant
 
 - Any change to the logical subscription set (adding or attaching a consumer, service, or handler) **MUST** trigger a full consumer restart.
 - `consumer.subscribe()` **MUST** always occur before `consumer.run()`.
-- Consumer restart logic must be centralized and idempotent.
+- Consumer restart logic must be centralized, serialized, idempotent, and safe for concurrent requests.
 - All existing handlers must be reattached after restart.
+- Restart operations must be serialized per consumer group - no overlapping restarts for the same group.
+- Multiple restart requests occurring close together must be batched into a single restart operation.
+
+### Consumer Readiness Requirements
+
+A consumer is **NOT** considered ready until **ALL** of the following conditions are met:
+
+1. The restarted consumer instance has successfully joined the consumer group (GROUP_JOIN event received).
+2. All required topics are subscribed on that specific consumer instance.
+3. All required topics are assigned to that consumer instance (verified via memberAssignment from GROUP_JOIN event).
+4. The readiness check is scoped to the active consumer instance, not just the consumer group.
+
+**CRITICAL**: Readiness verification must verify the consumer instance identity. Group-level events from other consumer instances in the same group must be ignored. Only events from the specific consumer instance being verified count toward readiness.
+
+### Restart Logic Requirements
+
+Restart logic must be:
+
+- **Centralized**: All restart operations must go through a single, authoritative restart mechanism per consumer group.
+- **Serialized**: Only one restart may be in progress per consumer group at any time. Concurrent restart requests must be queued and processed sequentially.
+- **Idempotent**: Safe to call multiple times with the same topic or configuration without side effects.
+- **Safe for concurrent requests**: Multiple services requesting restarts simultaneously must be batched into a single restart that processes all pending topics together.
+- **Queue-based**: Topics requested during an active restart must be queued and included in the next restart batch.
 
 ### Disallowed Patterns
 
 - Adding topics conditionally without restarting the consumer.
-- Skipping consumer restarts because a topic "already exists" in a local set or cache.
+- Skipping consumer restarts because a topic "already exists" in a local set, cache, or registry.
 - Calling `consumer.subscribe()` after `consumer.run()`.
 - Optimizing away restarts when attaching new services to existing consumer groups.
+- **Skipping restarts due to cached topic state** - registry state is not proof of actual Kafka subscription.
+- **Treating group-level events as proof of readiness** - readiness must be verified for the specific consumer instance, not just any consumer in the group.
+- **Allowing restart or readiness timeouts to crash the process** - all timeout errors must be caught, logged, and handled gracefully.
+- Creating multiple consumer instances for the same consumer group concurrently.
+- Returning from restart operations before verifying topic subscription is complete.
+- Using optimistic checks (e.g., "topic is in registry") as proof of subscription without waiting for actual Kafka assignment.
 
 ### Required Behavior
 
-- Attaching a new consumer/service is treated as a topology change.
+- Attaching a new consumer/service is treated as a topology change requiring a restart.
 - When attaching a service to an existing consumer group, **ALWAYS** restart the consumer group, even if the topic appears to already be in the topics set.
 - Consumer restart must preserve all existing handlers and services.
 - Restart must happen synchronously before registering new handlers.
+- When a restart is in progress, new topic requests must be queued and processed in the next restart batch.
+- Restart operations must wait for the consumer to be fully ready (joined group + topics subscribed + topics assigned) before completing.
+- All restart and readiness failures must be caught, logged with full context, and surfaced without terminating the process.
+
+### Error Handling Requirements
+
+- **All restart errors must be caught**: Errors from restart operations, readiness checks, and consumer lifecycle operations must be caught and logged, not allowed to become unhandled promise rejections.
+- **Restart failures must not crash the process**: If a restart fails, the error must be logged, the restart state must be reset, and the process must continue operating.
+- **Readiness timeout errors must be handled**: If a consumer does not become ready within the timeout period, the error must be caught, logged, and the restart marked as failed without crashing the process.
+- **Topic subscription verification must be resilient**: If a topic is not subscribed after a restart, the system must retry or surface the error gracefully, not crash.
 
 ### Implementation Pattern
 
@@ -249,10 +290,23 @@ When implementing or modifying Kafka consumers:
    - Always call `restartConsumerGroup()` when attaching a new service.
    - Do NOT check if the topic is already in the topics set to skip restart.
    - The restart ensures KafkaJS properly subscribes to all topics before `run()`.
+   - If a restart is already in progress, queue the topic and wait for the current restart to complete.
 
 2. **Handler Registration**: Register message handlers after the consumer restart completes, ensuring they are attached to the restarted consumer instance.
 
 3. **Idempotency**: The restart logic must be idempotent - safe to call multiple times with the same topic.
+
+4. **Readiness Verification**: When verifying consumer readiness:
+   - Listen for GROUP_JOIN events from the specific consumer instance being verified.
+   - Verify all expected topics are in the subscribed topics set.
+   - Verify all expected topics are assigned to this consumer instance (from memberAssignment).
+   - Ignore GROUP_JOIN events from other consumer instances in the same group.
+   - Use appropriate timeouts (15-30 seconds) and handle timeout errors gracefully.
+
+5. **Error Handling**: Wrap all restart and readiness operations in try-catch blocks:
+   - Log errors with full context (groupId, consumerInstanceId, topics, error details).
+   - Reset restart state on error to allow future restart attempts.
+   - Never allow restart or readiness errors to become unhandled promise rejections.
 
 ### Do NOT Change
 
@@ -260,7 +314,138 @@ When implementing or modifying Kafka consumers:
 - Topic names or patterns.
 - Delivery semantics (at-least-once).
 - Public APIs or service interfaces.
+- The fundamental requirement that subscription changes require restarts.
 
 ### Rationale
 
-KafkaJS silently ignores late subscriptions. This rule prevents false-positive subscription state and message loss. The only way to add topics to an active consumer is to restart it with the complete topic list.
+KafkaJS silently ignores late subscriptions. This rule prevents false-positive subscription state and message loss. The only way to add topics to an active consumer is to restart it with the complete topic list. Readiness verification scoped to the consumer instance prevents race conditions in multi-consumer scenarios. Comprehensive error handling ensures the system remains operational even when individual restarts fail, preventing cascading failures and process crashes.
+
+Global Kafka Producer Rules
+
+Critical Invariant
+
+Kafka producers MUST always publish messages with an explicit, deterministic message key.
+Producing messages without a key is considered a correctness bug, not an optimization.
+
+Enforced Invariants
+
+Every produced Kafka message MUST include a key.
+
+The message key MUST be derived from a stable domain identifier.
+
+Examples: aggregate ID, entity UUID, business identifier.
+
+The same domain entity MUST always produce the same key value.
+
+The global producer MUST be the only component responsible for:
+
+Topic resolution
+
+Message key assignment
+
+Serialization
+
+All services MUST publish messages through the global producer abstraction.
+
+Message production MUST NOT bypass the global producer for “simple” or “one-off” cases.
+
+Disallowed Patterns
+
+Producing Kafka messages without a key.
+
+Allowing KafkaJS to auto-assign partitions via null or undefined keys.
+
+Generating random, time-based, or request-scoped keys.
+
+Letting individual services decide how keys are generated.
+
+Publishing directly via KafkaJS producers from feature services.
+
+Producing messages conditionally with keys “only when needed”.
+
+Required Behavior
+
+Message keys MUST represent the routing identity of the domain event.
+
+Keys MUST be deterministic across retries and restarts.
+
+The same logical event published multiple times MUST use the same key.
+
+Partitioning behavior MUST be intentional and explainable.
+
+Global producer APIs MUST require a key or the data needed to derive one.
+
+Implementation Pattern
+
+When producing Kafka messages:
+
+Global Producer Ownership
+
+All Kafka message production flows through a single global producer module.
+
+Feature services provide:
+
+Event payload
+
+Domain identifier used to derive the key
+
+Key Derivation
+
+Keys are derived centrally from domain identifiers.
+
+Key derivation logic is explicit and documented.
+
+No implicit defaults or fallbacks are allowed.
+
+Validation
+
+The global producer validates that:
+
+A key is present
+
+The key is non-empty
+
+The key is stable
+
+Missing or invalid keys result in a hard failure.
+
+Idempotency
+
+Reproducing the same domain event produces the same key.
+
+Retries do not change the key.
+
+Do NOT Change
+
+Topic names or routing semantics.
+
+Key derivation rules once established.
+
+Partitioning strategy without explicit review.
+
+The global producer abstraction or API contract.
+
+Rationale
+
+Kafka uses message keys to determine partitioning and ordering.
+Producing messages without keys results in:
+
+Non-deterministic partition assignment
+
+Broken ordering guarantees
+
+Inconsistent downstream processing
+
+Silent message loss or misrouting in consumer groups
+
+These failures are silent and non-obvious, making them high-risk in production.
+
+This rule exists to ensure:
+
+Predictable partitioning
+
+Stable event routing
+
+Safe scaling of consumers
+
+Confidence when adding new producers without refactoring Kafka infrastructure
