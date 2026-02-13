@@ -121,7 +121,7 @@ describe('SponsorChangedService', () => {
 				offset: 0,
 			});
 
-			await service.processSponsorChanged(applicantUuid, sponsorUuid);
+			await service.processSponsorChanged(applicantUuid, sponsorUuid, 'applicant');
 
 			expect(mockAgentRepository.findPage).toHaveBeenCalledWith(
 				{
@@ -152,11 +152,6 @@ describe('SponsorChangedService', () => {
 					}),
 				}),
 				applicantUuid,
-				expect.objectContaining({
-					'correlation-id': expect.any(String),
-					'applicant-uuid': applicantUuid,
-					'sponsor-uuid': sponsorUuid,
-				}),
 			);
 
 			expect(mockLogger.info).toHaveBeenCalledWith(
@@ -173,7 +168,7 @@ describe('SponsorChangedService', () => {
 			});
 
 			await expect(
-				service.processSponsorChanged(applicantUuid, sponsorUuid),
+				service.processSponsorChanged(applicantUuid, sponsorUuid, 'applicant'),
 			).rejects.toThrow(NotFoundException);
 
 			expect(mockKafkaProducer.sendSponsorChangedMessage).not.toHaveBeenCalled();
@@ -192,7 +187,7 @@ describe('SponsorChangedService', () => {
 				offset: 0,
 			});
 
-			await service.processSponsorChanged(applicantUuid, sponsorUuid);
+			await service.processSponsorChanged(applicantUuid, sponsorUuid, 'applicant');
 
 			expect(mockKafkaProducer.sendSponsorChangedMessage).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -201,7 +196,6 @@ describe('SponsorChangedService', () => {
 					}),
 				}),
 				expect.any(String),
-				expect.any(Object),
 			);
 		});
 
@@ -218,7 +212,7 @@ describe('SponsorChangedService', () => {
 				offset: 0,
 			});
 
-			await service.processSponsorChanged(applicantUuid, sponsorUuid);
+			await service.processSponsorChanged(applicantUuid, sponsorUuid, 'applicant');
 
 			expect(mockKafkaProducer.sendSponsorChangedMessage).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -227,7 +221,6 @@ describe('SponsorChangedService', () => {
 					}),
 				}),
 				expect.any(String),
-				expect.any(Object),
 			);
 		});
 
@@ -246,7 +239,7 @@ describe('SponsorChangedService', () => {
 				offset: 0,
 			});
 
-			await service.processSponsorChanged(applicantUuid, sponsorUuid);
+			await service.processSponsorChanged(applicantUuid, sponsorUuid, 'applicant');
 
 			expect(mockKafkaProducer.sendSponsorChangedMessage).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -255,7 +248,6 @@ describe('SponsorChangedService', () => {
 					}),
 				}),
 				expect.any(String),
-				expect.any(Object),
 			);
 		});
 
@@ -274,7 +266,7 @@ describe('SponsorChangedService', () => {
 				offset: 0,
 			});
 
-			await service.processSponsorChanged(applicantUuid, sponsorUuid);
+			await service.processSponsorChanged(applicantUuid, sponsorUuid, 'applicant');
 
 			expect(mockKafkaProducer.sendSponsorChangedMessage).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -283,7 +275,6 @@ describe('SponsorChangedService', () => {
 					}),
 				}),
 				expect.any(String),
-				expect.any(Object),
 			);
 		});
 
@@ -306,7 +297,7 @@ describe('SponsorChangedService', () => {
 				offset: 0,
 			});
 
-			await service.processSponsorChanged(applicantUuid, sponsorUuid);
+			await service.processSponsorChanged(applicantUuid, sponsorUuid, 'applicant');
 
 			expect(mockKafkaProducer.sendSponsorChangedMessage).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -320,7 +311,6 @@ describe('SponsorChangedService', () => {
 					}),
 				}),
 				expect.any(String),
-				expect.any(Object),
 			);
 		});
 
@@ -342,7 +332,7 @@ describe('SponsorChangedService', () => {
 				offset: 0,
 			});
 
-			await service.processSponsorChanged(applicantUuid, sponsorUuid);
+			await service.processSponsorChanged(applicantUuid, sponsorUuid, 'applicant');
 
 			expect(mockKafkaProducer.sendSponsorChangedMessage).toHaveBeenCalledWith(
 				expect.objectContaining({
@@ -358,7 +348,6 @@ describe('SponsorChangedService', () => {
 					}),
 				}),
 				expect.any(String),
-				expect.any(Object),
 			);
 		});
 
@@ -367,13 +356,13 @@ describe('SponsorChangedService', () => {
 			mockAgentRepository.findPage.mockRejectedValue(repositoryError);
 
 			await expect(
-				service.processSponsorChanged(applicantUuid, sponsorUuid),
+				service.processSponsorChanged(applicantUuid, sponsorUuid, 'applicant'),
 			).rejects.toThrow(repositoryError);
 
 			expect(mockLogger.error).toHaveBeenCalledWith(
 				expect.stringContaining('Failed to process sponsor changed event'),
 				expect.objectContaining({
-					applicantUuid,
+					subjectUuid: applicantUuid,
 					sponsorUuid,
 				}),
 			);
@@ -391,15 +380,37 @@ describe('SponsorChangedService', () => {
 			mockKafkaProducer.sendSponsorChangedMessage.mockRejectedValue(kafkaError);
 
 			await expect(
-				service.processSponsorChanged(applicantUuid, sponsorUuid),
+				service.processSponsorChanged(applicantUuid, sponsorUuid, 'applicant'),
 			).rejects.toThrow(kafkaError);
 
 			expect(mockLogger.error).toHaveBeenCalledWith(
 				expect.stringContaining('Failed to process sponsor changed event'),
 				expect.objectContaining({
-					applicantUuid,
+					subjectUuid: applicantUuid,
 					sponsorUuid,
 				}),
+			);
+		});
+
+		it('should use AgentUuid in payload when type is agent', async () => {
+			mockAgentRepository.findPage.mockResolvedValue({
+				items: [mockAgent],
+				total: 1,
+				limit: 1,
+				offset: 0,
+			});
+
+			await service.processSponsorChanged(applicantUuid, sponsorUuid, 'agent');
+
+			expect(mockKafkaProducer.sendSponsorChangedMessage).toHaveBeenCalledWith(
+				expect.objectContaining({
+					AgentUuid: applicantUuid,
+					Sponsor: expect.objectContaining({
+						Uuid: sponsorUuid,
+						AgentUuid: sponsorUuid,
+					}),
+				}),
+				applicantUuid,
 			);
 		});
 	});
@@ -409,7 +420,7 @@ describe('SponsorChangedService', () => {
 		const sponsorName = 'John Doe';
 
 		it('should process sponsor write-in event successfully', async () => {
-			await service.processSponsorWriteIn(applicantUuid, sponsorName);
+			await service.processSponsorWriteIn(applicantUuid, sponsorName, 'applicant');
 
 			expect(mockKafkaProducer.sendSponsorChangedMessage).toHaveBeenCalledWith(
 				{
@@ -419,11 +430,6 @@ describe('SponsorChangedService', () => {
 					},
 				},
 				applicantUuid,
-				expect.objectContaining({
-					'correlation-id': expect.any(String),
-					'applicant-uuid': applicantUuid,
-					'sponsor-write-in': 'true',
-				}),
 			);
 
 			expect(mockLogger.info).toHaveBeenCalledWith(
@@ -433,7 +439,7 @@ describe('SponsorChangedService', () => {
 
 		it('should handle sponsor name with spaces', async () => {
 			const sponsorNameWithSpaces = 'John Michael Doe';
-			await service.processSponsorWriteIn(applicantUuid, sponsorNameWithSpaces);
+			await service.processSponsorWriteIn(applicantUuid, sponsorNameWithSpaces, 'applicant');
 
 			expect(mockKafkaProducer.sendSponsorChangedMessage).toHaveBeenCalledWith(
 				{
@@ -443,13 +449,12 @@ describe('SponsorChangedService', () => {
 					},
 				},
 				applicantUuid,
-				expect.any(Object),
 			);
 		});
 
 		it('should handle empty sponsor name', async () => {
 			const emptyName = '';
-			await service.processSponsorWriteIn(applicantUuid, emptyName);
+			await service.processSponsorWriteIn(applicantUuid, emptyName, 'applicant');
 
 			expect(mockKafkaProducer.sendSponsorChangedMessage).toHaveBeenCalledWith(
 				{
@@ -459,13 +464,12 @@ describe('SponsorChangedService', () => {
 					},
 				},
 				applicantUuid,
-				expect.any(Object),
 			);
 		});
 
 		it('should handle sponsor name with special characters', async () => {
 			const sponsorNameWithSpecialChars = "John O'Brien-Smith";
-			await service.processSponsorWriteIn(applicantUuid, sponsorNameWithSpecialChars);
+			await service.processSponsorWriteIn(applicantUuid, sponsorNameWithSpecialChars, 'applicant');
 
 			expect(mockKafkaProducer.sendSponsorChangedMessage).toHaveBeenCalledWith(
 				{
@@ -475,7 +479,6 @@ describe('SponsorChangedService', () => {
 					},
 				},
 				applicantUuid,
-				expect.any(Object),
 			);
 		});
 
@@ -484,26 +487,27 @@ describe('SponsorChangedService', () => {
 			mockKafkaProducer.sendSponsorChangedMessage.mockRejectedValue(kafkaError);
 
 			await expect(
-				service.processSponsorWriteIn(applicantUuid, sponsorName),
+				service.processSponsorWriteIn(applicantUuid, sponsorName, 'applicant'),
 			).rejects.toThrow(kafkaError);
 
 			expect(mockLogger.error).toHaveBeenCalledWith(
 				expect.stringContaining('Failed to process sponsor write-in event'),
 				expect.objectContaining({
-					applicantUuid,
+					subjectUuid: applicantUuid,
 					sponsorName,
 				}),
 			);
 		});
 
 		it('should log message payload before sending', async () => {
-			await service.processSponsorWriteIn(applicantUuid, sponsorName);
+			await service.processSponsorWriteIn(applicantUuid, sponsorName, 'applicant');
 
 			expect(mockLogger.info).toHaveBeenCalledWith(
 				'Sponsor write-in message payload - ready to send',
 				expect.objectContaining({
-					applicantUuid,
+					subjectUuid: applicantUuid,
 					sponsorName,
+					type: 'applicant',
 					message: {
 						ApplicantUuid: applicantUuid,
 						SponsorWriteIn: {
@@ -513,7 +517,22 @@ describe('SponsorChangedService', () => {
 				}),
 			);
 		});
+
+		it('should use AgentUuid in payload when type is agent', async () => {
+			await service.processSponsorWriteIn(applicantUuid, sponsorName, 'agent');
+
+			expect(mockKafkaProducer.sendSponsorChangedMessage).toHaveBeenCalledWith(
+				{
+					AgentUuid: applicantUuid,
+					SponsorWriteIn: {
+						Name: sponsorName,
+					},
+				},
+				applicantUuid,
+			);
+		});
 	});
 });
+
 
 
