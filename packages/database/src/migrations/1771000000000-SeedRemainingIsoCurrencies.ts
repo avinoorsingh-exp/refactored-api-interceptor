@@ -147,6 +147,17 @@ export class SeedRemainingIsoCurrencies1771000000000 implements MigrationInterfa
 		await queryRunner.startTransaction()
 
 		try {
+			// Reset the id sequence to avoid primary key conflicts.
+			// The sequence can be out of sync if prior seeds inserted without
+			// advancing it, or after a database restore.
+			await queryRunner.query(
+				`SELECT setval(
+					pg_get_serial_sequence('"core"."currency"', 'id'),
+					COALESCE((SELECT MAX(id) FROM "core"."currency"), 0) + 1,
+					false
+				)`,
+			)
+
 			// Insert all missing currencies
 			for (const [code, number, name, symbol, minorUnits] of currencies) {
 				await queryRunner.query(
