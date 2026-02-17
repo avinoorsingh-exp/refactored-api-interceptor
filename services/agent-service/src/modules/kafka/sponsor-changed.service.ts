@@ -159,6 +159,18 @@ export class SponsorChangedService {
 	}
 
 	/**
+	 * Maps contact method subType to PhoneType for the SMS payload.
+	 * mobile → Cell, home → Home, work/fax → Office; otherwise Cell.
+	 */
+	private mapSubTypeToPhoneType(subType?: string): 'Cell' | 'Home' | 'Office' {
+		const normalized = subType?.toLowerCase();
+		if (normalized === 'mobile') return 'Cell';
+		if (normalized === 'home') return 'Home';
+		if (normalized === 'work' || normalized === 'fax') return 'Office';
+		return 'Home';
+	}
+
+	/**
 	 * Builds the sponsor changed Kafka message payload from agent data.
 	 *
 	 * @param subjectUuid - UUID of the subject (applicant or agent)
@@ -200,7 +212,7 @@ export class SponsorChangedService {
 		const phoneList = (agent.contactMethod || [])
 			.filter((cm) => cm.channel === 'phone')
 			.map((cm) => ({
-				PhoneType: cm.subType || 'mobile',
+				PhoneType: this.mapSubTypeToPhoneType(cm.subType),
 				Number: cm.value,
 			}));
 

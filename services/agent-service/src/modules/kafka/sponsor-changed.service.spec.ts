@@ -278,7 +278,7 @@ describe('SponsorChangedService', () => {
 			);
 		});
 
-		it('should use default PhoneType "mobile" when subType is missing', async () => {
+		it('should use default PhoneType "Cell" when subType is missing', async () => {
 			const agentWithPhoneWithoutSubType = {
 				...mockAgent,
 				contactMethod: [
@@ -304,9 +304,44 @@ describe('SponsorChangedService', () => {
 					Sponsor: expect.objectContaining({
 						PhoneList: [
 							{
-								PhoneType: 'mobile',
+								PhoneType: 'Cell',
 								Number: '+1-555-999-8888',
 							},
+						],
+					}),
+				}),
+				expect.any(String),
+			);
+		});
+
+		it('should map subType to PhoneType: mobile→Cell, home→Home, work/fax→Office', async () => {
+			const agentWithAllPhoneTypes = {
+				...mockAgent,
+				contactMethod: [
+					{ channel: 'phone', value: '+1-555-111', isPrimary: true, subType: 'mobile' },
+					{ channel: 'phone', value: '+1-555-222', isPrimary: false, subType: 'home' },
+					{ channel: 'phone', value: '+1-555-333', isPrimary: false, subType: 'work' },
+					{ channel: 'phone', value: '+1-555-444', isPrimary: false, subType: 'fax' },
+				],
+			};
+
+			mockAgentRepository.findPage.mockResolvedValue({
+				items: [agentWithAllPhoneTypes],
+				total: 1,
+				limit: 1,
+				offset: 0,
+			});
+
+			await service.processSponsorChanged(applicantUuid, sponsorUuid, 'applicant');
+
+			expect(mockKafkaProducer.sendSponsorChangedMessage).toHaveBeenCalledWith(
+				expect.objectContaining({
+					Sponsor: expect.objectContaining({
+						PhoneList: [
+							{ PhoneType: 'Cell', Number: '+1-555-111' },
+							{ PhoneType: 'Home', Number: '+1-555-222' },
+							{ PhoneType: 'Office', Number: '+1-555-333' },
+							{ PhoneType: 'Office', Number: '+1-555-444' },
 						],
 					}),
 				}),
