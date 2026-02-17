@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { LineOfBusinessEntity } from '@exprealty/database'
 import { PaginationModule } from '../../common/pagination/pagination.module.js'
+import { ProjectionService } from '../../common/query/projection.service.js'
 import { LineOfBusinessController } from './line-of-business.controller.js'
 import { LineOfBusinessService } from './line-of-business.service.js'
 import { LineOfBusinessTypeOrmRepository } from './line-of-business.repository.js'
@@ -20,6 +21,7 @@ import { LineOfBusinessTypeOrmRepository } from './line-of-business.repository.j
 	controllers: [LineOfBusinessController],
 	providers: [
 		LineOfBusinessService,
+		ProjectionService,
 		// Provide the repository adapter under the port token
 		{
 			provide: 'ILineOfBusinessRepository',
