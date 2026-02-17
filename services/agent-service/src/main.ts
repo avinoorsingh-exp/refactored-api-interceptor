@@ -372,7 +372,11 @@ async function bootstrap() {
 				.addTag('regions', 'Region management endpoints')
 				.build()
 
+			// Apply bearer auth globally to all routes in the Swagger spec
+			// Health controllers are excluded via @ApiExcludeController()
 			const document = SwaggerModule.createDocument(app, swaggerConfig)
+			document.security = [{ bearer: [] }]
+
 			SwaggerModule.setup('api', app, document)
 			console.error('[BOOTSTRAP] Step 8: Swagger setup completed successfully')
 		} catch (swaggerError) {
