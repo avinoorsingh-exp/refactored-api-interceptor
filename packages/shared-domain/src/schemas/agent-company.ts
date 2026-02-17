@@ -3,7 +3,6 @@ import {
 	EmailBranded,
 	InstantUTC,
 	NameBranded,
-	HashBranded,
 	PhoneNumberBranded,
 } from '../value-objects/index.js'
 
@@ -35,8 +34,8 @@ export const AgentCompanyBaseSchema = z
  * @public
  */
 export const AgentCompanyExpandedSchema = AgentCompanyBaseSchema.extend({
-	taxId: z.string().max(50).nullable(),
-	taxIdHashed: HashBranded.nullable(),
+	taxId: z.string().max(50).nullable().describe('Masked tax ID for display (e.g., "*****6789")'),
+	taxIdToken: z.string().nullable().describe('HMAC-SHA256 token for secure lookups'),
 	// Relationships loaded in expanded view
 	agents: z.lazy(() => z.array(z.any())).optional(), // AgentBaseSchema[]
 }).describe('Expanded AgentCompany with relationships')

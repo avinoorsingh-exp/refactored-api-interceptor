@@ -36,11 +36,17 @@ export class AgentCompanyResponseDto {
 	phone!: string;
 
 	@ApiPropertyOptional({
-		description: 'Tax ID (masked, showing last 4 digits)',
-		example: '****1234',
+		description: 'Masked tax ID (shows last 4 digits)',
+		example: '*****1234',
 		nullable: true,
 	})
 	taxId?: string | null;
+
+	@ApiPropertyOptional({
+		description: 'HMAC-SHA256 token for secure lookups',
+		nullable: true,
+	})
+	taxIdToken?: string | null;
 
 	@ApiProperty({
 		description: 'Whether the company uses SSN for tax reporting',

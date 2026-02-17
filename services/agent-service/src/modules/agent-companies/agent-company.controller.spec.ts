@@ -22,7 +22,7 @@ describe('AgentCompanyController', () => {
 		email: 'brokerage@example.com',
 		phone: '5551234567',
 		taxId: '*****6789',
-		taxIdHashed: null,
+		taxIdToken: null,
 		useSsn: false,
 		createdAt: new Date('2024-01-15T10:30:00Z'),
 		updatedAt: new Date('2024-01-15T14:45:00Z'),

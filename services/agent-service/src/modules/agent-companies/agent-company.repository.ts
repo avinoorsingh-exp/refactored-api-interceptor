@@ -58,6 +58,7 @@ export class AgentCompanyTypeOrmRepository
 
 	/**
 	 * Maps a TypeORM AgentCompanyEntity to a domain type.
+	 * Builds the masked display value from taxIdLast4.
 	 * Uses type assertion for branded types since entity data is already validated.
 	 */
 	protected mapToDomain(entity: AgentCompanyEntity): AgentCompany {
@@ -67,8 +68,8 @@ export class AgentCompanyTypeOrmRepository
 			name: entity.name,
 			email: entity.email,
 			phone: entity.phone,
-			taxId: entity.taxId,
-			taxIdHashed: entity.taxIdHashed,
+			taxId: entity.taxIdLast4 ? '*****' + entity.taxIdLast4 : null,
+			taxIdToken: entity.taxIdHashed ?? null,
 			useSsn: entity.useSsn,
 			createdAt: entity.created,
 			updatedAt: entity.lastModified,
@@ -77,15 +78,18 @@ export class AgentCompanyTypeOrmRepository
 
 	/**
 	 * Maps domain data to entity data for persistence.
+	 * Tax ID fields (taxIdLast4, taxIdToken) are pre-computed by the service layer.
 	 */
 	protected mapToEntity(data: Partial<AgentCompany>): Partial<AgentCompanyEntity> {
 		const entityData: Partial<AgentCompanyEntity> = {};
+		const raw = data as any;
 
 		if (data.legacyId !== undefined) entityData.legacyId = data.legacyId;
 		if (data.name !== undefined) entityData.name = data.name;
 		if (data.email !== undefined) entityData.email = data.email;
 		if (data.phone !== undefined) entityData.phone = data.phone;
-		if (data.taxId !== undefined) entityData.taxId = data.taxId;
+		if (raw.taxIdLast4 !== undefined) entityData.taxIdLast4 = raw.taxIdLast4;
+		if (raw.taxIdToken !== undefined) entityData.taxIdHashed = raw.taxIdToken;
 		if (data.useSsn !== undefined) entityData.useSsn = data.useSsn;
 
 		return entityData;

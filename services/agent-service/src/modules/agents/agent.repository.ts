@@ -198,6 +198,11 @@ export class AgentTypeOrmRepository
 			result.agentCompanyAssociation = entity.agentCompanyAssociations;
 		}
 
+		// agentTax - junction table with nested tax (available if explicitly requested)
+		if (requestedIncludes.includes('agentTax') && entity.agentTaxes) {
+			result.agentTax = entity.agentTaxes;
+		}
+
 		// primaryAgentCompany - virtual relation for primary company
 		// The join maps the association to primaryAgentCompany, so we extract the nested company
 		if (requestedIncludes.includes('primaryAgentCompany')) {
@@ -207,6 +212,16 @@ export class AgentTypeOrmRepository
 		} else if (entity.primaryAgentCompany) {
 			const association = entity.primaryAgentCompany as any;
 			result.primaryAgentCompany = association?.agentCompany ?? null;
+		}
+
+		// primaryTax - virtual relation for primary tax identifier
+		// The join maps the association to primaryTax, so we extract the nested tax
+		if (requestedIncludes.includes('primaryTax')) {
+			const association = entity.primaryTax as any;
+			result.primaryTax = association?.tax ?? null;
+		} else if (entity.primaryTax) {
+			const association = entity.primaryTax as any;
+			result.primaryTax = association?.tax ?? null;
 		}
 
 		return result as unknown as Agent;
@@ -423,6 +438,34 @@ export class AgentTypeOrmRepository
 	}
 
 	/**
+	 * Loads the primary tax identifier for an agent.
+	 * Uses leftJoinAndMapOne through the junction table where isPrimary = true.
+	 * The tax entity is mapped directly to entity.primaryTax.
+	 *
+	 * @param qb - Query builder
+	 * @param alias - Base entity alias (usually 'agent')
+	 */
+	protected loadPrimaryTax<T>(
+		qb: SelectQueryBuilder<T>,
+		alias: string,
+	): void {
+		const associationAlias = 'primaryTaxAssoc';
+		const taxAlias = 'primaryTax';
+
+		// First join the junction table where isPrimary = true
+		// Then map the tax entity directly to the virtual property
+		qb.leftJoinAndMapOne(
+			`${alias}.primaryTax`,
+			`${alias}.agentTaxes`,
+			associationAlias,
+			`${associationAlias}.isPrimary = true`,
+		);
+
+		// Join the tax through the association
+		qb.leftJoinAndSelect(`${associationAlias}.tax`, taxAlias);
+	}
+
+	/**
 	 * Loads licensed states for agents.
 	 * Uses a correlated subquery with array_agg for efficiency.
 	 * Results are loaded separately and merged with entities.
@@ -542,6 +585,13 @@ export class AgentTypeOrmRepository
 	 */
 	private hasPrimaryAgentCompanyInclude(include?: string[]): boolean {
 		return include?.includes('primaryAgentCompany') ?? false;
+	}
+
+	/**
+	 * Check if primaryTax is requested in includes.
+	 */
+	private hasPrimaryTaxInclude(include?: string[]): boolean {
+		return include?.includes('primaryTax') ?? false;
 	}
 
 	/**
@@ -870,6 +920,7 @@ export class AgentTypeOrmRepository
 		const hasPrimaryLicense = this.hasPrimaryLicenseInclude(selection?.include);
 		const hasLicensedStates = this.hasLicensedStatesInclude(selection?.include);
 		const hasPrimaryAgentCompany = this.hasPrimaryAgentCompanyInclude(selection?.include);
+		const hasPrimaryTax = this.hasPrimaryTaxInclude(selection?.include);
 		const hasAddresses = selection?.include?.includes('address') || false;
 
 		// Parse filter if it's a JSON string (query params come in as strings)
@@ -891,6 +942,7 @@ export class AgentTypeOrmRepository
 			hasPrimaryAddress ||
 			hasPrimaryLicense ||
 			hasPrimaryAgentCompany ||
+			hasPrimaryTax ||
 			hasAddresses ||
 			hasRelationalFilters ||
 			hasRelationalSort;
@@ -941,6 +993,9 @@ export class AgentTypeOrmRepository
 				}
 				if (hasPrimaryAgentCompany) {
 					this.loadPrimaryAgentCompany(qb, this.getAlias());
+				}
+				if (hasPrimaryTax) {
+					this.loadPrimaryTax(qb, this.getAlias());
 				}
 				if (hasAddresses) {
 					this.loadAddressesWithVirtualState(qb, this.getAlias());

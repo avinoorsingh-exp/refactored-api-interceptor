@@ -15,6 +15,9 @@ export * from './common/problem-details.js' // <-- NEW
 export * from './common/query/index.js'
 export * from './common/api-monitoring.js'
 
+// --- PII utilities (no crypto dependencies)
+export { isMaskedPlaceholder, extractLastFour } from './utils/pii.js'
+
 // --- Validation
 export { validationErrorMap } from './validation/error-map.js'
 
@@ -984,15 +987,25 @@ export {
  * @public
  */
 export {
+	TaxIdTypeSchema,
+	type TaxIdType,
+	TAX_ID_TYPE_VALUES,
 	TaxBaseSchema,
 	TaxExpandedSchema,
 	type Tax,
 	type TaxBase,
 	type TaxExpanded,
-	CreateTaxInputSchema,
-	type CreateTaxInput,
-	UpdateTaxInputSchema,
-	type UpdateTaxInput,
+	AgentTaxBaseSchema,
+	AgentTaxExpandedSchema,
+	type AgentTax,
+	type AgentTaxBase,
+	type AgentTaxExpanded,
+	CreateAgentTaxInputSchema,
+	type CreateAgentTaxInput,
+	UpdateAgentTaxInputSchema,
+	type UpdateAgentTaxInput,
+	AgentTaxParamsSchema,
+	type AgentTaxParams,
 } from './schemas/tax.js'
 
 // ============================================================================

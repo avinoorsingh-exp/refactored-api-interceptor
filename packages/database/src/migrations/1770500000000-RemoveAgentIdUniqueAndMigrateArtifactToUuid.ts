@@ -124,6 +124,14 @@ export class RemoveAgentIdUniqueAndMigrateArtifactToUuid1770500000000 implements
 			ALTER TABLE "core"."agent"
 			DROP CONSTRAINT "UQ_agent_agent_id"
 		`)
+
+		// Add a regular (non-unique) index to replace the implicit index
+		// from the unique constraint. Needed for ORDER BY agent_id performance.
+		// Non-unique because international agents can share agent_id with US agents.
+		await queryRunner.query(`
+			CREATE INDEX IF NOT EXISTS "IDX_agent_agent_id"
+			ON "core"."agent" ("agent_id")
+		`)
 	}
 
 	public async down(queryRunner: QueryRunner): Promise<void> {
@@ -141,6 +149,11 @@ export class RemoveAgentIdUniqueAndMigrateArtifactToUuid1770500000000 implements
 	}
 
 	private async restoreAgentIdUniqueConstraint(queryRunner: QueryRunner): Promise<void> {
+		// Drop the regular index before restoring the unique constraint
+		// (the unique constraint creates its own implicit index)
+		await queryRunner.query(`DROP INDEX IF EXISTS "core"."IDX_agent_agent_id"`)
+
+
 		const constraintExists = await queryRunner.query(`
 			SELECT 1 FROM information_schema.table_constraints
 			WHERE table_schema = 'core'

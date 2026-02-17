@@ -23,6 +23,8 @@ import {
 	SocialEntity,
 	LicenseEntity,
 	LicenseEventEntity,
+	AgentTaxEntity,
+	TaxEntity,
 	CountryEntity,
 	StateEntity,
 	LineOfBusinessEntity,
@@ -99,6 +101,9 @@ import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 			SocialEntity,
 			LicenseEntity,
 			LicenseEventEntity,
+			// Agent tax junction + tax entity for ?include=agentTax
+			AgentTaxEntity,
+			TaxEntity,
 			// Reference entities for license validation
 			CountryEntity,
 			StateEntity,

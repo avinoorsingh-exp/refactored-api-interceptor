@@ -26,19 +26,16 @@
 		"test:cov": "jest --coverage",
 		"prepublishOnly": "echo 'Workspace-only during MVP' && exit 1"
 	},
-	"dependencies": {},
-	"peerDependencies": {
-		"typeorm": "^0.3.0"
-	},
-	"peerDependenciesMeta": {
-		"typeorm": {
-			"optional": true
-		}
+	"dependencies": {
+		"@aws-crypto/client-node": "^4.0.1",
+    	"zod": "^3.23.0"
 	},
 	"devDependencies": {
+		"@swc/jest": "^0.2.39",
+		"@types/jest": "^29.5.12",
 		"@types/node": "^24.0.0",
+		"jest": "^29.7.0",
 		"tsup": "^8.3.0",
-		"typeorm": "^0.3.20",
 		"typescript": "^5.8.3"
 	},
 	"repository": "https://bitbucket.org/exp-realty/agent-service/src/main/packages/encryption"

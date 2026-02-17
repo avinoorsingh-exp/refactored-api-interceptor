@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "agent-companies-api-tests",
     "name": "AgentCompanies API - CRUD & Association Tests",
-    "description": "Tests for AgentCompany entity CRUD operations at /v1/agent-companies and agent-company associations at /v1/agents/:id/agent-companies.\n\nFeatures tested:\n- AgentCompany entity CRUD (list, get, create, update)\n- Agent-Company association management (nested routes)\n- Tax ID encryption and masking\n- Validation and error handling",
+    "description": "Tests for AgentCompany entity CRUD operations at /v1/agent-companies and agent-company associations at /v1/agents/:id/agent-companies.\n\nFeatures tested:\n- AgentCompany entity CRUD (list, get, create, update)\n- Agent-Company association management (nested routes)\n- Tax ID last4 + HMAC token storage (write-only plaintext, masked on read)\n- Masked placeholder rejection (400)\n- Validation and error handling",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -148,7 +148,7 @@
           }
         },
         {
-          "name": "Create AgentCompany with TaxId (encryption test)",
+          "name": "Create AgentCompany with TaxId (last4 + token storage)",
           "event": [
             {
               "listen": "test",
@@ -158,17 +158,24 @@
                   "    pm.response.to.have.status(201);",
                   "});",
                   "",
-                  "pm.test('Response contains agent company with taxId', function () {",
+                  "pm.test('Response contains agent company with masked taxId', function () {",
                   "    var jsonData = pm.response.json();",
                   "    pm.expect(jsonData).to.have.property('id');",
                   "    pm.expect(jsonData).to.have.property('taxId');",
                   "    pm.collectionVariables.set('agentCompanyId2', jsonData.id);",
                   "});",
                   "",
-                  "pm.test('TaxId is stored (will be masked on subsequent reads)', function () {",
+                  "pm.test('TaxId is masked — shows *****last4, never plaintext', function () {",
                   "    var jsonData = pm.response.json();",
-                  "    // On create, taxId may show full or masked value depending on implementation",
-                  "    pm.expect(jsonData.taxId).to.not.be.null;",
+                  "    pm.expect(jsonData.taxId).to.match(/^\\*{5}\\d{4}$/);",
+                  "    pm.expect(jsonData.taxId).to.equal('*****6789');",
+                  "});",
+                  "",
+                  "pm.test('TaxIdToken is a 64-char hex HMAC', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.taxIdToken) {",
+                  "        pm.expect(jsonData.taxIdToken).to.match(/^[0-9a-f]{64}$/);",
+                  "    }",
                   "});"
                 ],
                 "type": "text/javascript"
@@ -183,6 +190,44 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"legacyId\": \"{{$timestamp}}\",\n  \"name\": \"Encrypted Tax Company\",\n  \"email\": \"taxcompany{{$timestamp}}@example.com\",\n  \"phone\": \"5559876543\",\n  \"taxId\": \"123456789\",\n  \"useSsn\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies"]
+            }
+          }
+        },
+        {
+          "name": "Create AgentCompany with Masked Placeholder (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error rejects masked placeholder as input', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('type');",
+                  "    var message = JSON.stringify(jsonData).toLowerCase();",
+                  "    pm.expect(message).to.include('masked');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"legacyId\": \"99999\",\n  \"name\": \"Masked Placeholder Test\",\n  \"email\": \"masked@example.com\",\n  \"phone\": \"5550000000\",\n  \"taxId\": \"*****6789\",\n  \"useSsn\": false\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies",
@@ -236,12 +281,18 @@
                   "    pm.response.to.have.status(200);",
                   "});",
                   "",
-                  "pm.test('TaxId is masked (shows last 4 digits)', function () {",
+                  "pm.test('TaxId is masked — *****last4 format', function () {",
                   "    var jsonData = pm.response.json();",
                   "    pm.expect(jsonData).to.have.property('taxId');",
-                  "    // Masked format: *****6789",
                   "    if (jsonData.taxId) {",
-                  "        pm.expect(jsonData.taxId).to.match(/^\\*+\\d{4}$/);",
+                  "        pm.expect(jsonData.taxId).to.match(/^\\*{5}\\d{4}$/);",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test('TaxIdToken is present for lookup', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.taxIdToken) {",
+                  "        pm.expect(jsonData.taxIdToken).to.match(/^[0-9a-f]{64}$/);",
                   "    }",
                   "});"
                 ],
@@ -347,7 +398,7 @@
           }
         },
         {
-          "name": "Update AgentCompany with TaxId",
+          "name": "Update AgentCompany TaxId (new last4 + token)",
           "event": [
             {
               "listen": "test",
@@ -357,12 +408,18 @@
                   "    pm.response.to.have.status(200);",
                   "});",
                   "",
-                  "pm.test('TaxId updated and masked', function () {",
+                  "pm.test('TaxId updated — masked with new last 4 digits', function () {",
                   "    var jsonData = pm.response.json();",
                   "    pm.expect(jsonData).to.have.property('taxId');",
-                  "    // After update, should show masked value with new last 4 digits",
                   "    if (jsonData.taxId) {",
-                  "        pm.expect(jsonData.taxId).to.include('4321');",
+                  "        pm.expect(jsonData.taxId).to.equal('*****4321');",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test('TaxIdToken updated', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.taxIdToken) {",
+                  "        pm.expect(jsonData.taxIdToken).to.match(/^[0-9a-f]{64}$/);",
                   "    }",
                   "});"
                 ],
@@ -378,6 +435,84 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"taxId\": \"987654321\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies/{{agentCompanyId2}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies", "{{agentCompanyId2}}"]
+            }
+          }
+        },
+        {
+          "name": "Update AgentCompany with Masked Placeholder (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error rejects masked placeholder on update', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var message = JSON.stringify(jsonData).toLowerCase();",
+                  "    pm.expect(message).to.include('masked');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"taxId\": \"*****4321\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies/{{agentCompanyId2}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies", "{{agentCompanyId2}}"]
+            }
+          }
+        },
+        {
+          "name": "Clear TaxId (set null)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('TaxId is cleared', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.taxId).to.be.oneOf([null, undefined]);",
+                  "});",
+                  "",
+                  "pm.test('TaxIdToken is cleared', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.taxIdToken).to.be.oneOf([null, undefined]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"taxId\": null\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies/{{agentCompanyId2}}",

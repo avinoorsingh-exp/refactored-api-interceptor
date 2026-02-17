@@ -31,5 +31,6 @@ module.exports = {
     '^@exprealty/logger/metrics$': '<rootDir>/../../packages/logger/src/metrics.ts',
     '^@exprealty/config$': '<rootDir>/../../packages/config/src/index.ts',
     '^@exprealty/cache$': '<rootDir>/../../packages/cache/src/index.ts',
+    '^@exprealty/encryption$': '<rootDir>/../../packages/encryption/src/index.ts',
   },
 };
