@@ -578,6 +578,8 @@ export {
 	type CreateLineOfBusinessInput,
 	UpdateLineOfBusinessInputSchema,
 	type UpdateLineOfBusinessInput,
+	LineOfBusinessIdParamSchema,
+	type LineOfBusinessIdParam,
 } from './schemas/line-of-business.js'
 
 // ============================================================================

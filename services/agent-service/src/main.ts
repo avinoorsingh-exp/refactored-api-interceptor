@@ -366,6 +366,7 @@ async function bootstrap() {
 				.setTitle('Agent Service API')
 				.setDescription('REST API for managing agents, companies, regions, and related entities')
 				.setVersion('1.0')
+				.addBearerAuth()
 				.addTag('countries', 'Country management endpoints')
 				.addTag('companies', 'Company management endpoints')
 				.addTag('regions', 'Region management endpoints')
