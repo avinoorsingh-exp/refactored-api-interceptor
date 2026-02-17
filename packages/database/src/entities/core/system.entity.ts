@@ -11,6 +11,7 @@ import { Searchable, Sortable, Filterable, SearchValidators } from '../../decora
 @Entity({ name: 'system', schema: 'core' })
 @Index('idx_system_country', ['countryId'])
 @Index('idx_system_currency', ['currencyId'])
+@Index('uq_system_country_description', ['countryId', 'description'], { unique: true })
 export class SystemEntity extends AuditableEntity implements System {
 	/**
 	 * Primary key with auto-increment bigint (stored as string in JS).
