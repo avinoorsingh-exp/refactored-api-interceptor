@@ -900,7 +900,7 @@ export class AgentTypeOrmRepository
 
 		// Exact match for UUID (case-insensitive)
 		qb.orWhere(
-			`LOWER(${alias}.id::text) = LOWER(:${paramName})`,
+			`${alias}.id = :${paramName}::uuid`,
 			{ [paramName]: trimmedQuery },
 		);
 	}

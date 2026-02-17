@@ -104,6 +104,14 @@ export const SearchValidators = {
    */
   bigint: (value: any, field: string, fieldType: string): SearchValidationResult => {
     const strValue = String(value);
+
+    // Skip validation if value looks like a UUID (contains hyphens in UUID pattern)
+    // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidPattern.test(strValue.trim())) {
+      return { valid: true }; // Let UUIDs pass through (they'll be handled by UUID search)
+    }
+    
     const num = parseFloat(strValue.replace(/[$,]/g, '').replace(/k$/i, '000').replace(/m$/i, '000000'));
     if (isNaN(num)) return { valid: true }; // Let non-numeric pass through for text search
     const BIGINT_MIN = -9223372036854775808;
