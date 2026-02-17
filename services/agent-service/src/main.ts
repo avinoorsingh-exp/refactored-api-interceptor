@@ -366,12 +366,17 @@ async function bootstrap() {
 				.setTitle('Agent Service API')
 				.setDescription('REST API for managing agents, companies, regions, and related entities')
 				.setVersion('1.0')
+				.addBearerAuth()
 				.addTag('countries', 'Country management endpoints')
 				.addTag('companies', 'Company management endpoints')
 				.addTag('regions', 'Region management endpoints')
 				.build()
 
+			// Apply bearer auth globally to all routes in the Swagger spec
+			// Health controllers are excluded via @ApiExcludeController()
 			const document = SwaggerModule.createDocument(app, swaggerConfig)
+			document.security = [{ bearer: [] }]
+
 			SwaggerModule.setup('api', app, document)
 			console.error('[BOOTSTRAP] Step 8: Swagger setup completed successfully')
 		} catch (swaggerError) {

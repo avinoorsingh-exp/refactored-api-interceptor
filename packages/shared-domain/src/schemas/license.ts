@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { DateOnlyISO } from '../value-objects/dates.js'
 import { LICENSE } from '../value-objects/contraints.js'
+import { trimmedStringMinMax, trimmedStringMax } from './base-schemas.js'
 
 /**
  * License type enum.
@@ -33,7 +34,7 @@ export const LicenseBaseSchema = z
 		lastName: z.string().min(LICENSE.lastName.min).max(LICENSE.lastName.max),
 		suffix: z.string().max(LICENSE.suffix.max).nullable().optional(),
 		number: z.string().min(LICENSE.number.min).max(LICENSE.number.max),
-		lineOfBusinessId: z.string(),
+		lineOfBusinessId: z.string().nullable().optional(),
 		countryId: z.number().int().positive({ message: 'errors.license.countryId.invalid' }),
 		stateCode: z.string().length(2, { message: 'errors.license.stateCode.invalid' }).nullable().optional(),
 	})
@@ -75,12 +76,12 @@ export type License = LicenseExpanded
  */
 export const CreateLicenseInputSchema = LicenseBaseSchema.omit({ id: true, agentId: true })
 	.extend({
-		// Apply trimming before validation for name fields
-		firstName: z.string().trim().min(LICENSE.firstName.min).max(LICENSE.firstName.max),
-		middleName: z.string().trim().max(LICENSE.middleName.max).nullable().optional(),
-		lastName: z.string().trim().min(LICENSE.lastName.min).max(LICENSE.lastName.max),
-		suffix: z.string().trim().max(LICENSE.suffix.max).nullable().optional(),
-		number: z.string().trim().min(LICENSE.number.min).max(LICENSE.number.max),
+		// Apply trimming before validation using base-schemas utilities
+		firstName: trimmedStringMinMax(LICENSE.firstName.min, LICENSE.firstName.max, 'errors.license.firstName.length'),
+		middleName: trimmedStringMax(LICENSE.middleName.max, 'errors.license.middleName.length').nullable().optional(),
+		lastName: trimmedStringMinMax(LICENSE.lastName.min, LICENSE.lastName.max, 'errors.license.lastName.length'),
+		suffix: trimmedStringMax(LICENSE.suffix.max, 'errors.license.suffix.length').nullable().optional(),
+		number: trimmedStringMinMax(LICENSE.number.min, LICENSE.number.max, 'errors.license.number.length'),
 	})
 	.describe('Payload to create a license')
 
@@ -98,16 +99,16 @@ export type CreateLicenseInput = z.infer<typeof CreateLicenseInputSchema>
  */
 export const UpdateLicenseInputSchema = LicenseBaseSchema.omit({ id: true, agentId: true })
 	.extend({
-		// Apply trimming before validation for name fields
-		firstName: z.string().trim().min(LICENSE.firstName.min).max(LICENSE.firstName.max).optional(),
-		middleName: z.string().trim().max(LICENSE.middleName.max).nullable().optional(),
-		lastName: z.string().trim().min(LICENSE.lastName.min).max(LICENSE.lastName.max).optional(),
-		suffix: z.string().trim().max(LICENSE.suffix.max).nullable().optional(),
-		number: z.string().trim().min(LICENSE.number.min).max(LICENSE.number.max).optional(),
+		// Apply trimming before validation using base-schemas utilities
+		firstName: trimmedStringMinMax(LICENSE.firstName.min, LICENSE.firstName.max, 'errors.license.firstName.length').optional(),
+		middleName: trimmedStringMax(LICENSE.middleName.max, 'errors.license.middleName.length').nullable().optional(),
+		lastName: trimmedStringMinMax(LICENSE.lastName.min, LICENSE.lastName.max, 'errors.license.lastName.length').optional(),
+		suffix: trimmedStringMax(LICENSE.suffix.max, 'errors.license.suffix.length').nullable().optional(),
+		number: trimmedStringMinMax(LICENSE.number.min, LICENSE.number.max, 'errors.license.number.length').optional(),
 		isPrimary: z.boolean().optional(),
 		type: LicenseTypeSchema.optional(),
 		expirationDate: DateOnlyISO.nullable().optional(),
-		lineOfBusinessId: z.string().optional(),
+		lineOfBusinessId: z.string().nullable().optional(),
 		countryId: z.number().int().positive({ message: 'errors.license.countryId.invalid' }).optional(),
 		stateCode: z.string().length(2, { message: 'errors.license.stateCode.invalid' }).nullable().optional(),
 	})

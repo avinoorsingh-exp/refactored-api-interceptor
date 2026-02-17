@@ -49,6 +49,8 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		'publicProfile',
 		'license',
 		'licensedStates',
+		'agentTax',
+		'tax',
 	],
 
 	// Default fields (when no ?fields specified)
@@ -193,6 +195,27 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		primaryAgentCompany: {
 			property: 'primaryAgentCompany',
 			fields: ['id', 'legacyId', 'name', 'email', 'phone', 'taxId'],
+			virtual: true, // Loaded by repository, not ProjectionService
+		},
+		// Junction table for agent-tax associations
+		// Includes isPrimary flag and nested tax data — use when junction metadata is needed
+		agentTax: {
+			property: 'agentTaxes',
+			fields: ['id', 'agentId', 'taxId', 'isPrimary'],
+			nested: ['tax'], // Include the nested tax entity
+		},
+		// Direct access to Tax[] - hides junction table
+		// Like agentCompany/mls, this provides a cleaner API when junction metadata isn't needed
+		tax: {
+			property: 'tax',
+			fields: ['id', 'taxIdType', 'valueLast4', 'valueToken'],
+			// TypeORM handles junction table transparently via @ManyToMany
+		},
+		// Virtual relation - loaded via AgentRepository.loadPrimaryTax()
+		// Returns the tax entity with isPrimary = true from agent's tax associations
+		primaryTax: {
+			property: 'primaryTax',
+			fields: ['id', 'taxIdType', 'valueLast4', 'valueToken'],
 			virtual: true, // Loaded by repository, not ProjectionService
 		},
 	},

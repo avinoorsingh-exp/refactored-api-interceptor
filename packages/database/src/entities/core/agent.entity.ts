@@ -8,6 +8,8 @@ import { Searchable, Filterable, Sortable, SearchValidators } from '../../decora
 // Forward declarations for circular dependencies
 import type { AgentOfficeEntity } from './agent-office.entity.js'
 import type { AgentCompanyAssociationEntity } from './agent-company-association.entity.js'
+import type { AgentTaxEntity } from './agent-tax.entity.js'
+import type { TaxEntity } from './tax.entity.js'
 
 import type { AgentAddressEntity } from './agent-address.entity.js'
 import type { AgentExternalReferenceEntity } from './agent-external-reference.entity.js'
@@ -257,6 +259,43 @@ export class AgentEntity extends AuditableEntity {
 	 */
 	@OneToMany('AgentOfficeEntity', 'agent')
 	agentOffice?: AgentOfficeEntity[]
+
+	/**
+	 * One-to-Many relationship with AgentTax (junction table).
+	 * An agent can have multiple tax identifiers.
+	 * Use this to access junction metadata like isPrimary.
+	 * @public
+	 */
+	@OneToMany('AgentTaxEntity', 'agent')
+	agentTaxes?: AgentTaxEntity[]
+
+	/**
+	 * Many-to-Many relationship with Tax.
+	 * Direct access to taxes (hides junction table).
+	 * TypeORM handles agent_tax join table transparently.
+	 * @public
+	 */
+	@ManyToMany('TaxEntity')
+	@JoinTable({
+		name: 'agent_tax',
+		schema: 'core',
+		joinColumn: {
+			name: 'agent_id',
+			referencedColumnName: 'id',
+		},
+		inverseJoinColumn: {
+			name: 'tax_id',
+			referencedColumnName: 'id',
+		},
+	})
+	tax?: TaxEntity[]
+
+	/**
+	 * Virtual property for primary tax identifier.
+	 * Loaded via custom query when include=primaryTax is specified.
+	 * @see AgentRepository.loadPrimaryTax()
+	 */
+	primaryTax?: TaxEntity
 
 	/**
 	 * Many-to-Many relationship with Office.

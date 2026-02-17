@@ -35,8 +35,8 @@ export class LicenseResponseDto {
 	@ApiPropertyOptional({ description: 'License expiration date (ISO 8601)', example: '2025-12-31' })
 	expirationDate?: string;
 
-	@ApiProperty({ description: 'Line of business ID', example: '1' })
-	lineOfBusinessId!: string;
+	@ApiPropertyOptional({ description: 'Line of business ID', example: '1' })
+	lineOfBusinessId?: string | null;
 
 	@ApiProperty({ description: 'Country ID', example: 1 })
 	countryId!: number;

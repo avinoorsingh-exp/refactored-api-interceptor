@@ -307,6 +307,13 @@ export { W9AddressEntity } from './entities/core/w9-address.entity.js'
  * @public
  */
 export { TaxEntity } from './entities/core/tax.entity.js'
+export type { TaxIdType } from './entities/core/tax.entity.js'
+
+/**
+ * TypeORM entity for AgentTax junction table.
+ * @public
+ */
+export { AgentTaxEntity } from './entities/core/agent-tax.entity.js'
 
 /**
  * TypeORM entity for OfficeAddress join table.

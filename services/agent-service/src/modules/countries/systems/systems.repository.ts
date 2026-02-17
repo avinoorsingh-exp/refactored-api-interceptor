@@ -51,7 +51,7 @@ export class SystemsRepository implements ISystemsRepository {
 
 	/**
 	 * Retrieve a paginated list of systems for a country.
-	 * Default sort: description ASC.
+	 * Default sort: id ASC.
 	 */
 	async findPageByCountry(
 		countryId: number,
@@ -69,9 +69,9 @@ export class SystemsRepository implements ISystemsRepository {
 		// Apply filters, search, and sorting with strategy-based search
 		this.queryService.applyAllWithStrategies(qb, normalized, SystemEntity, 'system')
 
-		// Default sort by description ASC if no sort specified
+		// Default sort by id ASC if no sort specified
 		if (!normalized.sort || normalized.sort.conditions.length === 0) {
-			qb.orderBy('system.description', 'ASC')
+			qb.orderBy('system.id', 'ASC')
 		}
 
 		// Apply pagination

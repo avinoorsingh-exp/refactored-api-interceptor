@@ -34,6 +34,7 @@
 		"@exprealty/cache": "workspace:*",
 		"@exprealty/config": "workspace:*",
 		"@exprealty/database": "workspace:*",
+		"@exprealty/encryption": "workspace:*",
 		"@exprealty/logger": "workspace:*",
 		"@exprealty/shared-domain": "workspace:*",
 		"@nestjs/common": "^10.3.0",

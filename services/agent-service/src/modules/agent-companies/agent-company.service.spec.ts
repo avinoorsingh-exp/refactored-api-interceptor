@@ -1,6 +1,7 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { AgentCompanyService } from './agent-company.service.js';
 import type { IAgentCompanyRepository } from './ports/agent-company.repository.port.js';
+import type { TaxIdHasher } from '../../common/ports/tax-id-hasher.port.js';
 import type { AgentCompany, CreateAgentCompanyInput, UpdateAgentCompanyInput } from '@exprealty/shared-domain';
 import { LoggerService } from '../../core/logger.service.js';
 
@@ -12,7 +13,10 @@ import { LoggerService } from '../../core/logger.service.js';
 describe('AgentCompanyService', () => {
 	let service: AgentCompanyService;
 	let repository: jest.Mocked<IAgentCompanyRepository>;
+	let hasher: jest.Mocked<TaxIdHasher>;
 	let logger: jest.Mocked<LoggerService>;
+
+	const MOCK_HASH = 'b'.repeat(64);
 
 	const mockAgentCompany: AgentCompany = {
 		id: '6e3cc17b-42e0-48db-9891-2d2a6182f9cc',
@@ -21,7 +25,7 @@ describe('AgentCompanyService', () => {
 		email: 'brokerage@example.com',
 		phone: '5551234567',
 		taxId: '*****6789',
-		taxIdHashed: null,
+		taxIdToken: null,
 		useSsn: false,
 		createdAt: new Date('2024-01-15T10:30:00Z'),
 		updatedAt: new Date('2024-01-15T14:45:00Z'),
@@ -31,11 +35,17 @@ describe('AgentCompanyService', () => {
 		repository = {
 			findById: jest.fn(),
 			findByName: jest.fn(),
+			findByLegacyId: jest.fn(),
 			findPage: jest.fn(),
+			findAll: jest.fn(),
 			create: jest.fn(),
 			update: jest.fn(),
 			delete: jest.fn(),
 		} as unknown as jest.Mocked<IAgentCompanyRepository>;
+
+		hasher = {
+			hash: jest.fn().mockReturnValue(MOCK_HASH),
+		};
 
 		logger = {
 			setContext: jest.fn(),
@@ -45,7 +55,7 @@ describe('AgentCompanyService', () => {
 			error: jest.fn(),
 		} as unknown as jest.Mocked<LoggerService>;
 
-		service = new AgentCompanyService(repository, logger);
+		service = new AgentCompanyService(repository, hasher, logger);
 	});
 
 	afterEach(() => {
@@ -69,8 +79,31 @@ describe('AgentCompanyService', () => {
 
 			expect(result).toEqual(mockAgentCompany);
 			expect(repository.findByName).toHaveBeenCalledWith('Test Brokerage LLC');
-			expect(repository.create).toHaveBeenCalledWith(createDto);
+			expect(repository.create).toHaveBeenCalled();
 			expect(logger.info).toHaveBeenCalled();
+		});
+
+		it('should compute taxIdLast4 and taxIdToken when taxId is provided', async () => {
+			const dtoWithTax = { ...createDto, taxId: '12-3456789' } as CreateAgentCompanyInput;
+			repository.findByName.mockResolvedValue(null);
+			repository.create.mockResolvedValue(mockAgentCompany);
+
+			await service.create(dtoWithTax);
+
+			const createArg = repository.create.mock.calls[0][0] as any;
+			expect(createArg.taxIdLast4).toBe('6789');
+			expect(createArg.taxIdToken).toBe(MOCK_HASH);
+			expect(createArg.taxId).toBeUndefined();
+			expect(hasher.hash).toHaveBeenCalledWith('12-3456789');
+		});
+
+		it('should throw BadRequestException when taxId is a masked placeholder', async () => {
+			const dtoWithMasked = { ...createDto, taxId: '*****6789' } as CreateAgentCompanyInput;
+			repository.findByName.mockResolvedValue(null);
+
+			await expect(service.create(dtoWithMasked)).rejects.toThrow(BadRequestException);
+			expect(repository.create).not.toHaveBeenCalled();
+			expect(hasher.hash).not.toHaveBeenCalled();
 		});
 
 		it('should throw ConflictException when company with same name exists', async () => {
@@ -213,6 +246,41 @@ describe('AgentCompanyService', () => {
 
 			await expect(service.update('6e3cc17b-42e0-48db-9891-2d2a6182f9cc', updateDto)).rejects.toThrow(error);
 			expect(logger.error).toHaveBeenCalled();
+		});
+
+		it('should compute taxIdLast4 and taxIdToken when update includes taxId', async () => {
+			const updateWithTax: UpdateAgentCompanyInput = { taxId: '98-7654321' } as UpdateAgentCompanyInput;
+			repository.findById.mockResolvedValue(mockAgentCompany);
+			repository.update.mockResolvedValue(mockAgentCompany);
+
+			await service.update('6e3cc17b-42e0-48db-9891-2d2a6182f9cc', updateWithTax);
+
+			const updateArg = repository.update.mock.calls[0][1] as any;
+			expect(updateArg.taxIdLast4).toBe('4321');
+			expect(updateArg.taxIdToken).toBe(MOCK_HASH);
+			expect(updateArg.taxId).toBeUndefined();
+			expect(hasher.hash).toHaveBeenCalledWith('98-7654321');
+		});
+
+		it('should clear tax fields when update sets taxId to null', async () => {
+			const updateClearTax: UpdateAgentCompanyInput = { taxId: null } as UpdateAgentCompanyInput;
+			repository.findById.mockResolvedValue(mockAgentCompany);
+			repository.update.mockResolvedValue({ ...mockAgentCompany, taxId: null, taxIdToken: null });
+
+			await service.update('6e3cc17b-42e0-48db-9891-2d2a6182f9cc', updateClearTax);
+
+			const updateArg = repository.update.mock.calls[0][1] as any;
+			expect(updateArg.taxIdLast4).toBeNull();
+			expect(updateArg.taxIdToken).toBeNull();
+			expect(hasher.hash).not.toHaveBeenCalled();
+		});
+
+		it('should throw BadRequestException when update taxId is a masked placeholder', async () => {
+			const updateMasked: UpdateAgentCompanyInput = { taxId: '*****6789' } as UpdateAgentCompanyInput;
+			repository.findById.mockResolvedValue(mockAgentCompany);
+
+			await expect(service.update('6e3cc17b-42e0-48db-9891-2d2a6182f9cc', updateMasked)).rejects.toThrow(BadRequestException);
+			expect(repository.update).not.toHaveBeenCalled();
 		});
 	});
 

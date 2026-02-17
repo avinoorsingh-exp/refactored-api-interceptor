@@ -7,22 +7,16 @@ import {
 } from 'typeorm'
 import { AuditableEntity } from './auditable.entity.js'
 import { Searchable, Filterable, Sortable, SearchValidators } from '../../decorators/searchable-decorators.js'
-import { createEncryptedTransformer, createWriteOnlyEncryptedTransformer } from '@exprealty/encryption'
 
 // Forward declaration for circular dependency
 import type { AgentCompanyAssociationEntity } from './agent-company-association.entity.js'
 
 /**
- * Environment variable for encryption key.
- * Falls back to a development-only key if not set.
- * IMPORTANT: Always set ENCRYPTION_KEY in production!
- */
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY ?? 'dev-only-encryption-key-32chars!'
-
-/**
  * TypeORM entity for AgentCompany table.
  * Represents an agent's company/brokerage for commission payments.
- * Database representation of the domain AgentCompany type.
+ *
+ * Stores encrypted tax ID + blind index + last4 + key metadata.
+ *
  * @public
  */
 @Entity({ name: 'agent_company', schema: 'core' })
@@ -75,35 +69,71 @@ export class AgentCompanyEntity extends AuditableEntity {
 	@Filterable()
 	phone!: string
 
-	/**
-	 * Tax ID (AES encrypted, masked on read - shows last 4 digits).
-	 * Stored encrypted in database, displayed as "*****6789" format.
-	 * @public
-	 */
-	@Column({
-		name: 'tax_id',
-		type: 'text',
-		nullable: true,
-		transformer: createEncryptedTransformer({
-			key: ENCRYPTION_KEY,
-			maskOnRead: true,
-			visibleChars: 4,
-		}),
-	})
-	taxId?: string
+	// ==========================================
+	// NEW ENCRYPTED COLUMNS
+	// ==========================================
 
 	/**
-	 * Hashed tax ID for secure lookups (AES encrypted, write-only).
-	 * Used for searching/matching without exposing the actual value.
+	 * AES-256-GCM ciphertext of the full tax ID value.
+	 * Stores raw encrypted bytes (iv + authTag + ciphertext).
+	 * No masking — this is the encrypted blob only.
+	 * Nullable until backfill populates it for all rows.
 	 * @public
 	 */
-	@Column({
-		name: 'tax_id_hashed',
-		type: 'text',
-		nullable: true,
-		transformer: createWriteOnlyEncryptedTransformer({ key: ENCRYPTION_KEY }),
-	})
+	@Column({ name: 'tax_id', type: 'bytea', nullable: true })
+	taxId?: Buffer
+
+	/**
+	 * HMAC-SHA256 blind index for equality lookups (64 lowercase hex chars).
+	 * Deterministic — same plaintext always produces the same token.
+	 * Not reversible — the original value cannot be recovered.
+	 * Used for WHERE clauses without decrypting the ciphertext.
+	 * Nullable until backfill populates it for all rows.
+	 * @public
+	 */
+	@Column({ name: 'tax_id_hashed', type: 'char', length: 64, nullable: true })
 	taxIdHashed?: string
+
+	/**
+	 * Last 4 digits of the tax ID (display-only, derived on write).
+	 * Plain text, never encrypted. Used for masked display (e.g., "*****6789").
+	 * Nullable until backfill populates it for all rows.
+	 * @public
+	 */
+	@Column({ name: 'tax_id_last4', type: 'char', length: 4, nullable: true })
+	taxIdLast4?: string
+
+	/**
+	 * Identifier for the DEK/key-version used to encrypt taxId.
+	 * This is NOT the key itself — it references a key ID in the key management system
+	 * (e.g., AWS KMS key ARN, vault path, or internal key-id).
+	 * Used for key rotation: tells the decryption layer which key to use.
+	 * VARCHAR(256) accommodates AWS KMS ARNs (~200 chars) and similar identifiers.
+	 * @public
+	 */
+	@Column({ name: 'encryption_key_id', type: 'varchar', length: 256, nullable: true })
+	encryptionKeyId?: string
+
+	/**
+	 * Encryption scheme version. Tracks HOW the data was encrypted —
+	 * algorithm, SDK version, envelope format. Allows the decrypt layer to
+	 * branch on version if the approach changes in the future.
+	 *
+	 *   1 = @aws-crypto/client-node v4, AES-256-GCM, REQUIRE_ENCRYPT_REQUIRE_DECRYPT
+	 *
+	 * Nullable — only populated when encryption is applied.
+	 * @public
+	 */
+	@Column({ name: 'encryption_version', type: 'smallint', nullable: true })
+	encryptionVersion?: number
+
+	/**
+	 * Timestamp of when the value was encrypted (or re-encrypted during key rotation).
+	 * Nullable — only populated when encryption is applied.
+	 * @public
+	 */
+	@Column({ name: 'encrypted_at', type: 'timestamptz', nullable: true })
+	encryptedAt?: Date
 
 	/**
 	 * Whether to use SSN instead of EIN.

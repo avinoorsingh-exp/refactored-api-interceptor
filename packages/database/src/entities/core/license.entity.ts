@@ -120,13 +120,14 @@ export class LicenseEntity extends AuditableEntity {
 
 	/**
 	 * Foreign key to LineOfBusiness (BigInt).
+	 * Nullable - required only for US licenses (enforced by business rule).
 	 * @public
 	 */
-	@Column({ name: 'line_of_business_id', type: 'bigint' })
+	@Column({ name: 'line_of_business_id', type: 'bigint', nullable: true })
 	@Searchable({ type: 'integer', weight: 3, behavior: 'exact', description: 'Line of business ID', validate: SearchValidators.bigint })
 	@Filterable()
 	@Sortable()
-	lineOfBusinessId!: string
+	lineOfBusinessId?: string
 
 	/**
 	 * Foreign key to Country entity.
@@ -179,7 +180,7 @@ export class LicenseEntity extends AuditableEntity {
 	 * Many-to-One relationship with LineOfBusiness.
 	 * @public
 	 */
-	@ManyToOne(() => LineOfBusinessEntity)
+	@ManyToOne(() => LineOfBusinessEntity, { nullable: true })
 	@JoinColumn({ name: 'line_of_business_id' })
 	lineOfBusiness?: LineOfBusinessEntity
 

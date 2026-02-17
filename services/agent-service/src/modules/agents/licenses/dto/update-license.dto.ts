@@ -30,8 +30,8 @@ export class UpdateLicenseDto {
 	@ApiPropertyOptional({ description: 'License expiration date (ISO 8601)', example: '2025-12-31' })
 	expirationDate?: string;
 
-	@ApiPropertyOptional({ description: 'Line of business ID', example: '1' })
-	lineOfBusinessId?: string;
+	@ApiPropertyOptional({ description: 'Line of business ID (required for US licenses)', example: '1' })
+	lineOfBusinessId?: string | null;
 
 	@ApiPropertyOptional({ description: 'Country ID', example: 1 })
 	countryId?: number;

@@ -30,7 +30,7 @@ export class CreateAgentCompanyDto {
 	phone!: string;
 
 	@ApiPropertyOptional({
-		description: 'Tax ID (will be encrypted)',
+		description: 'Tax ID (plaintext, write-only — stored as last4 + HMAC token)',
 		example: '12-3456789',
 		nullable: true,
 	})

@@ -14,7 +14,7 @@ export const AGENT_COMPANY_PROJECTION_CONFIG: ProjectionConfig = {
 		'name',
 		'email',
 		'phone',
-		'taxId',
+		'taxIdLast4',
 		'useSsn',
 		'created',
 		'lastModified',

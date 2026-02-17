@@ -18,7 +18,8 @@ const US_COUNTRY_CODE = 'US';
  * - License number must be unique per agent (not globally)
  * - Only one primary license per agent
  * - Country must exist
- * - Line of Business must exist
+ * - Line of Business must exist (if provided)
+ * - Line of Business is required for US licenses
  * - State is required for US licenses
  * - State must exist and belong to the specified country
  * - Database constraints provide additional safety (unique indexes)
@@ -37,12 +38,20 @@ export class LicenseService {
 
 	/**
 	 * Validates that referenced entities exist and business rules are satisfied.
+	 *
+	 * Business Rules:
+	 * - Country must exist
+	 * - Line of Business must exist (if provided)
+	 * - Line of Business is required for US licenses
+	 * - State is required for US licenses
+	 * - State must exist for the specified country
+	 *
 	 * @throws BadRequestException if validation fails
 	 */
 	private async validateReferences(
 		countryId: number,
-		lineOfBusinessId: string,
-		stateCode?: string,
+		lineOfBusinessId?: string | null,
+		stateCode?: string | null,
 	): Promise<void> {
 		// Validate country exists
 		const country = await this.licenseRepo.findCountryById(countryId);
@@ -53,17 +62,28 @@ export class LicenseService {
 			});
 		}
 
-		// Validate line of business exists
-		const lineOfBusiness = await this.licenseRepo.findLineOfBusinessById(lineOfBusinessId);
-		if (!lineOfBusiness) {
-			throw new BadRequestException({
-				message: `Line of business with id '${lineOfBusinessId}' not found`,
-				i18nType: 'license.line_of_business_not_found',
-			});
+		// Validate line of business exists (if provided)
+		if (lineOfBusinessId) {
+			const lineOfBusiness = await this.licenseRepo.findLineOfBusinessById(lineOfBusinessId);
+			if (!lineOfBusiness) {
+				throw new BadRequestException({
+					message: `Line of business with id '${lineOfBusinessId}' not found`,
+					i18nType: 'license.line_of_business_not_found',
+				});
+			}
 		}
 
-		// Validate state rules for US licenses
+		// US-specific business rules
 		if (country.alpha2 === US_COUNTRY_CODE) {
+			// Line of business is required for US licenses
+			if (!lineOfBusinessId) {
+				throw new BadRequestException({
+					message: 'Line of business is required for US licenses',
+					i18nType: 'license.line_of_business_required_for_us',
+				});
+			}
+
+			// State is required for US licenses
 			if (!stateCode) {
 				throw new BadRequestException({
 					message: 'State is required for US licenses',
@@ -111,9 +131,10 @@ export class LicenseService {
 	 * 1. License number must be unique per agent
 	 * 2. Only one primary license per agent
 	 * 3. Country must exist
-	 * 4. Line of Business must exist
-	 * 5. State is required for US licenses
-	 * 6. State must exist for specified country
+	 * 4. Line of Business must exist (if provided)
+	 * 5. Line of Business is required for US licenses
+	 * 6. State is required for US licenses
+	 * 7. State must exist for specified country
 	 */
 	async create(agentId: string, data: CreateLicenseDto): Promise<License> {
 		const startTime = Date.now();
@@ -193,9 +214,10 @@ export class LicenseService {
 	 * 1. License number must be unique per agent (if changed)
 	 * 2. Only one primary license per agent (if isPrimary is being set to true)
 	 * 3. Country must exist (if changed)
-	 * 4. Line of Business must exist (if changed)
-	 * 5. State is required for US licenses
-	 * 6. State must exist for specified country (if changed)
+	 * 4. Line of Business must exist (if provided/changed)
+	 * 5. Line of Business is required for US licenses
+	 * 6. State is required for US licenses
+	 * 7. State must exist for specified country (if changed)
 	 */
 	async update(
 		agentId: string,
@@ -209,7 +231,7 @@ export class LicenseService {
 
 		// Resolve values - use existing if not provided in update
 		const countryId = data.countryId ?? existing.countryId;
-		const lineOfBusinessId = data.lineOfBusinessId ?? existing.lineOfBusinessId;
+		const lineOfBusinessId = data.lineOfBusinessId !== undefined ? data.lineOfBusinessId : existing.lineOfBusinessId;
 		const stateCode = data.stateCode !== undefined ? data.stateCode : existing.stateCode;
 		const isPrimary = data.isPrimary ?? existing.isPrimary;
 
@@ -220,7 +242,7 @@ export class LicenseService {
 			data.stateCode !== undefined;
 
 		if (referenceChanged) {
-			await this.validateReferences(countryId, lineOfBusinessId, stateCode);
+			await this.validateReferences(countryId, lineOfBusinessId ?? undefined, stateCode);
 		}
 
 		// Validate primary license rule if isPrimary is being set to true

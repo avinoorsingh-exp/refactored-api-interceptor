@@ -1,10 +1,11 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { 
+import {
 	AgentCompanyAssociationEntity,
 	AgentEntity,
 	AgentCompanyEntity,
 } from '@exprealty/database';
+import { HmacService } from '@exprealty/encryption';
 // AgentCompany controllers and services
 import { AgentCompanyController } from './agent-company.controller.js';
 import { AgentCompanyService } from './agent-company.service.js';
@@ -58,6 +59,17 @@ import { AgentModule } from '../agents/agent.module.js';
 			useClass: AgentCompanyAssociationTypeOrmRepository,
 		},
 		// Shared
+		{
+			provide: 'TaxIdHasher',
+			useFactory: () => {
+				const secret = process.env.HMAC_SECRET;
+				if (!secret) {
+					throw new Error('HMAC_SECRET environment variable is required');
+				}
+				const hmac = new HmacService({ current: secret });
+				return { hash: (plaintext: string) => hmac.hash(plaintext) };
+			},
+		},
 		ProjectionService,
 	],
 	exports: [AgentCompanyService, AgentCompanyAssociationService],
