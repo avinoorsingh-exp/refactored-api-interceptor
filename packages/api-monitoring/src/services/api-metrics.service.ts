@@ -24,6 +24,7 @@ import {
 	type PaginatedResponse,
 } from '../utils/pagination.util.js';
 import { toArray, hasValues } from '../utils/filter.util.js';
+import { normalizeRoute } from '../utils/normalize-route.util.js';
 import { resolveTrendBucketType, calculateBucketCount, getWeekStart } from '../utils/bucket-resolution.util.js';
 import type { TrendsRange } from '../dto/trends-query.dto.js';
 import type {
@@ -453,14 +454,11 @@ export class ApiMetricsService {
 				});
 			}
 
-			// STEP 3: Build WHERE clause with filters (applied FIRST)
+			// STEP 3: Build WHERE clause (timestamp, method, statusCode only).
+			// Route filter is applied after normalizing (STEP 5) so normalized filter matches raw paths.
 			const where: Record<string, unknown> = {
 				timestamp: Between(startTime, endTime),
 			};
-
-			if (hasValues(normalizedRoutes)) {
-				where.route = In(normalizedRoutes);
-			}
 
 			if (hasValues(normalizedMethods)) {
 				where.method = In(normalizedMethods);
@@ -484,20 +482,31 @@ export class ApiMetricsService {
 				});
 			}
 
-			// STEP 5: Aggregate by route and method
+			// STEP 5: Aggregate by normalized route and method (matches api_route_stats format)
+			const ROUTE_METHOD_SEP = '\x00';
 			const grouped = new Map<string, ApiRequestLogEntity[]>();
 			for (const log of logs) {
-				const key = `${log.route}:${log.method}`;
+				const normalizedRoute = normalizeRoute(log.route);
+				const key = `${normalizedRoute}${ROUTE_METHOD_SEP}${log.method}`;
 				if (!grouped.has(key)) {
 					grouped.set(key, []);
 				}
 				grouped.get(key)!.push(log);
 			}
 
-			// STEP 6: Calculate statistics for each group
-			let results = Array.from(grouped.entries())
+			// STEP 5b: Apply route filter in memory (normalized route must be in requested list)
+			let entries = Array.from(grouped.entries());
+			if (hasValues(normalizedRoutes)) {
+				entries = entries.filter(([key]) => {
+					const normalizedRoute = key.split(ROUTE_METHOD_SEP)[0];
+					return normalizedRoutes.includes(normalizedRoute);
+				});
+			}
+
+			// STEP 6: Calculate statistics for each group (response route = normalized, matches available endpoint)
+			let results = entries
 				.map(([key, groupLogs]) => {
-					const [route, method] = key.split(':');
+					const [route, method] = key.split(ROUTE_METHOD_SEP);
 					const requestCount = groupLogs.length;
 					const errorCount = groupLogs.filter((log) => log.hasError).length;
 					const latencies = groupLogs.map((log) => log.latencyMs).sort((a, b) => a - b);
@@ -540,7 +549,7 @@ export class ApiMetricsService {
 
 			if (debug) {
 				this.logger.debug('Route breakdown - results', {
-					rowCountBeforeCap: grouped.size,
+					rowCountBeforeCap: entries.length,
 					rowCountAfterCap: results.length,
 					mode: isInspectionMode ? 'inspection' : 'ranking',
 				});
