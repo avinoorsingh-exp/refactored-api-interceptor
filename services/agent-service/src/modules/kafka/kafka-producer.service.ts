@@ -143,41 +143,8 @@ export class KafkaProducerService implements RegisterableKafkaService {
 			? Buffer.from(message) 
 			: Buffer.from(JSON.stringify(message));
 
-		// Skip sending in local environment, but log the message and create a mock SENT record
+		// Skip sending in local environment; do not create a SENT record (only store when producer actually sends)
 		if (nodeEnv === 'local') {
-			// Extract eventId from message if available
-			let eventId: string | undefined;
-			if (typeof message === 'object' && message !== null) {
-				const msg = message as Record<string, unknown>;
-				eventId = (msg.eventId as string) || (msg.uuid as string) || undefined;
-			}
-
-			const allConfig = this.configService.getAll();
-			const serviceName = String((allConfig as Record<string, unknown>)['SERVICE_NAME'] || 'agent-service');
-
-			// Create a mock SENT record with partition=0, offset=0 for local environment
-			// This allows testing the flow even when Kafka is not available
-			const recordCreated = await this.kafkaMessageProcessingService.createSentRecord({
-				topic,
-				partition: 0,
-				offset: '0',
-				messageKey: key,
-				eventId,
-				payload: typeof message === 'object' && message !== null ? message as Record<string, unknown> : { value: messageValue },
-				headers,
-				serviceName,
-			});
-
-			if (!recordCreated) {
-				this.logger.warn('Failed to create SENT record in database (local environment) - check logs for details', {
-					topic,
-					partition: 0,
-					offset: '0',
-					messageKey: key,
-					eventId,
-				});
-			}
-
 			this.logger.info('Kafka message skipped (local environment) - message would be sent to topic', {
 				topic,
 				key,
