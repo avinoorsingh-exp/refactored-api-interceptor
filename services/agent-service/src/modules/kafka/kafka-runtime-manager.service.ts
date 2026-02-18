@@ -215,8 +215,9 @@ export class KafkaRuntimeManager {
 	 * 
 	 * @param id - Service ID
 	 * @param service - The service instance (required for starting)
+	 * @param options - Optional. fromBootstrap: when true, transient startup failures do not transition to ERROR (caller may retry).
 	 */
-	async start(id: string, service: RegisterableKafkaService): Promise<void> {
+	async start(id: string, service: RegisterableKafkaService, options?: { fromBootstrap?: boolean }): Promise<void> {
 		const runtime = this.registry.get(id);
 		
 		if (!runtime) {
@@ -499,20 +500,40 @@ export class KafkaRuntimeManager {
 				});
 			}
 		} catch (error) {
-			runtime.status = KafkaServiceStatus.ERROR;
-			runtime.error = error instanceof Error ? error.message : String(error);
+			const errorMessage = error instanceof Error ? error.message : String(error);
 			runtime.startedAt = undefined;
+
+			// During bootstrap, do not transition to ERROR so caller can retry (transient failures).
+			if (!options?.fromBootstrap) {
+				runtime.status = KafkaServiceStatus.ERROR;
+				runtime.error = errorMessage;
+			} else {
+				runtime.error = errorMessage;
+				// Leave status as STOPPED so bootstrap retry can call start() again.
+			}
 
 			this.logger.error(`Failed to start Kafka service`, {
 				id,
 				type: runtime.type,
 				topic: runtime.topic,
-				error: runtime.error,
+				error: errorMessage,
 				stack: error instanceof Error ? error.stack : undefined,
 			});
 
 			throw error;
 		}
+	}
+
+	/**
+	 * Mark a service as having permanently failed to start (terminal failure).
+	 * Used by bootstrap when startup failure is not transient (e.g. invalid config, topic missing).
+	 */
+	markStartPermanentFailure(id: string, errorMessage: string): void {
+		const runtime = this.registry.get(id);
+		if (!runtime) return;
+		runtime.status = KafkaServiceStatus.ERROR;
+		runtime.error = errorMessage;
+		runtime.startedAt = undefined;
 	}
 
 	/**

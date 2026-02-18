@@ -125,26 +125,149 @@ export class KafkaBootstrapService implements OnApplicationBootstrap, OnApplicat
 			this.kafkaRuntimeManager.register(entry.service);
 		}
 
-		// Start all registered services (using service.getId() for runtime manager)
-		const startPromises = Array.from(this.serviceMap.values()).map(async (entry) => {
-			try {
-				const serviceId = entry.service.getId();
-				await this.kafkaRuntimeManager.start(serviceId, entry.service);
-			} catch (error) {
-				this.logger.error(`Failed to start service`, {
-					entityId: entry.entity.id,
-					serviceId: entry.service.getId(),
-					type: entry.entity.type,
-					topic: entry.entity.topic,
-					error: error instanceof Error ? error.message : 'Unknown error',
-				});
-				// Continue starting other services even if one fails
-			}
-		});
+		// Start all registered services in parallel. Consumers use retry-on-boot (fromBootstrap); producers start once.
+		const startPromises = Array.from(this.serviceMap.values()).map((entry) =>
+			entry.entity.type === KafkaServiceType.CONSUMER
+				? this.startConsumerWithBootstrapRetry(entry)
+				: this.startProducerOnce(entry),
+		);
 
 		await Promise.allSettled(startPromises);
 
 		this.logger.info('Kafka services bootstrap completed');
+	}
+
+	/** Start producer once during bootstrap (no retry). */
+	private async startProducerOnce(entry: { service: any; entity: KafkaServiceEntity }): Promise<void> {
+		const serviceId = entry.service.getId();
+		try {
+			await this.kafkaRuntimeManager.start(serviceId, entry.service);
+		} catch (error) {
+			this.logger.error(`Failed to start service`, {
+				entityId: entry.entity.id,
+				serviceId,
+				type: entry.entity.type,
+				topic: entry.entity.topic,
+				error: error instanceof Error ? error.message : 'Unknown error',
+			});
+		}
+	}
+
+	/** Bootstrap-only: start consumer with retry-on-boot for transient failures. */
+	private async startConsumerWithBootstrapRetry(entry: { service: any; entity: KafkaServiceEntity }): Promise<void> {
+		const serviceId = entry.service.getId();
+		const entityId = entry.entity.id;
+		try {
+			await this.kafkaRuntimeManager.start(serviceId, entry.service, { fromBootstrap: true });
+			return;
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+			if (this.isTerminalStartupError(error)) {
+				this.logger.error(`Failed to start service (terminal)`, {
+					entityId,
+					serviceId,
+					type: entry.entity.type,
+					topic: entry.entity.topic,
+					error: errorMessage,
+				});
+				this.kafkaRuntimeManager.markStartPermanentFailure(serviceId, errorMessage);
+				return;
+			}
+			this.logger.warn(`Consumer startup failed (transient), starting retry loop`, {
+				entityId,
+				serviceId,
+				topic: entry.entity.topic,
+				error: errorMessage,
+			});
+			this.runBootstrapRetryLoop(entry).catch((err) => {
+				this.logger.error(`Bootstrap retry loop exited unexpectedly`, {
+					entityId,
+					serviceId,
+					topic: entry.entity.topic,
+					error: err instanceof Error ? err.message : String(err),
+				});
+			});
+		}
+	}
+
+	private static readonly BOOTSTRAP_RETRY_INITIAL_DELAY_MS = 2000;
+	private static readonly BOOTSTRAP_RETRY_MAX_DELAY_MS = 15000;
+
+	/** Background retry loop for one consumer during bootstrap. Stops if disabled. */
+	private async runBootstrapRetryLoop(entry: { service: any; entity: KafkaServiceEntity }): Promise<void> {
+		const serviceId = entry.service.getId();
+		const entityId = entry.entity.id;
+		let delayMs = KafkaBootstrapService.BOOTSTRAP_RETRY_INITIAL_DELAY_MS;
+		let attempt = 0;
+
+		for (;;) {
+			await this.delay(delayMs);
+
+			const entity = await this.kafkaServiceRepo.findOne({ where: { id: entityId } });
+			if (!entity?.enabled) {
+				this.logger.info(`Consumer disabled during bootstrap retry, stopping retry`, {
+					entityId,
+					serviceId,
+					topic: entry.entity.topic,
+				});
+				return;
+			}
+
+			attempt += 1;
+			try {
+				await this.kafkaRuntimeManager.start(serviceId, entry.service, { fromBootstrap: true });
+				this.logger.info(`Consumer started successfully after bootstrap retry`, {
+					entityId,
+					serviceId,
+					topic: entry.entity.topic,
+					attempt,
+				});
+				return;
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+				if (this.isTerminalStartupError(error)) {
+					this.logger.error(`Bootstrap retry encountered terminal error`, {
+						entityId,
+						serviceId,
+						topic: entry.entity.topic,
+						attempt,
+						error: errorMessage,
+					});
+					this.kafkaRuntimeManager.markStartPermanentFailure(serviceId, errorMessage);
+					return;
+				}
+				this.logger.warn(`Bootstrap retry attempt failed`, {
+					entityId,
+					serviceId,
+					topic: entry.entity.topic,
+					attempt,
+					nextDelayMs: Math.min(delayMs * 2, KafkaBootstrapService.BOOTSTRAP_RETRY_MAX_DELAY_MS),
+					error: errorMessage,
+				});
+				delayMs = Math.min(delayMs * 2, KafkaBootstrapService.BOOTSTRAP_RETRY_MAX_DELAY_MS);
+			}
+		}
+	}
+
+	private delay(ms: number): Promise<void> {
+		return new Promise((resolve) => setTimeout(resolve, ms));
+	}
+
+	/**
+	 * Terminal errors: invalid config, topic does not exist (no auto-create), or similar.
+	 * Transient: REBALANCE_IN_PROGRESS, coordinator not available, timeouts, connection errors.
+	 */
+	private isTerminalStartupError(error: unknown): boolean {
+		const msg = error instanceof Error ? error.message : String(error);
+		const lower = msg.toLowerCase();
+		// Invalid configuration
+		if (lower.includes('is not registered') || lower.includes('must have a groupid')) return true;
+		// Topic does not exist and auto-creation disabled
+		if (lower.includes('topic does not exist') || lower.includes('unknown topic')) return true;
+		if (lower.includes('does not exist') && (lower.includes('topic') || lower.includes('partition'))) return true;
+		// Handler/config failures that are not transient
+		if (lower.includes('failed to create message handler')) return true;
+		return false;
 	}
 
 
