@@ -22,7 +22,7 @@ const AGENT_QUERY_CONFIG: BaseQueryConfig = {
 		'preferredName', 'birthDate', 'lifecycleStatus', 'systemId', 'seedAgent',
 		'joinDate', 'anniversaryDate', 'terminationDate', 'isStaff',
 		// Relational filter fields (handled specially in findPage)
-		'email', 'country',
+		'email', 'country', 'licensedStates',
 	],
 	allowedSortFields: [
 		'id', 'agentId', 'title', 'firstName', 'middleName', 'lastName', 'suffix',
@@ -31,6 +31,7 @@ const AGENT_QUERY_CONFIG: BaseQueryConfig = {
 		'created', 'lastModified',
 		// Relational sort fields (handled specially in findPage)
 		'primaryEmail',
+		'licensedStates', // full licensed state list string for sort (matches display)
 	],
 	allowedSearchFields: [
 		'id', 'agentId', 'title', 'firstName', 'middleName', 'lastName', 'suffix',
@@ -45,13 +46,13 @@ const AGENT_QUERY_CONFIG: BaseQueryConfig = {
  * Relational filter fields that require custom JOIN handling.
  * These are extracted from filter conditions and applied separately.
  */
-const RELATIONAL_FILTER_FIELDS = ['email', 'country'] as const;
+const RELATIONAL_FILTER_FIELDS = ['email', 'country', 'licensedStates'] as const;
 
 /**
- * Relational sort fields that require custom JOIN handling.
+ * Relational sort fields that require custom JOIN/subquery handling.
  * These are extracted from sort conditions and applied separately.
  */
-const RELATIONAL_SORT_FIELDS = ['primaryEmail'] as const;
+const RELATIONAL_SORT_FIELDS = ['primaryEmail', 'licensedStates'] as const;
 
 /**
  * TypeORM adapter implementing IAgentRepository port.
@@ -608,17 +609,19 @@ export class AgentTypeOrmRepository
 	): {
 		emailFilters: Array<{ field: string; operator: string; value: any }>;
 		countryFilters: Array<{ field: string; operator: string; value: any }>;
+		licensedStatesFilters: Array<{ field: string; operator: string; value: any }>;
 		standardConditions: Array<{ field: string; operator: string; value: any }>;
 	} {
 		const emailFilters: Array<{ field: string; operator: string; value: any }> = [];
 		const countryFilters: Array<{ field: string; operator: string; value: any }> = [];
+		const licensedStatesFilters: Array<{ field: string; operator: string; value: any }> = [];
 		const standardConditions: Array<{ field: string; operator: string; value: any }> = [];
 
 		// Handle both array format (raw) and object format (normalized)
 		const conditions = Array.isArray(filter) ? filter : filter?.conditions;
 
 		if (!conditions) {
-			return { emailFilters, countryFilters, standardConditions };
+			return { emailFilters, countryFilters, licensedStatesFilters, standardConditions };
 		}
 
 		for (const condition of conditions) {
@@ -626,12 +629,14 @@ export class AgentTypeOrmRepository
 				emailFilters.push(condition);
 			} else if (condition.field === 'country') {
 				countryFilters.push(condition);
+			} else if (condition.field === 'licensedStates') {
+				licensedStatesFilters.push(condition);
 			} else {
 				standardConditions.push(condition);
 			}
 		}
 
-		return { emailFilters, countryFilters, standardConditions };
+		return { emailFilters, countryFilters, licensedStatesFilters, standardConditions };
 	}
 
 	/**
@@ -647,27 +652,31 @@ export class AgentTypeOrmRepository
 		| { conditions?: Array<{ field: string; direction: 'ASC' | 'DESC' }> }
 	): {
 		primaryEmailSort: { field: string; direction: 'ASC' | 'DESC' } | null;
+		licensedStatesSort: { field: string; direction: 'ASC' | 'DESC' } | null;
 		standardConditions: Array<{ field: string; direction: 'ASC' | 'DESC' }>;
 	} {
 		let primaryEmailSort: { field: string; direction: 'ASC' | 'DESC' } | null = null;
+		let licensedStatesSort: { field: string; direction: 'ASC' | 'DESC' } | null = null;
 		const standardConditions: Array<{ field: string; direction: 'ASC' | 'DESC' }> = [];
 
 		// Handle both array format (raw) and object format (normalized)
 		const conditions = Array.isArray(sort) ? sort : sort?.conditions;
 
 		if (!conditions) {
-			return { primaryEmailSort, standardConditions };
+			return { primaryEmailSort, licensedStatesSort, standardConditions };
 		}
 
 		for (const condition of conditions) {
 			if (condition.field === 'primaryEmail') {
 				primaryEmailSort = condition;
+			} else if (condition.field === 'licensedStates') {
+				licensedStatesSort = condition;
 			} else {
 				standardConditions.push(condition);
 			}
 		}
 
-		return { primaryEmailSort, standardConditions };
+		return { primaryEmailSort, licensedStatesSort, standardConditions };
 	}
 
 	/**
@@ -735,6 +744,51 @@ export class AgentTypeOrmRepository
 			} else {
 				// Default to name field for other operators
 				this.applyRelationalFilterCondition(qb, `${countryAlias}.name`, condition, paramName);
+			}
+		});
+	}
+
+	/**
+	 * Apply licensedStates filter conditions to the query builder.
+	 * Uses EXISTS subquery on core.license so agents are not duplicated.
+	 * Supports eq (exact state code), in (any of the state codes), startsWith (e.g. "T" matches TX, TN).
+	 * State codes in DB are 2-letter (e.g. TX, FL, AZ); "T" with eq matches nothing.
+	 */
+	private applyLicensedStatesFilters<T>(
+		qb: SelectQueryBuilder<T>,
+		alias: string,
+		filters: Array<{ field: string; operator: string; value: any }>,
+	): void {
+		if (filters.length === 0) return;
+
+		filters.forEach((condition, index) => {
+			const paramName = `licensedStatesFilter_${index}`;
+			// Quote alias for PostgreSQL so correlated subquery resolves (e.g. "agent".id)
+			const aliasRef = `"${alias}".id`;
+			const subquery = `EXISTS (SELECT 1 FROM core.license l WHERE l.agent_id = ${aliasRef} AND l.state_code IS NOT NULL`;
+
+			if (condition.operator === 'in') {
+				const values = Array.isArray(condition.value) ? condition.value : [condition.value];
+				if (values.length === 0) return;
+				qb.andWhere(`${subquery} AND l.state_code IN (:...${paramName}))`, {
+					[paramName]: values,
+				});
+			} else if (condition.operator === 'startsWith') {
+				// e.g. "a" matches AZ, AL (case-insensitive via ILIKE)
+				const raw = condition.value != null ? String(condition.value).trim() : '';
+				if (raw === '') return;
+				const pattern = `${raw.replace(/%/g, '\\%')}%`;
+				qb.andWhere(`${subquery} AND l.state_code ILIKE :${paramName})`, {
+					[paramName]: pattern,
+				});
+			} else if (condition.operator === 'eq') {
+				qb.andWhere(`${subquery} AND l.state_code = :${paramName})`, {
+					[paramName]: condition.value,
+				});
+			} else {
+				qb.andWhere(`${subquery} AND l.state_code = :${paramName})`, {
+					[paramName]: condition.value,
+				});
 			}
 		});
 	}
@@ -808,6 +862,30 @@ export class AgentTypeOrmRepository
 		// Apply the sort - use orderBy since this is the primary requested sort
 		qb.orderBy(`${primaryEmailAlias}.value`, sortCondition.direction, 'NULLS LAST');
 	}
+
+	/**
+	 * Apply licensedStates sort to the query builder.
+	 * Orders by the full licensed state list string (e.g. "AZ, CA, FL, NY, TX")
+	 * so sort order matches what the user sees in the LICENSED STATE column.
+	 */
+	private applyLicensedStatesSort<T>(
+		qb: SelectQueryBuilder<T>,
+		alias: string,
+		sortCondition: { field: string; direction: 'ASC' | 'DESC' },
+	): void {
+		const sortAlias = 'licensed_states_sort';
+		const subquery = `(
+			SELECT string_agg(s.state_code, ', ' ORDER BY s.state_code)
+			FROM (
+				SELECT DISTINCT l.state_code
+				FROM core.license l
+				WHERE l.agent_id = ${alias}.id AND l.state_code IS NOT NULL
+			) s
+		)`;
+		qb.addSelect(subquery, sortAlias);
+		qb.orderBy(sortAlias, sortCondition.direction, 'NULLS LAST');
+	}
+
 	/**
 	 * Applies full name search using SQL CONCAT.
 	 * This works alongside existing individual field searches (firstName, lastName).
@@ -924,19 +1002,33 @@ export class AgentTypeOrmRepository
 		const hasAddresses = selection?.include?.includes('address') || false;
 
 		// Parse filter if it's a JSON string (query params come in as strings)
-		const filterObj =
-			typeof query.filter === 'string' ? JSON.parse(query.filter) : query.filter;
+		let filterObj: { conditions?: Array<{ field: string; operator: string; value: any }> } | undefined;
+		try {
+			const raw =
+				typeof query.filter === 'string' ? JSON.parse(query.filter) : query.filter;
+			filterObj =
+				raw === undefined || raw === null
+					? { conditions: [] }
+					: Array.isArray(raw)
+						? { conditions: raw }
+						: typeof raw === 'object' && raw !== null && 'conditions' in raw
+							? raw
+							: { conditions: [] };
+		} catch {
+			filterObj = { conditions: [] };
+		}
 		const sortObj = typeof query.sort === 'string' ? JSON.parse(query.sort) : query.sort;
 
 		// Extract relational filters and sorts from parsed objects
-		const { emailFilters, countryFilters, standardConditions } =
+		const { emailFilters, countryFilters, licensedStatesFilters, standardConditions } =
 			this.extractRelationalFilters(filterObj);
-		const { primaryEmailSort, standardConditions: standardSortConditions } =
+		const { primaryEmailSort, licensedStatesSort, standardConditions: standardSortConditions } =
 			this.extractRelationalSorts(sortObj);
 
 		// Check if we have any relational operations
-		const hasRelationalFilters = emailFilters.length > 0 || countryFilters.length > 0;
-		const hasRelationalSort = primaryEmailSort !== null;
+		const hasRelationalFilters =
+			emailFilters.length > 0 || countryFilters.length > 0 || licensedStatesFilters.length > 0;
+		const hasRelationalSort = primaryEmailSort !== null || licensedStatesSort !== null;
 		const needsCustomQuery =
 			primaryContactTypes.length > 0 ||
 			hasPrimaryAddress ||
@@ -1008,14 +1100,24 @@ export class AgentTypeOrmRepository
 				if (countryFilters.length > 0) {
 					this.applyCountryFilters(qb, this.getAlias(), countryFilters);
 				}
+				if (licensedStatesFilters.length > 0) {
+					this.applyLicensedStatesFilters(qb, this.getAlias(), licensedStatesFilters);
+				}
 
-				// Apply relational sort
+				// Apply relational sorts
 				if (primaryEmailSort) {
 					this.applyPrimaryEmailSort(
 						qb,
 						this.getAlias(),
 						primaryEmailSort,
 						!primaryEmailIncluded,
+					);
+				}
+				if (licensedStatesSort) {
+					this.applyLicensedStatesSort(
+						qb,
+						this.getAlias(),
+						licensedStatesSort,
 					);
 				}
 				// Apply full name search if search query is provided
