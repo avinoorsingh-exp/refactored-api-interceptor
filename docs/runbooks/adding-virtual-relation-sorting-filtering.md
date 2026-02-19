@@ -14,7 +14,7 @@ Before starting:
 Use this when you need to:
 - Sort by a field from a related entity (e.g., sort agents by `primaryEmail`)
 - Filter by a field from a related entity (e.g., filter agents by `email` in contactMethods)
-- Sort/filter by computed or aggregated values (e.g., sort by `licensedStates` count)
+- Sort/filter by computed or aggregated values (e.g., sort by `licensedStates` state code)
 
 ## The Problem
 
@@ -321,7 +321,7 @@ modifiedQuery.sort = JSON.stringify(standardConditions) as any;
 
 | Route | Relational Sorts | Relational Filters |
 |-------|-----------------|-------------------|
-| `/agents` | `primaryEmail` | `email`, `country` |
+| `/agents` | `primaryEmail`, `licensedStates` | `email`, `country`, `licensedStates` |
 | `/offices` | - | - |
 | `/states` | - | - |
 
