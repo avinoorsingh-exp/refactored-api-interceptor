@@ -743,6 +743,8 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 				if (line1 && addr.city && postalCode) {
 					const label = addr.label || undefined;
 					const { type, role } = this.mapAddressLabelToTypeAndRole(label);
+					// Primary when raw label is "Contactinfo" (raw message has no is_primary field)
+					const isPrimary = label?.trim().toLowerCase() === 'contactinfo';
 					addresses.push({
 						line1: line1,
 						line2: addr.address_line_2 || addr.line_2 || undefined,
@@ -753,7 +755,7 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 						label: label,
 						type: type,
 						role: role,
-						isPrimary: addr.is_primary === true || addr.is_primary === 'true',
+						isPrimary,
 						stateCode: addr.state?.code || undefined,
 						countryAlpha2: addr.country?.iso_3166_1?.alpha_2 || undefined,
 					});

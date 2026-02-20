@@ -4,6 +4,7 @@ import { KafkaClientService } from '../kafka-client.service.js';
 import { ConfigService } from '../../../core/config.service.js';
 import { LoggerService } from '../../../core/logger.service.js';
 import { KafkaMessageProcessingService } from '../kafka-message-processing.service.js';
+import { AuAgentUpsertService } from '../services/au-agent-upsert.service.js';
 import { Consumer, Kafka, KafkaMessage } from 'kafkajs';
 
 describe('AuAgentDetailsAgentUpdatedConsumer', () => {
@@ -49,6 +50,10 @@ describe('AuAgentDetailsAgentUpdatedConsumer', () => {
 			markAsError: jest.fn().mockResolvedValue(undefined),
 		} as any;
 
+		const mockAuAgentUpsertService = {
+			upsertAgentWithAssociations: jest.fn().mockResolvedValue(undefined),
+		} as any;
+
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [
 				AuAgentDetailsAgentUpdatedConsumer,
@@ -56,6 +61,7 @@ describe('AuAgentDetailsAgentUpdatedConsumer', () => {
 				{ provide: ConfigService, useValue: mockConfigService },
 				{ provide: LoggerService, useValue: mockLogger },
 				{ provide: KafkaMessageProcessingService, useValue: mockKafkaMessageProcessingService },
+				{ provide: AuAgentUpsertService, useValue: mockAuAgentUpsertService },
 			],
 		}).compile();
 
@@ -71,7 +77,13 @@ describe('AuAgentDetailsAgentUpdatedConsumer', () => {
 			expect(consumer).toBeDefined();
 		});
 
-		it('should set logger context', () => {
+		it('should set logger context', async () => {
+			const handler = consumer.getMessageHandler();
+			await handler({
+				topic: 'AU_AgentDetails_AgentUpdated_V2',
+				partition: 0,
+				message: { value: Buffer.from(JSON.stringify({ Uuid: 'e6640aa7-f06a-11f0-8c8b-0f306746e3cd', FirstName: 'A', LastName: 'B' })), offset: '0', key: null, headers: {}, timestamp: '' },
+			} as any);
 			expect(mockLogger.setContext).toHaveBeenCalledWith('AuAgentDetailsAgentUpdatedConsumer');
 		});
 	});
