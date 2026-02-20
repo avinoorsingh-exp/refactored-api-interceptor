@@ -449,3 +449,198 @@ Stable event routing
 Safe scaling of consumers
 
 Confidence when adding new producers without refactoring Kafka infrastructure
+
+Mandatory Test Generation Rules
+Automatic Test Creation
+
+Any time a public class, service, use case, controller, adapter, domain object, or utility is created, modified, or refactored, corresponding tests MUST also be created or updated.
+
+Code generation is incomplete without matching tests.
+
+Implementation and tests must be generated together in the same response.
+
+If existing tests break due to changes, they MUST be fixed.
+
+If behavior changes, tests MUST be updated to reflect the new behavior.
+
+Test File Conventions
+
+One test file per source file.
+
+Test file name must match the source file name:
+
+create-order.use-case.ts
+
+create-order.use-case.spec.ts
+
+Use kebab-case for test file names.
+
+One export per test file.
+
+No commented-out tests.
+
+No unused mocks or unused variables.
+
+No duplicate test logic.
+
+Unit Test Requirements
+
+Write unit tests for every public method.
+
+Cover:
+
+Happy path
+
+Expected domain failures
+
+Edge cases
+
+Exception propagation
+
+Do not test private methods directly.
+
+Do not test framework internals (NestJS, TypeORM, KafkaJS internals).
+
+Focus on domain behavior and application orchestration.
+
+Domain Layer Testing Rules
+
+For Entities, Value Objects, and Domain Services:
+
+Test invariant enforcement.
+
+Test internal validation rules.
+
+Test immutability.
+
+Test domain rule correctness.
+
+Do NOT mock domain objects.
+
+Domain tests must not depend on infrastructure.
+
+Application Layer (Use Case) Testing Rules
+
+Mock only ports (interfaces).
+
+Use strict mocks:
+
+Verify call count.
+
+Verify arguments passed.
+
+Test:
+
+Correct orchestration
+
+Proper error handling
+
+Domain object interaction
+
+Return value correctness
+
+Infrastructure Layer Testing Rules
+
+Mock external systems (Kafka, HTTP clients, repositories).
+
+Never perform real network or database calls.
+
+Test mapping and transformation logic.
+
+Test failure handling paths.
+
+Arrange-Act-Assert Enforcement
+
+All tests MUST strictly follow:
+
+Arrange
+Act
+Assert
+
+Clearly separate sections.
+
+No assertions in Arrange.
+
+No setup logic inside Act.
+
+No assertions outside Assert.
+
+Each test must be isolated and deterministic.
+
+Naming Conventions in Tests
+
+Use descriptive variable names:
+
+inputOrderId
+
+mockOrderRepository
+
+actualResult
+
+expectedOrder
+
+Avoid vague names like data, result, response.
+
+Boolean expectations must read clearly:
+
+expect(actualIsValid).toBe(true)
+
+Acceptance Test Requirements
+
+Write acceptance tests at the module boundary.
+
+Follow Given-When-Then naming:
+
+GivenOrderExists_WhenDeletingOrder_ThenOrderIsRemoved
+
+Use in-memory adapters instead of mocks where appropriate.
+
+Do not mock internal application services in acceptance tests.
+
+Determinism and Isolation
+
+Tests must be deterministic.
+
+Do not rely on system time (mock time if required).
+
+Do not use random values.
+
+No shared mutable state between tests.
+
+Each test must be independently executable.
+
+Kafka-Specific Testing Requirements
+
+When modifying or implementing Kafka logic:
+
+Verify that attaching a new topic always triggers a restart.
+
+Verify restart batching behavior.
+
+Verify readiness checks validate the correct consumer instance.
+
+Verify that restart errors are caught and do not crash the process.
+
+Verify producer enforces deterministic message keys.
+
+Assert that producing without a key throws an error.
+
+Assert that key derivation is stable across retries.
+
+TypeORM QueryBuilder Testing Requirements
+
+When implementing aggregation queries:
+
+Assert raw SQL column usage (e.g., "log"."actor_id").
+
+Assert SELECT and GROUP BY expressions are identical.
+
+Assert getRawMany() or getRawOne() is used.
+
+Assert no implicit entity auto-selection occurs.
+
+Assert correct ordering behavior.
+
+Enforcement Rule
+
+If tests are not generated or updated alongside implementation changes, the task is considered incomplete and invalid.

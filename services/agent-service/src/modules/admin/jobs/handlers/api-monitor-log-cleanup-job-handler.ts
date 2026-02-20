@@ -51,6 +51,23 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 		this.logCapture = capture;
 	}
 
+	/**
+	 * Extract affected row count from TypeORM/pg query result.
+	 * TypeORM returns DELETE/UPDATE as [rows, rowCount]; raw pg returns { rowCount }.
+	 * rowCount may be number or string depending on driver version.
+	 */
+	private getAffectedRowCount(result: unknown): number {
+		if (Array.isArray(result) && result.length >= 2) {
+			const count = result[1];
+			return typeof count === 'number' ? count : parseInt(String(count), 10) || 0;
+		}
+		if (result != null && typeof result === 'object' && 'rowCount' in result) {
+			const count = (result as { rowCount: number | string }).rowCount;
+			return typeof count === 'number' ? count : parseInt(String(count), 10) || 0;
+		}
+		return 0;
+	}
+
 	onModuleInit(): void {
 		this.logger.info('ApiMonitorLogCleanupJobHandler onModuleInit called', {
 			name: this.name,
@@ -119,10 +136,8 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 
 			// Log SQL query using logQuery() to match Kafka cleanup format (type: 'query')
 			this.logCapture?.logQuery(requestLogCleanupSql, requestLogParams, queryDuration1);
-			// PostgreSQL query result format: { command: 'DELETE', rowCount: number, ... }
-			results.step1_requestLogCleanup.deletedCount = typeof requestLogResult === 'object' && 'rowCount' in requestLogResult
-				? (requestLogResult.rowCount as number) || 0
-				: 0;
+			// TypeORM returns DELETE as [rows, rowCount]; pg driver may return { rowCount }. Normalize to number.
+			results.step1_requestLogCleanup.deletedCount = this.getAffectedRowCount(requestLogResult);
 
 			this.logCapture?.log('info', 'STEP 1 completed: Request log cleanup', {
 				deletedCount: results.step1_requestLogCleanup.deletedCount,
@@ -145,10 +160,7 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 
 			// Log SQL query using logQuery() to match Kafka cleanup format (type: 'query')
 			this.logCapture?.logQuery(routeStatsCleanupSql, routeStatsParams, queryDuration2);
-			// PostgreSQL query result format: { command: 'DELETE', rowCount: number, ... }
-			results.step2_routeStatsCleanup.deletedCount = typeof routeStatsResult === 'object' && 'rowCount' in routeStatsResult
-				? (routeStatsResult.rowCount as number) || 0
-				: 0;
+			results.step2_routeStatsCleanup.deletedCount = this.getAffectedRowCount(routeStatsResult);
 
 			this.logCapture?.log('info', 'STEP 2 completed: Route stats cleanup', {
 				deletedCount: results.step2_routeStatsCleanup.deletedCount,
@@ -182,10 +194,7 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 
 			// Log SQL query using logQuery() to match Kafka cleanup format (type: 'query')
 			this.logCapture?.logQuery(anonymousActorCleanupSql, anonymousActorParams, queryDuration3);
-			// PostgreSQL query result format: { command: 'DELETE', rowCount: number, ... }
-			results.step3_anonymousActorCleanup.deletedCount = typeof anonymousActorResult === 'object' && 'rowCount' in anonymousActorResult
-				? (anonymousActorResult.rowCount as number) || 0
-				: 0;
+			results.step3_anonymousActorCleanup.deletedCount = this.getAffectedRowCount(anonymousActorResult);
 
 			this.logCapture?.log('info', 'STEP 3 completed: Anonymous actor cleanup', {
 				deletedCount: results.step3_anonymousActorCleanup.deletedCount,
@@ -223,10 +232,7 @@ export class ApiMonitorLogCleanupJobHandler implements AdminJobHandler, OnModule
 
 			// Log SQL query using logQuery() to match Kafka cleanup format (type: 'query')
 			this.logCapture?.logQuery(deactivateInactiveActorsSql, inactiveActorParams, queryDuration4);
-			// PostgreSQL query result format: { command: 'UPDATE', rowCount: number, ... }
-			results.step4_inactiveActorDeactivation.deactivatedCount = typeof inactiveActorResult === 'object' && 'rowCount' in inactiveActorResult
-				? (inactiveActorResult.rowCount as number) || 0
-				: 0;
+			results.step4_inactiveActorDeactivation.deactivatedCount = this.getAffectedRowCount(inactiveActorResult);
 
 			this.logCapture?.log('info', 'STEP 4 completed: Inactive actor deactivation', {
 				deactivatedCount: results.step4_inactiveActorDeactivation.deactivatedCount,

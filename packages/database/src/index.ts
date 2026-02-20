@@ -414,6 +414,7 @@ export {
 	getFilterableFieldsConfig,
 	getSortableFields,
 	ALL_FILTER_OPERATORS,
+	isUuid
 } from './decorators/searchable-decorators.js'
 
 export type { 

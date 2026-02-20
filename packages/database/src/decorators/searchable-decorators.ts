@@ -83,6 +83,31 @@ export interface SearchValidationOptions {
 /**
  * Built-in validators for common numeric ranges
  */
+export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Checks if a string is a valid UUID format.
+ * 
+ * @param value - String to check
+ * @returns true if value is a valid UUID format
+ */
+export function isUuid(value: string | undefined | null): boolean {
+	// Bug #3 Fix: Explicit null/undefined check
+	if (value === null || value === undefined) return false;
+	
+	// Bug #3 Fix: Explicit type check to prevent type coercion issues
+	if (typeof value !== 'string') return false;
+	
+	// Trim whitespace
+	const trimmed = value.trim();
+	
+	// Bug #8 Fix: Fast length check - UUID is always exactly 36 characters (32 hex + 4 dashes)
+	// This prevents processing very long strings and explicitly rejects malformed UUIDs
+	if (trimmed.length !== 36) return false;
+	
+	// Pattern match - ensures exact UUID format
+	return UUID_PATTERN.test(trimmed);
+}
 export const SearchValidators = {
   /**
    * Validates that a numeric value is within PostgreSQL integer range (-2147483648 to 2147483647)
@@ -107,8 +132,7 @@ export const SearchValidators = {
 
     // Skip validation if value looks like a UUID (contains hyphens in UUID pattern)
     // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (uuidPattern.test(strValue.trim())) {
+    if (isUuid(strValue)) {
       return { valid: true }; // Let UUIDs pass through (they'll be handled by UUID search)
     }
     
