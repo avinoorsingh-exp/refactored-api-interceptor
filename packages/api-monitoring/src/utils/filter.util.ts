@@ -36,4 +36,45 @@ export function hasValues<T>(arr: T[]): boolean {
 	return arr.length > 0;
 }
 
+/**
+ * Normalize statusCode filter: supports single number, array of numbers, or comma-separated string.
+ * Used when query params are not transformed by Nest (e.g. statusCode=400,401 arrives as string).
+ *
+ * @param value - number, number[], or string like "400,401"
+ * @returns Array of numbers (empty if none valid)
+ */
+export function normalizeStatusCodes(
+	value: number | number[] | string | undefined | null,
+): number[] {
+	if (value === undefined || value === null) return [];
+	const raw = Array.isArray(value) ? value : [value];
+	const expanded = raw.flatMap((v) => {
+		if (typeof v === 'number') return [v];
+		return String(v)
+			.split(',')
+			.map((s) => parseInt(s.trim(), 10))
+			.filter((n) => !Number.isNaN(n));
+	});
+	return expanded;
+}
+
+/**
+ * Normalize route/string filters: supports single string, array, or comma-separated string.
+ *
+ * @param value - string, string[], or comma-separated string
+ * @returns Array of non-empty trimmed strings
+ */
+export function normalizeStringArray(
+	value: string | string[] | undefined | null,
+): string[] {
+	if (value === undefined || value === null) return [];
+	const raw = Array.isArray(value) ? value : [value];
+	const expanded = raw.flatMap((v) => {
+		const s = String(v).trim();
+		if (!s) return [];
+		return s.split(',').map((r) => r.trim()).filter(Boolean);
+	});
+	return expanded;
+}
+
 
