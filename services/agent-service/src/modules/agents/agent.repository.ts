@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import type { IAgentRepository } from './ports/agent.repository.port.js';
 import type { PageResult } from '../../common/ports/pagination.types.js';
-import { AgentEntity } from '@exprealty/database';
+import { AgentEntity, isUuid } from '@exprealty/database';
 import type { Agent, QueryParams, FieldSelection } from '@exprealty/shared-domain';
 import { QueryService } from '../../common/query/query.service.js';
 import { LoggerService } from '../../core/logger.service.js';
@@ -948,14 +948,15 @@ export class AgentTypeOrmRepository
 		);
 	}
 	/**
- * Applies UUID search for agent ID.
- * Searches on the id field (UUID) with exact matching.
- * This works alongside existing individual field searches.
+ * Applies UUID search exclusively for agent ID.
+ * When a UUID is detected in the search query, this method ensures
+ * only exact UUID matches are returned by using andWhere (exclusive search).
+ * This prevents text field searches from interfering with UUID lookups.
  * 
  * @param qb - Query builder
- * @param searchQuery - Optional search query string
+ * @param searchQuery - UUID search query string
  */
-	private applyUuidSearch<T>(
+	private applyUuidSearchExclusive<T>(
 		qb: SelectQueryBuilder<T>,
 		searchQuery?: string,
 	): void {
@@ -963,24 +964,47 @@ export class AgentTypeOrmRepository
 			return;
 		}
 
-		// Check if search query looks like a UUID (basic validation)
-		// UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-		const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-		const trimmedQuery = searchQuery.trim();
-
-		// Only search UUID if the query matches UUID format
-		if (!uuidPattern.test(trimmedQuery)) {
+		// Defensive check: Validate UUID even though it's checked in findPage
+		// This ensures method safety if called directly or if query.search changes
+		if (!isUuid(searchQuery)) {
 			return;
 		}
 
 		const alias = this.getAlias();
 		const paramName = 'uuidSearch';
+		const trimmedQuery = searchQuery.trim();
 
-		// Exact match for UUID (case-insensitive)
-		qb.orWhere(
-			`${alias}.id = :${paramName}::uuid`,
+		// Exact match for UUID using andWhere (exclusive search)
+		// Use CAST instead of ::uuid for better TypeORM parameter binding
+		qb.andWhere(
+			`${alias}.id = CAST(:${paramName} AS uuid)`,
 			{ [paramName]: trimmedQuery },
 		);
+	}
+	/**
+	 * Detects malformed UUIDs (strings that start with UUID pattern but have extra characters).
+	 * These should be rejected to prevent unintended matches from numeric/text searches.
+	 * 
+	 * @param searchQuery - Search query to check
+	 * @returns true if search query is a malformed UUID
+	 */
+	private isMalformedUuid(searchQuery: string | undefined | null): boolean {
+		if (!searchQuery) return false;
+		if (typeof searchQuery !== 'string') return false;
+		
+		const trimmed = searchQuery.trim();
+		
+		// Check if it starts with a UUID pattern (8-4-4-4-12 format)
+		// UUID pattern: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+		const uuidPrefixPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+		
+		// If it matches UUID prefix but the full string doesn't match UUID pattern, it's malformed
+		if (uuidPrefixPattern.test(trimmed)) {
+			// Check if it's NOT a valid UUID (has extra characters)
+			return !isUuid(trimmed);
+		}
+		
+		return false;
 	}
 
 	/**
@@ -1041,6 +1065,19 @@ export class AgentTypeOrmRepository
 
 		// Build modified query params without relational fields
 		const modifiedQuery: Partial<QueryParams> = { ...query };
+		// Check if search is a UUID - if so, make it exclusive
+		const isUuidSearch = isUuid(query.search);
+		const isMalformedUuid = this.isMalformedUuid(query.search);
+
+		// If UUID search, remove search from query to skip base strategy search
+		// This ensures UUID search is exclusive and doesn't trigger text searches on firstName, lastName, etc.
+		if (isUuidSearch) {
+			modifiedQuery.search = undefined;
+		} else if (isMalformedUuid) {
+			// Reject malformed UUIDs - return empty results for security
+			// This prevents numeric search from extracting partial numbers (e.g., "76" from "76c8add5-...-extra")
+			modifiedQuery.search = undefined;
+		}
 		if (hasRelationalFilters && filterObj) {
 			// Rebuild filter as JSON string in raw array format (downstream code parses it again)
 			modifiedQuery.filter = JSON.stringify(standardConditions) as any;
@@ -1120,23 +1157,38 @@ export class AgentTypeOrmRepository
 						licensedStatesSort,
 					);
 				}
-				// Apply full name search if search query is provided
-				this.applyFullNameSearch(qb, modifiedQuery.search);
-
-				// Apply email search if search query is provided
-				this.applyEmailSearch(qb, modifiedQuery.search);
-
-				//Apply UUID search if search query is provided
-				this.applyUuidSearch(qb, modifiedQuery.search);
+				// Apply search: UUID search is exclusive
+				if (isUuidSearch) {
+					// UUID search only - use exclusive method with andWhere
+					this.applyUuidSearchExclusive(qb, query.search);
+				} else if (isMalformedUuid) {
+					// Reject malformed UUIDs - explicitly return no results
+					// This prevents unintended matches from numeric/text searches
+					qb.andWhere('1=0'); // Always false condition = no results
+				} else {
+					// Apply all search methods for normal text search
+					this.applyFullNameSearch(qb, modifiedQuery.search);
+					this.applyEmailSearch(qb, modifiedQuery.search);
+				}
 			}, { skipDefaultSort: hasRelationalSort });
 
 			return addLicensedStates(result);
 		}
 
 		const result = await this.findWithQuery(modifiedQuery, selection, (qb) => {
-			this.applyFullNameSearch(qb, modifiedQuery.search);
-			this.applyEmailSearch(qb, modifiedQuery.search);
-			this.applyUuidSearch(qb, modifiedQuery.search);
+			// Apply search: UUID search is exclusive
+			if (isUuidSearch) {
+				// UUID search only - use exclusive method with andWhere
+				this.applyUuidSearchExclusive(qb, query.search);
+			} else if (isMalformedUuid) {
+				// Reject malformed UUIDs - explicitly return no results
+				// This prevents unintended matches from numeric/text searches
+				qb.andWhere('1=0'); // Always false condition = no results
+			} else {
+				// Apply all search methods for normal text search
+				this.applyFullNameSearch(qb, modifiedQuery.search);
+				this.applyEmailSearch(qb, modifiedQuery.search);
+			}
 		});
 
 		return addLicensedStates(result);
