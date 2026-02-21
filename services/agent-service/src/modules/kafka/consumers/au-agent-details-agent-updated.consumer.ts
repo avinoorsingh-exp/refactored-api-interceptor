@@ -3,6 +3,7 @@ import { Consumer, KafkaMessage } from 'kafkajs';
 import { KafkaMessageStatus } from '@exprealty/database';
 import { KafkaClientService } from '../kafka-client.service.js';
 import { KafkaMessageProcessingService } from '../kafka-message-processing.service.js';
+import { AuAgentUpsertService } from '../services/au-agent-upsert.service.js';
 import { ConfigService } from '../../../core/config.service.js';
 import { LoggerService } from '../../../core/logger.service.js';
 import { RegisterableKafkaService } from '../kafka-runtime-manager.service.js';
@@ -30,6 +31,7 @@ export class AuAgentDetailsAgentUpdatedConsumer implements RegisterableKafkaServ
 		private readonly configService: ConfigService,
 		@Inject(forwardRef(() => KafkaMessageProcessingService))
 		private readonly kafkaMessageProcessingService: KafkaMessageProcessingService,
+		private readonly auAgentUpsertService: AuAgentUpsertService,
 		loggerService: LoggerService,
 	) {
 		this.logger = loggerService;
@@ -301,17 +303,12 @@ export class AuAgentDetailsAgentUpdatedConsumer implements RegisterableKafkaServ
 	}
 
 	/**
-	 * Process agent update message
-	 * 
-	 * For non-Enterprise consumers, this is a no-op since we only translate and track messages.
-	 * Translation already happened in handleMessage, so we just log completion.
+	 * Process agent update message.
+	 * Translates the Kafka message and upserts agent with associations (modifiedBy: Au).
 	 */
 	private async processAgentUpdate(message: unknown): Promise<void> {
-		// Translation already happened in handleMessage
-		// No database upserts for non-Enterprise consumers
-		this.logger.debug('Message processing complete (translation-only consumer)', {
-			hasMessage: !!message,
-		});
+		const translated = this.translateKafkaMessageToUpsertData(message as any);
+		await this.auAgentUpsertService.upsertAgentWithAssociations(translated);
 	}
 
 	/**
@@ -324,6 +321,7 @@ export class AuAgentDetailsAgentUpdatedConsumer implements RegisterableKafkaServ
 			systemId?: number;
 			isStaff: boolean;
 			joinDate?: Date;
+			terminationDate?: Date;
 			lastName: string;
 			firstName: string;
 			middleName?: string;
@@ -351,13 +349,14 @@ export class AuAgentDetailsAgentUpdatedConsumer implements RegisterableKafkaServ
 			smsOptIn?: boolean;
 		}>;
 	} {
-		// Translate agent core fields
+		// Translate agent core fields (InactiveDate → terminationDate if present)
 		const agent = {
 			id: payload.Uuid || undefined,
 			agentId: payload.SourceSystemKey?.toString() || undefined,
 			systemId: payload.SourceSystemId || undefined,
 			isStaff: false,
 			joinDate: payload.JoinDate ? new Date(payload.JoinDate) : undefined,
+			terminationDate: payload.InactiveDate ? new Date(payload.InactiveDate) : undefined,
 			lastName: payload.LastName || '',
 			firstName: payload.FirstName || '',
 			middleName: payload.MiddleName || undefined,
@@ -380,12 +379,16 @@ export class AuAgentDetailsAgentUpdatedConsumer implements RegisterableKafkaServ
 		}> = [];
 
 		if (Array.isArray(payload.Addresss)) {
+			let seenBusiness = false;
 			for (const addr of payload.Addresss) {
 				if (addr.Line1 && addr.Postcode) {
 					const addressType = addr.AddressType || '';
 					const isPersonal = addressType.toLowerCase() === 'personal';
 					const type: 'personal' | 'company' = isPersonal ? 'personal' : 'company';
 					const label = isPersonal ? 'Personal Address' : 'Business Address';
+					const isBusiness = addressType.trim().toLowerCase() === 'business';
+					const isPrimary = isBusiness && !seenBusiness;
+					if (isBusiness) seenBusiness = true;
 
 					addresses.push({
 						city: addr.Town || 'UNKNOWN',
@@ -394,7 +397,7 @@ export class AuAgentDetailsAgentUpdatedConsumer implements RegisterableKafkaServ
 						label: label,
 						line1: addr.Line1,
 						line2: addr.Line2 || undefined,
-						isPrimary: false,
+						isPrimary,
 						countryAlpha2: addr.Country || undefined,
 						postalCode: addr.Postcode,
 					});
