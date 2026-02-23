@@ -84,7 +84,10 @@ export class LineOfBusinessTypeOrmRepository
 	// -------------------------------------------------------------------------
 
 	async findByName(name: string): Promise<LineOfBusiness | null> {
-		const entity = await this.repo.findOne({ where: { name } })
+		const entity = await this.repo
+		.createQueryBuilder('lineOfBusiness')
+		.where('LOWER(TRIM(lineOfBusiness.name)) = LOWER(TRIM(:name))', { name })
+		.getOne()
 		return entity ? this.mapToDomain(entity) : null
 	}
 
