@@ -1,20 +1,23 @@
 import { ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { AgentTaxService } from './agent-tax.service.js';
 import type { IAgentTaxRepository } from './ports/agent-tax.repository.port.js';
-import type { TaxIdHasher } from '../../common/ports/tax-id-hasher.port.js';
+import type { FieldEncryptionService } from '@exprealty/encryption';
 import type { AgentTax, CreateAgentTaxInput, UpdateAgentTaxInput } from '@exprealty/shared-domain';
 import { LoggerService } from '../../core/logger.service.js';
 
 describe('AgentTaxService', () => {
 	let service: AgentTaxService;
 	let repository: jest.Mocked<IAgentTaxRepository>;
-	let hasher: jest.Mocked<TaxIdHasher>;
+	let encryption: jest.Mocked<Pick<FieldEncryptionService, 'encryptField' | 'decryptField' | 'generateBlindIndex' | 'generateBlindIndexWithFallback' | 'isHmacRotationActive'>>;
 	let logger: jest.Mocked<LoggerService>;
 
 	const AGENT_ID = '11111111-1111-1111-1111-111111111111';
 	const TAX_ID = '22222222-2222-2222-2222-222222222222';
 	const AGENT_TAX_ID = '33333333-3333-3333-3333-333333333333';
 	const MOCK_HASH = 'a'.repeat(64);
+	const MOCK_CIPHERTEXT = Buffer.from('encrypted-data');
+	const MOCK_KEY_ID = 'arn:aws:kms:us-east-1:123456789:key/mock-key';
+	const MOCK_ENCRYPTED_AT = new Date('2026-02-23T12:00:00Z');
 
 	const mockAgentTax: AgentTax = {
 		id: AGENT_TAX_ID,
@@ -37,6 +40,7 @@ describe('AgentTaxService', () => {
 			findById: jest.fn(),
 			findByAgentId: jest.fn(),
 			findByAgentAndTax: jest.fn(),
+			findByAgentIdAndType: jest.fn(),
 			findPrimaryByAgentId: jest.fn(),
 			createWithTax: jest.fn(),
 			updateTaxValue: jest.fn(),
@@ -47,8 +51,19 @@ describe('AgentTaxService', () => {
 			delete: jest.fn(),
 		} as jest.Mocked<IAgentTaxRepository>;
 
-		hasher = {
-			hash: jest.fn().mockReturnValue(MOCK_HASH),
+		encryption = {
+			encryptField: jest.fn().mockResolvedValue({
+				ciphertext: MOCK_CIPHERTEXT,
+				lastFour: '6789',
+				blindIndex: MOCK_HASH,
+				keyId: MOCK_KEY_ID,
+				encryptionVersion: 1,
+				encryptedAt: MOCK_ENCRYPTED_AT,
+			}),
+			decryptField: jest.fn(),
+			generateBlindIndex: jest.fn().mockReturnValue(MOCK_HASH),
+			generateBlindIndexWithFallback: jest.fn().mockReturnValue([MOCK_HASH]),
+			isHmacRotationActive: jest.fn().mockReturnValue(false),
 		};
 
 		logger = {
@@ -59,7 +74,7 @@ describe('AgentTaxService', () => {
 			error: jest.fn(),
 		} as unknown as jest.Mocked<LoggerService>;
 
-		service = new AgentTaxService(repository, hasher, logger);
+		service = new AgentTaxService(repository, encryption as unknown as FieldEncryptionService, logger);
 	});
 
 	afterEach(() => {
@@ -77,25 +92,28 @@ describe('AgentTaxService', () => {
 			isPrimary: false,
 		};
 
-		it('should call createWithTax with valueLast4 and valueToken, not raw value', async () => {
-			repository.findByAgentId.mockResolvedValue({ items: [], total: 0 });
+		it('should call createWithTax with encrypted fields, not raw value', async () => {
+			repository.findByAgentIdAndType.mockResolvedValue(null);
 			repository.createWithTax.mockResolvedValue(mockAgentTax);
 
 			await service.create(AGENT_ID, createDto);
 
-			expect(repository.createWithTax).toHaveBeenCalledWith(
-				AGENT_ID,
-				{
-					taxIdType: 'SSN',
-					valueLast4: '6789',
-					valueToken: MOCK_HASH,
-				},
-				false,
-			);
+			const call = repository.createWithTax.mock.calls[0];
+			expect(call[0]).toBe(AGENT_ID);
+			const taxData = call[1] as any;
+			expect(taxData.taxIdType).toBe('SSN');
+			expect(taxData.valueLast4).toBe('6789');
+			expect(taxData.valueToken).toBe(MOCK_HASH);
+			expect(taxData.id).toBeDefined(); // UUID pre-generated
+			expect(taxData.ciphertext).toEqual(MOCK_CIPHERTEXT);
+			expect(taxData.encryptionKeyId).toBe(MOCK_KEY_ID);
+			expect(taxData.encryptionVersion).toBe(1);
+			expect(taxData.encryptedAt).toBe(MOCK_ENCRYPTED_AT);
+			expect(call[2]).toBe(false);
 		});
 
 		it('should return a response with masked value, never plaintext', async () => {
-			repository.findByAgentId.mockResolvedValue({ items: [], total: 0 });
+			repository.findByAgentIdAndType.mockResolvedValue(null);
 			repository.createWithTax.mockResolvedValue(mockAgentTax);
 
 			const result = await service.create(AGENT_ID, createDto);
@@ -104,17 +122,20 @@ describe('AgentTaxService', () => {
 			expect(result.tax?.value).not.toContain('123-45-6789');
 		});
 
-		it('should call hasher.hash with the raw value', async () => {
-			repository.findByAgentId.mockResolvedValue({ items: [], total: 0 });
+		it('should call encryptField with the raw value and encryption context', async () => {
+			repository.findByAgentIdAndType.mockResolvedValue(null);
 			repository.createWithTax.mockResolvedValue(mockAgentTax);
 
 			await service.create(AGENT_ID, createDto);
 
-			expect(hasher.hash).toHaveBeenCalledWith('123-45-6789');
+			const taxData = repository.createWithTax.mock.calls[0][1] as any;
+			expect(encryption.encryptField).toHaveBeenCalledWith('123-45-6789', {
+				tableName: 'tax', recordId: taxData.id, fieldName: 'type_value',
+			});
 		});
 
 		it('should throw BadRequestException when value is a masked placeholder', async () => {
-			repository.findByAgentId.mockResolvedValue({ items: [], total: 0 });
+			repository.findByAgentIdAndType.mockResolvedValue(null);
 
 			const maskedDto: CreateAgentTaxInput = {
 				taxIdType: 'SSN',
@@ -125,11 +146,11 @@ describe('AgentTaxService', () => {
 			await expect(service.create(AGENT_ID, maskedDto)).rejects.toThrow(BadRequestException);
 
 			expect(repository.createWithTax).not.toHaveBeenCalled();
-			expect(hasher.hash).not.toHaveBeenCalled();
+			expect(encryption.encryptField).not.toHaveBeenCalled();
 		});
 
 		it('should throw ConflictException when agent already has this tax type', async () => {
-			repository.findByAgentId.mockResolvedValue({ items: [mockAgentTax], total: 1 });
+			repository.findByAgentIdAndType.mockResolvedValue(mockAgentTax);
 
 			await expect(service.create(AGENT_ID, createDto)).rejects.toThrow(ConflictException);
 
@@ -137,7 +158,7 @@ describe('AgentTaxService', () => {
 		});
 
 		it('should propagate unexpected errors and log them', async () => {
-			repository.findByAgentId.mockResolvedValue({ items: [], total: 0 });
+			repository.findByAgentIdAndType.mockResolvedValue(null);
 			const error = new Error('Database connection failed');
 			repository.createWithTax.mockRejectedValue(error);
 
@@ -151,7 +172,15 @@ describe('AgentTaxService', () => {
 	// =========================================================================
 
 	describe('update', () => {
-		it('should call updateTaxValue with pre-computed last4 and token', async () => {
+		it('should call updateTaxValue with encrypted fields', async () => {
+			encryption.encryptField.mockResolvedValue({
+				ciphertext: MOCK_CIPHERTEXT,
+				lastFour: '4321',
+				blindIndex: MOCK_HASH,
+				keyId: MOCK_KEY_ID,
+				encryptionVersion: 1,
+				encryptedAt: MOCK_ENCRYPTED_AT,
+			});
 			repository.findById.mockResolvedValue(mockAgentTax);
 			repository.updateTaxValue.mockResolvedValue(mockAgentTax.tax!);
 
@@ -172,6 +201,10 @@ describe('AgentTaxService', () => {
 				TAX_ID,
 				'4321',
 				MOCK_HASH,
+				MOCK_CIPHERTEXT,
+				MOCK_KEY_ID,
+				1,
+				MOCK_ENCRYPTED_AT,
 			);
 		});
 
@@ -183,7 +216,7 @@ describe('AgentTaxService', () => {
 			await expect(service.update(AGENT_ID, AGENT_TAX_ID, updateDto)).rejects.toThrow(BadRequestException);
 
 			expect(repository.updateTaxValue).not.toHaveBeenCalled();
-			expect(hasher.hash).not.toHaveBeenCalled();
+			expect(encryption.encryptField).not.toHaveBeenCalled();
 		});
 
 		it('should throw NotFoundException when agent tax does not exist', async () => {

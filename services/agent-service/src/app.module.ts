@@ -23,12 +23,14 @@ import { AgentTaxModule } from './modules/agent-taxes/agent-tax.module.js'
 import { LineOfBusinessModule } from './modules/line-of-business/line-of-business.module.js'
 import { ApiMonitoringModule, ApiActorMiddleware, API_MONITORING_LOGGER_TOKEN } from '@exprealty/api-monitoring'
 import { CorrelationIdMiddleware } from './common/correlation-id.middleware.js'
+import { SharedEncryptionModule } from './common/encryption/shared-encryption.module.js'
 import { LoggerService } from './core/logger.service.js'
 
 @Module({
 	imports: [
     LoggerModule,  // Must be first so LoggerService is available
     ConfigModule,
+    SharedEncryptionModule,
     DatabaseModule,
     ScheduleModule.forRoot(), // Enable scheduled tasks
     QueryModule,  // Global module - provides QueryService and search strategies

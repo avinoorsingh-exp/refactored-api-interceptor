@@ -2,194 +2,231 @@
 
 ## Status
 
-**Proposed** - February 2026
+**Accepted / Implemented** — February 2026
+
+> **Schema layer:** Complete. Both `core.tax` and `core.agent_company` have the full 6-column encrypted storage layout (BYTEA ciphertext + HMAC blind index + last4 + key metadata). **No schema migrations were required** — all columns were provisioned in advance.
+>
+> **Service layer:** Fully wired. `FieldEncryptionService` is integrated into both `AgentCompanyService` and `AgentTaxService` via a global `SharedEncryptionModule`. All six columns (BYTEA ciphertext, HMAC blind index, last4, key ID, version, timestamp) are populated on every create/update. Version-aware decryption dispatches to Mendix v0 or KMS v1 based on `encryption_version`.
+>
+> **Implementation phases completed:** P4-1 (config), P4-2 (SharedEncryptionModule), P4-3/P4-4 (encrypt wiring + UUID pre-gen), P4-5 (version-aware decrypt), P4-6 (startup health log). See ADR-PII-003 for wiring architecture details.
+
+---
 
 ## Context
 
 The platform stores tax identifiers (SSN, EIN, GST/HST) for agents and agent companies. These are high-sensitivity PII subject to regulatory requirements (IRS Publication 1075, SOC 2, PCI-DSS adjacency). We need a storage model that:
 
-1. **Minimises blast radius** - a database breach should not expose full tax IDs.
-2. **Supports deterministic lookups** - "does this agent already have an SSN on file?" without decrypting.
-3. **Displays partial values** - UI shows `***-**-6789` for identification, never full value.
-4. **Supports key rotation** without downtime or data re-encryption in MVP.
-5. **Provides a stable adapter interface** that hides cryptographic implementation details and can evolve post-MVP (e.g., KMS envelope encryption) without changing consumers.
+1. **Minimises blast radius** — a database breach should not expose full tax IDs.
+2. **Supports deterministic lookups** — "does this agent already have an SSN on file?" without decrypting.
+3. **Displays partial values** — UI shows `***-**-6789` for identification, never full value.
+4. **Supports key rotation** without downtime or data re-encryption.
+5. **Provides a stable port interface** that hides cryptographic implementation details and can evolve (e.g., enable full KMS envelope encryption) without changing consumers.
 
-### Current state
+### Prior state
 
-The `@exprealty/encryption` package currently implements AES-256-GCM with a random IV and scrypt-derived key. This means:
+The `@exprealty/encryption` package previously used AES-256-GCM with a random IV and scrypt-derived key. This meant:
 
-- Every encryption of the same plaintext produces a **different ciphertext** (non-deterministic).
-- The `value_hashed` column uses `createWriteOnlyEncryptedTransformer()` which encrypts with a random IV. Despite its name, it does **not** hash; it cannot be used for equality lookups.
-- The `value` column uses `createEncryptedTransformer({ maskOnRead: true })` which decrypts at read time and then applies presentation masking. The **full ciphertext** of the tax ID is stored in the database.
-- The `tax_id` and `tax_id_hashed` columns on `agent_company` follow the same pattern.
+- Every encryption of the same plaintext produced a different ciphertext (non-deterministic).
+- The `value_hashed` column used `createWriteOnlyEncryptedTransformer()` which encrypted with a random IV. Despite its name, it did **not** hash — it could not be used for equality lookups.
+- The `value` column used `createEncryptedTransformer({ maskOnRead: true })` which decrypted at read time. The **full ciphertext** of the tax ID was stored in the database.
 
 ### Affected entities
 
-| Entity | Column | Current behaviour | Problem |
-|--------|--------|-------------------|---------|
+| Entity | Column | Prior behaviour | Problem |
+|--------|--------|-----------------|---------|
 | `core.tax` | `value` | AES-256-GCM ciphertext (full tax ID) | Full PII in DB; breach = full exposure |
 | `core.tax` | `value_hashed` | AES-256-GCM ciphertext (random IV) | Cannot be used for lookups; mislabelled |
 | `core.agent_company` | `tax_id` | AES-256-GCM ciphertext (full tax ID) | Same as above |
 | `core.agent_company` | `tax_id_hashed` | AES-256-GCM ciphertext (random IV) | Same as above |
 
+---
+
 ## Decision
 
-### 1. MVP storage model: last4 + deterministic token (no full ciphertext)
+### 1. Storage model: three-column layout (implemented)
 
-For MVP, we **do not store the full tax ID ciphertext** in the new database. Instead, each tax-related column pair stores:
+Each entity now stores tax data across three dedicated columns plus three key-management columns:
 
-| Column (DB name) | Semantic name | Content | Type |
-|-------------------|---------------|---------|------|
-| `value` / `tax_id` | `last4` | Last 4 characters of the tax ID, stored in cleartext | `text` |
-| `value_hashed` / `tax_id_hashed` | `token` | Deterministic HMAC-SHA256 of the normalised full tax ID | `text` |
+| Column | DB type | Content |
+|--------|---------|---------|
+| `tax_id` / `type_value` | `BYTEA`, nullable | AES-256-GCM KMS envelope ciphertext of the full tax ID. **Populated on every create/update** via `FieldEncryptionService.encryptField()`. |
+| `tax_id_hashed` / `type_hashed` | `CHAR(64)`, nullable | Deterministic HMAC-SHA256 blind index (hex). Written by current service layer. |
+| `tax_id_last4` / `type_last4` | `CHAR(4)`, nullable | Last 4 characters of the tax ID, stored in cleartext for masked display. Written by current service layer. |
+| `encryption_key_id` | `VARCHAR(256)`, nullable | KMS key ARN or key identifier used to encrypt the BYTEA column. |
+| `encryption_version` | `SMALLINT`, nullable | Scheme version (see §2 below). |
+| `encrypted_at` | `TIMESTAMPTZ`, nullable | When the ciphertext was written or re-encrypted. |
 
-**Clarify naming semantics in code** even though DB column names keep their current names for migration simplicity:
+**Rules (in effect):**
 
-```typescript
-// Entity property names should communicate intent
-@Column({ name: 'value', type: 'text' })
-last4!: string  // Stores "6789", NOT a masked placeholder like "*****6789"
+- **Never persist masked placeholders** like `*****6789`. Masking is presentation-only, applied at the API response layer. The `isMaskedPlaceholder()` helper in `@exprealty/shared-domain` guards write endpoints.
+- `last4` stores exactly the last 4 characters (e.g., `6789`), no mask characters.
+- `hashed` stores a deterministic HMAC so that `WHERE tax_id_hashed = hmac(input)` works for duplicate detection.
+- The caller submits the full tax ID on create/update. The service encrypts the value via `FieldEncryptionService.encryptField()`, which produces the ciphertext, HMAC blind index, last4, key ID, version, and timestamp in a single call. All six columns are written atomically.
 
-@Column({ name: 'value_hashed', type: 'text' })
-token!: string  // Deterministic HMAC, usable for equality lookups
+### 2. Encryption version registry
+
+| `encryption_version` | Scheme | SDK / implementation |
+|----------------------|--------|----------------------|
+| `0` | Mendix AES-128-CBC | Mendix app writes `{AES3}<base64(IV\|\|ciphertext)>` during migration. Decrypted per-entity in the service layer (not via `@exprealty/encryption`). Same underlying key as version 1. |
+| `1` | AWS KMS envelope, AES-256-GCM | `@aws-crypto/client-node` v4, `REQUIRE_ENCRYPT_REQUIRE_DECRYPT` commitment policy |
+
+**Single-key architecture:** `HMAC_SECRET` is used for both version 0 (Mendix AES-128-CBC passphrase) and HMAC blind indexing. There is no separate Mendix key — `decryptMendixV0()` derives an AES-128 key from `HMAC_SECRET` via MD5. This ensures HMAC blind indexes computed by the Mendix app during migration are identical to those computed by this service.
+
+### 3. Deterministic token: HMAC-SHA256 (implemented)
+
+```
+token = HMAC-SHA256(key = HMAC_SECRET, message = normalize(taxId))
 ```
 
-**Rules:**
-- **Never persist masked placeholders** like `*****6789`. Masking is presentation-only, applied at the API response layer.
-- The `last4` column stores exactly the last 4 characters (e.g., `6789`), no mask characters.
-- The `token` column stores a deterministic HMAC so that `WHERE token = hmac(input)` works for duplicate detection and lookup.
-- The caller submits the full tax ID on create/update; the service extracts `last4` and computes `token` before persisting. The full value is **not stored anywhere** in MVP.
-
-### 2. Deterministic token: HMAC-SHA256
-
-```
-token = HMAC-SHA256(key=TOKEN_KEY, message=normalize(taxId))
-```
-
-- **Normalisation**: strip hyphens, spaces, lowercase. `123-45-6789` -> `123456789`.
-- **Key**: a dedicated `TOKEN_KEY` (separate from any encryption key). Stored in AWS Secrets Manager, injected via environment variable.
-- **Deterministic**: same input + same key = same output. Enables `WHERE token = $1` queries.
+- **Normalisation**: `trim()` + `toLower()` only. **Hyphens and spaces are NOT stripped.** `123-45-6789` and `123456789` produce **different tokens**. This is intentional — callers must submit the value in a consistent format.
+- **Key**: `HMAC_SECRET` environment variable. Loaded via `@exprealty/config` `EncryptionEnvSchema` and injected through `SharedEncryptionModule` (see §5 and ADR-PII-003).
+- **Deterministic**: same input + same key = same output. Enables `WHERE type_hashed = $1` queries.
 - **Not reversible**: HMAC output cannot recover the original tax ID.
 
-### 3. Versioned crypto adapter: `@exprealty/encryption`
+### 4. `@exprealty/encryption` package — actual API
 
-The `@exprealty/encryption` package exposes a **stable interface** that hides implementation details. Consumers import functions; they do not know whether the underlying mechanism is HMAC, AES, or KMS.
-
-#### MVP public API
+The `@exprealty/encryption` package exposes **class-based services**, not the functional API described in earlier drafts of this document. The current public surface is:
 
 ```typescript
-// --- Token operations (deterministic, for lookups) ---
+// packages/encryption/src/services/hmac.service.ts
+class HmacService {
+  constructor(keyring: { current: string; previous?: string })
+  hash(plaintext: string): string
+  hashWithFallback(plaintext: string): string[]  // returns [current, previous?] for rotation window
+}
 
-/** Compute a deterministic token for a plaintext value. */
-export function computeToken(plaintext: string): string
+// packages/encryption/src/services/field-encryption.service.ts
+class FieldEncryptionService {
+  encryptField(plaintext: string): Promise<EncryptedFieldResult>
+  decryptField(result: EncryptedFieldResult): Promise<string>
+  generateBlindIndex(plaintext: string): string
+  generateBlindIndexWithFallback(plaintext: string): string[]
+}
 
-/** Verify a plaintext matches a stored token. */
-export function verifyToken(plaintext: string, token: string): boolean
+// packages/encryption/src/services/envelope.service.ts
+class EnvelopeService {
+  encrypt(plaintext: string): Promise<Buffer>
+  decrypt(ciphertext: Buffer): Promise<string>
+}
 
-// --- Display operations (presentation layer) ---
-
-/** Extract last N characters for display. */
-export function extractLast(value: string, n?: number): string
-
-/** Mask a value for display: "123-45-6789" -> "***-**-6789". */
-export function mask(value: string, visibleChars?: number): string
-
-// --- Key management ---
-
-/** Get the token key from environment / secrets manager. */
-export function getTokenKey(): string
-
-/** Check if token key is available. */
-export function isTokenKeyConfigured(): boolean
+// packages/encryption/src/utils/field-mapper.ts
+function mapEncryptedFieldToColumns(
+  result: EncryptedFieldResult,
+  prefix: string   // e.g. 'tax_id' → populates tax_id, tax_id_hashed, tax_id_last4, etc.
+): Record<string, unknown>
 ```
 
-#### Post-MVP additions (envelope encryption)
+The functional helpers `computeToken`, `verifyToken`, `extractLast`, `mask`, `getTokenKey`, `isTokenKeyConfigured` described in earlier drafts **do not exist** in the codebase.
+
+### 5. Service boundary: `FieldEncryptionService` + `TaxIdHasher` adapter (implemented)
+
+Both `AgentCompanyService` and `AgentTaxService` now depend directly on `FieldEncryptionService` via `@Inject('FIELD_ENCRYPTION')`. This replaced the earlier `TaxIdHasher`-only dependency.
+
+The `TaxIdHasher` port still exists as a thin adapter around `FieldEncryptionService.generateBlindIndex()`, provided by `SharedEncryptionModule` for backward compatibility with any remaining consumers:
 
 ```typescript
-// Added when full-value recovery is needed:
-export function encrypt(plaintext: string): string      // KMS envelope encryption
-export function decrypt(ciphertext: string): string     // KMS envelope decryption
-
-// Existing MVP functions remain unchanged
+// services/agent-service/src/common/encryption/shared-encryption.module.ts
+{
+  provide: 'TaxIdHasher',
+  useFactory: (encryption: FieldEncryptionService) => ({
+    hash: (plaintext: string) => encryption.generateBlindIndex(plaintext),
+    hashWithFallback: (plaintext: string) => encryption.generateBlindIndexWithFallback(plaintext),
+  }),
+  inject: ['FIELD_ENCRYPTION'],
+}
 ```
 
-Consumers that only need last4 + token (MVP) are unaffected when encrypt/decrypt are added.
+> **Previous gaps resolved:**
+> - `HMAC_SECRET_PREVIOUS` is now passed to `HmacService` via `SharedEncryptionModule` — rotation fallback (`hashWithFallback`) is end-to-end reachable.
+> - The duplicate `taxIdHasherProvider` factory was removed from both feature modules. A single `@Global()` `SharedEncryptionModule` provides all tokens.
+> - All config is loaded via `@exprealty/config` `EncryptionEnvSchema`, validated by Zod at startup.
 
-### 4. Token rotation: keyring support
+### 6. Token rotation: keyring support (fully wired)
 
-For key rotation without downtime, the token system supports a **keyring** of keys:
-
-```
-TOKEN_KEY=current-key-v2
-TOKEN_KEY_PREVIOUS=previous-key-v1
-```
-
-**Lookup algorithm:**
+`HmacService` supports a keyring for zero-downtime rotation. Both keys are now wired end-to-end through `SharedEncryptionModule`:
 
 ```
-1. Compute token with TOKEN_KEY (current)
-2. Query: WHERE token = $currentToken
-3. If no match AND TOKEN_KEY_PREVIOUS is set:
-   a. Compute token with TOKEN_KEY_PREVIOUS
-   b. Query: WHERE token = $previousToken
-   c. If found: re-token the row with current key (lazy migration)
+HMAC_SECRET=current-key-v2
+HMAC_SECRET_PREVIOUS=previous-key-v1   # passed to HmacService, exposed via TaxIdHasher.hashWithFallback()
 ```
 
 **Rotation procedure:**
 
-1. Generate new key, set as `TOKEN_KEY`. Move old key to `TOKEN_KEY_PREVIOUS`.
+1. Generate new key, set as `HMAC_SECRET`. Move old key to `HMAC_SECRET_PREVIOUS`.
 2. Deploy. Lookups use both keys. Writes use current key.
-3. Run background job to re-token all rows with current key.
-4. After completion, remove `TOKEN_KEY_PREVIOUS`.
+3. Run background job to re-hash all rows with current key.
+4. After completion, remove `HMAC_SECRET_PREVIOUS`.
 
-### 5. Security requirements
+### 7. `taxIdToken` in API response (intentional)
+
+The `AgentCompany` domain type includes `taxIdToken` (the HMAC blind index) in its public schema:
+
+```typescript
+// packages/shared-domain/src/schemas/agent-company.ts
+taxIdToken: z.string().nullable().describe('HMAC-SHA256 token for secure lookups')
+```
+
+This is **intentional** — the token allows callers to perform client-side deduplication checks (`WHERE taxIdToken = ?`) without exposing the full tax ID. The HMAC is non-reversible. API callers receive both the masked display value (`*****6789`) and the lookup token.
+
+### 8. Security requirements
 
 | Requirement | Implementation |
 |-------------|----------------|
 | Key storage | AWS Secrets Manager (prod/staging); `.env` file (local only) |
-| Key injection | Environment variable, loaded at startup by `@exprealty/config` |
-| Key separation | `TOKEN_KEY` (HMAC) is separate from any future `ENCRYPTION_KEY` (AES/KMS) |
+| Key injection | `@exprealty/config` `EncryptionEnvSchema` → Zod-validated at startup → `ConfigService` → `SharedEncryptionModule` |
+| Key separation | `HMAC_SECRET` (HMAC) is separate from KMS data key (AES/KMS via `EnvelopeService`) |
 | Least privilege | Only the agent-service IAM role can read the secret |
-| Logging | Keys and full tax IDs are **never logged**. Log `last4` or `token` only |
-| Dev fallback | Hardcoded dev key only when `NODE_ENV=local` or unset; throws in prod |
+| Logging | Keys and full tax IDs are **never logged**. Log `last4` or masked value only |
+| Dev fallback | Throws at startup if `HMAC_SECRET` is missing (no silent fallback) |
 | Transport | All API traffic over TLS. Tax ID plaintext exists only in memory during request |
 
-### 6. Entity column mapping (both entities)
+### 9. Entity column mapping (actual, as implemented)
 
-#### `core.tax` (Tax entity)
-
-```
-+----------------+------+----------------------------------+
-| DB Column      | Type | MVP Content                      |
-+----------------+------+----------------------------------+
-| id             | uuid | PK                               |
-| tax_id_type    | text | 'SSN' | 'EIN' | 'GSN_HST'       |
-| value          | text | last 4 chars (e.g. "6789")       |
-| value_hashed   | text | HMAC-SHA256 token                |
-| created        | tstz | audit                            |
-| last_modified  | tstz | audit                            |
-| modified_by    | text | audit                            |
-+----------------+------+----------------------------------+
-```
-
-#### `core.agent_company` (AgentCompany entity)
+#### `core.tax` (TaxEntity)
 
 ```
-+----------------+------+----------------------------------+
-| DB Column      | Type | MVP Content                      |
-+----------------+------+----------------------------------+
-| tax_id         | text | last 4 chars (e.g. "6789")       |
-| tax_id_hashed  | text | HMAC-SHA256 token                |
-| use_ssn        | bool | whether to use SSN vs EIN        |
-+----------------+------+----------------------------------+
++--------------------+-----------+---------------------------------------------+
+| DB Column          | Type      | Current Content                             |
++--------------------+-----------+---------------------------------------------+
+| id                 | uuid      | PK                                          |
+| tax_id_type        | text      | 'SSN' | 'EIN' | 'GSN_HST'                  |
+| type_value         | bytea     | AES-256-GCM ciphertext (populated v1, Mendix blob v0) |
+| type_hashed        | char(64)  | HMAC-SHA256 blind index (populated)         |
+| type_last4         | char(4)   | Last 4 chars (populated)                    |
+| encryption_key_id  | varchar   | KMS key ARN (populated for v1)              |
+| encryption_version | smallint  | 0=Mendix, 1=KMS (populated)                 |
+| encrypted_at       | timestamptz | Encryption timestamp (populated)          |
+| created            | tstz      | audit                                       |
+| last_modified      | tstz      | audit                                       |
+| modified_by        | text      | audit                                       |
+| mxid               | bigint    | Legacy Mendix ID (nullable)                 |
++--------------------+-----------+---------------------------------------------+
 ```
+
+#### `core.agent_company` (AgentCompanyEntity)
+
+```
++--------------------+-----------+---------------------------------------------+
+| DB Column          | Type      | Current Content                             |
++--------------------+-----------+---------------------------------------------+
+| tax_id             | bytea     | AES-256-GCM ciphertext (populated v1, Mendix blob v0) |
+| tax_id_hashed      | char(64)  | HMAC-SHA256 blind index (populated)         |
+| tax_id_last4       | char(4)   | Last 4 chars (populated)                    |
+| encryption_key_id  | varchar   | KMS key ARN (populated for v1)              |
+| encryption_version | smallint  | 0=Mendix, 1=KMS (populated)                 |
+| encrypted_at       | timestamptz | Encryption timestamp (populated)          |
+| use_ssn            | bool      | Whether to use SSN vs EIN                   |
++--------------------+-----------+---------------------------------------------+
+```
+
+---
 
 ## Alternatives Considered
 
-### A. Store full AES-256-GCM ciphertext (current implementation)
+### A. Store full AES-256-GCM ciphertext (prior implementation)
 
 - **Pro**: Full value recoverable from the database alone.
-- **Con**: Database breach exposes all tax IDs (decrypt with stolen key). Violates data minimisation. Random IV makes lookups impossible. The `value_hashed` column is mislabelled and non-functional.
+- **Con**: Database breach exposes all tax IDs (decrypt with stolen key). Violates data minimisation. Random IV makes lookups impossible. The `value_hashed` column was mislabelled and non-functional.
 - **Rejected for MVP**: Unnecessary risk. The originating system of record retains full values.
 
 ### B. Deterministic AES (AES-SIV / AES-256-CBC with fixed IV)
@@ -198,65 +235,84 @@ TOKEN_KEY_PREVIOUS=previous-key-v1
 - **Con**: Deterministic encryption leaks equality patterns and is vulnerable to frequency analysis on a small domain (SSNs have ~1B values). Adds complexity without meaningful security improvement over HMAC for the lookup use case.
 - **Rejected**: HMAC is simpler, non-reversible, and sufficient for duplicate detection.
 
-### C. AWS KMS envelope encryption with client-side caching
+### C. AWS KMS envelope encryption immediately
 
 - **Pro**: Key never leaves KMS HSM. Supports automatic rotation. Audit trail via CloudTrail.
-- **Con**: Adds latency (~5-15ms per call), requires AWS SDK dependency, higher cost, more complex error handling. Overkill for MVP where we don't need to recover the full value.
-- **Deferred to post-MVP**: Good fit for the optional encrypted recovery column.
+- **Con**: Adds latency (~5-15ms per call), requires AWS SDK dependency, higher cost, more complex error handling. The entity schema is already KMS-ready; wiring is deferred.
+- **Now implemented**: `FieldEncryptionService` and `EnvelopeService` are wired into the service layer via `SharedEncryptionModule`. Local development uses `LocalEnvelopeService` (in-process AES-256-GCM, no KMS) when `NODE_ENV=local`.
 
 ### D. Application-level hashing (bcrypt/argon2)
 
 - **Pro**: Proven password-hashing algorithms.
-- **Con**: Intentionally slow (bcrypt cost factor). Not suitable for high-throughput token computation on every write/lookup. HMAC is fast and deterministic by design.
+- **Con**: Intentionally slow. Not suitable for high-throughput token computation on every write/lookup. HMAC is fast and deterministic by design.
 - **Rejected**: Wrong tool for the job.
+
+---
 
 ## Consequences
 
 ### Positive
 
-- **Minimised blast radius**: Database contains only last4 + irreversible token. A breach does not expose full tax IDs.
-- **Functional lookups**: Deterministic HMAC enables `WHERE token = $1` for duplicate detection without decryption.
-- **Clean separation**: Masking is presentation-only. No masked placeholders in the database.
-- **Stable interface**: `@exprealty/encryption` consumers are insulated from implementation changes.
-- **Key rotation path**: Keyring approach enables zero-downtime rotation.
+- **Minimised blast radius**: Database stores encrypted ciphertext (BYTEA), irreversible HMAC token, and last4. A database breach without KMS key access cannot recover full tax IDs.
+- **Full-value recovery**: BYTEA ciphertext column is now populated on every write. Full tax IDs are recoverable via version-aware decryption (`decryptTaxId` / `decryptTypeValue`).
+- **Functional lookups**: Deterministic HMAC enables `WHERE type_hashed = $1` for duplicate detection without decryption.
+- **No schema migration required**: All six encryption columns were provisioned in advance. The wiring change is purely service-layer — no database migrations, no downtime.
+- **Clean separation**: Masking is presentation-only. No masked placeholders in the database. Decryption is an explicit async call, not automatic on read.
+- **Centralised encryption**: Single `@Global()` `SharedEncryptionModule` provides both `FIELD_ENCRYPTION` and `TaxIdHasher` tokens. No duplicate factories.
+- **Environment-aware**: `NODE_ENV=local` uses `LocalEnvelopeService` (in-process AES-256-GCM, no KMS). All other environments use real KMS.
+- **HMAC rotation end-to-end**: `HMAC_SECRET_PREVIOUS` is fully wired through `SharedEncryptionModule` to `HmacService`.
 
 ### Negative
 
-- **No full-value recovery from this database**: If the originating system is unavailable, the full tax ID cannot be reconstructed from our data alone. This is acceptable for MVP; post-MVP adds an optional encrypted recovery column.
-- **Two keys to manage**: `TOKEN_KEY` (HMAC) now, plus `ENCRYPTION_KEY` (AES/KMS) post-MVP. Mitigated by AWS Secrets Manager.
-- **Re-tokenisation on rotation**: Background job required to re-hash all rows when rotating keys. Acceptable at current data volume.
+- **KMS latency on writes**: Each create/update now makes a KMS `GenerateDataKey` call (~5-15ms). Acceptable for the write volume of tax ID operations. Mitigated by the SDK's data key caching (`KMS_CACHE_TTL_SECONDS`, `KMS_CACHE_MAX_MESSAGES`).
+- **Mendix v0 decrypt unverified**: The `decryptMendixV0()` implementation uses MD5-derived AES-128-CBC key. Exact Mendix key derivation must be verified against dev data before merging (tracked as P5-2).
+- **Normalization sensitivity**: No hyphen stripping means callers must submit tax IDs in a consistent format. `123-45-6789` and `123456789` hash differently.
 
 ### Migration impact
 
-- **Existing `createEncryptedTransformer` / `createWriteOnlyEncryptedTransformer`**: Must be replaced with the new token/last4 logic. These functions and their TypeORM transformer wrappers are removed or deprecated in the encryption package.
-- **Existing data**: Any rows written with the current AES transformers contain ciphertext that must be migrated (decrypt with old key, extract last4, compute HMAC token, update row). A one-time migration script is required.
+- **Prior `createEncryptedTransformer` / `createWriteOnlyEncryptedTransformer`**: Removed. Replaced with explicit service-layer HMAC + last4 computation.
+- **Existing data**: Any rows written with the old AES transformers contain ciphertext in the old columns. A one-time migration to populate `type_hashed` and `type_last4` from decrypted values is required (see ADR-PII-002).
 
-## Follow-Up Work (Post-MVP)
+---
 
-### Phase 2: Optional encrypted recovery column
+## Follow-Up Work
 
-Add a third column for full-value recovery when business requirements demand it:
+### Phase 2: Wire BYTEA ciphertext column (KMS write path) — COMPLETE
 
-```
-value_encrypted  text  -- KMS envelope-encrypted full tax ID (optional)
-```
+Implemented in P4-1 through P4-4:
 
-- Uses AWS KMS envelope encryption (data key encrypted by KMS CMK).
-- Column is nullable; only populated when the business explicitly requires recovery.
-- `@exprealty/encryption` adds `encrypt()` / `decrypt()` to the public API.
-- Existing `computeToken()` / `extractLast()` remain unchanged.
+1. Registered `KMS_KEY_ARN`, `KMS_KEY_REGION`, `KMS_CACHE_TTL_SECONDS`, `KMS_CACHE_MAX_MESSAGES` in `@exprealty/config` `EncryptionEnvSchema`, merged into agent-service `ConfigSchema`. No separate Mendix key — `HMAC_SECRET` serves as the Mendix AES-128-CBC passphrase.
+2. Created `SharedEncryptionModule` (`@Global()`) providing `FieldEncryptionService` via `createFieldEncryptionService()` (KMS) or `createLocalFieldEncryptionService()` (local). Replaced duplicate `taxIdHasherProvider` in both modules.
+3. Pre-generated UUID via `randomUUID()` in service `create()` methods before calling `encryptField()` — solves `EncryptionContext.recordId` chicken-and-egg.
+4. Wired `encryptField()` into `AgentCompanyService.prepareTaxFields()` and `AgentTaxService.computeTaxIdFields()`. All six columns populated on every write.
 
-### Phase 3: KMS envelope encryption details
+### Phase 3: Version-aware decrypt path (per-entity) — COMPLETE
 
-- **Algorithm**: AES-256-GCM with KMS-generated data key.
-- **Format**: `version:encryptedDataKey:iv:ciphertext:authTag` (all base64).
-- **Key rotation**: KMS handles CMK rotation automatically. Data keys are per-row.
-- **Caching**: AWS Encryption SDK client-side cache to reduce KMS API calls.
-- **Audit**: All KMS operations logged to CloudTrail.
+Implemented in P4-5. Normal reads always return the masked `last4` value. Full-value decryption is explicit, via dedicated repository methods (`decryptTaxId`, `decryptTypeValue`):
 
-### Phase 4: Broader PII scope
+- `encryption_version = null/undefined` — BYTEA is null, return null.
+- `encryption_version = 0` — Mendix AES-128-CBC via `decryptMendixV0()` in `common/encryption/mendix-decrypt.ts`, using `HMAC_SECRET` as the passphrase.
+- `encryption_version = 1` — KMS envelope via `FieldEncryptionService.decryptField(ciphertext, context)`.
 
-Apply the same pattern to other PII fields as needed (bank account numbers, government IDs in other countries). The `@exprealty/encryption` adapter interface is designed to be reusable.
+### Phase 4: Consolidate `TaxIdHasher` factory + config integration — COMPLETE
+
+Handled by Phase 2 `SharedEncryptionModule`. `TaxIdHasher` is a thin wrapper around `FieldEncryptionService.generateBlindIndex()`, provided once, injected everywhere.
+
+### Phase 5: Lazy re-encryption — PENDING
+
+When `decryptMendixV0()` succeeds on a version-0 row, optionally re-encrypt with KMS and update `encryption_version = 1`. Decision tracked in `tasks.md` P5-3. Over time this eliminates the version-0 decrypt path.
+
+### Phase 6: Rotation wiring — COMPLETE
+
+`TaxIdHasher` port now exposes `hashWithFallback()`. `HMAC_SECRET_PREVIOUS` is passed to `HmacService` via `SharedEncryptionModule`.
+
+### Remaining work
+
+- **P5-2**: Verify Mendix key derivation against dev data. The `decryptMendixV0()` implementation uses MD5-derived key — this may need adjustment based on the exact Mendix encryption module version.
+- **P5-3**: Implement lazy re-encryption (decrypt v0 → re-encrypt as v1 on read).
+- **Startup health log**: P4-6 adds `OnModuleInit` to `SharedEncryptionModule` to log active encryption mode and HMAC rotation status.
+
+---
 
 ## References
 
@@ -264,3 +320,5 @@ Apply the same pattern to other PII fields as needed (bank account numbers, gove
 - [AWS KMS Envelope Encryption](https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#enveloping)
 - [IRS Publication 1075: Tax Information Security](https://www.irs.gov/privacy-disclosure/safeguards-program)
 - [OWASP Cryptographic Storage Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html)
+- ADR-PII-002: Legacy Mendix Encrypted Data Migration Strategy
+- ADR-PII-003: KMS Encryption Service-Layer Wiring Architecture

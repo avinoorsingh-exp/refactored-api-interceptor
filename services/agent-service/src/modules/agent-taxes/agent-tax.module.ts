@@ -5,7 +5,6 @@ import {
 	TaxEntity,
 	AgentEntity,
 } from '@exprealty/database';
-import { HmacService } from '@exprealty/encryption';
 import { AgentTaxController } from './agent-tax.controller.js';
 import { AgentTaxService } from './agent-tax.service.js';
 import { AgentTaxTypeOrmRepository } from './agent-tax.repository.js';
@@ -43,17 +42,6 @@ import { AgentModule } from '../agents/agent.module.js';
 		{
 			provide: 'IAgentTaxRepository',
 			useClass: AgentTaxTypeOrmRepository,
-		},
-		{
-			provide: 'TaxIdHasher',
-			useFactory: () => {
-				const secret = process.env.HMAC_SECRET;
-				if (!secret) {
-					throw new Error('HMAC_SECRET environment variable is required');
-				}
-				const hmac = new HmacService({ current: secret });
-				return { hash: (plaintext: string) => hmac.hash(plaintext) };
-			},
 		},
 		ProjectionService,
 	],

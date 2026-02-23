@@ -17,6 +17,7 @@ Field-level AES-256 encryption for persisted PII using AWS KMS envelope encrypti
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
 - [Design Decisions](#design-decisions)
+- [Versioning Policy](#versioning-policy)
 
 ---
 
@@ -787,3 +788,34 @@ This section provides a quick reference of what each file does, its imports, and
 - `toSdkEncryptionContext` from types
 - `extractLastFour` from utils
 - `mapEncryptedFieldToColumns`, `mapMultipleEncryptedFields` from utils
+
+---
+
+## Versioning Policy
+
+This package follows [Semantic Versioning](https://semver.org/).
+
+### What constitutes a breaking change (major bump)
+
+- Removing or renaming any export from `index.ts`
+- Changing the shape of `EncryptionConfig` (fields required by `createFieldEncryptionService()`)
+- Changing the shape of `EncryptedFieldResult` (affects column mapping)
+- Changing the shape of `EncryptionContext` (affects AAD — would break decryption of existing data)
+- Changing the ciphertext wire format (would break decryption of existing data)
+- Changing HMAC output for the same input (would break blind index lookups)
+
+### What is a minor bump
+
+- Adding new exports, methods, or optional config fields
+- Adding new error classes
+- New utility functions
+
+### What is a patch bump
+
+- Bug fixes that don't change public API behavior
+- Documentation updates
+- Internal refactors with no API surface changes
+
+### Changelog
+
+All changes are documented in [CHANGELOG.md](./CHANGELOG.md).

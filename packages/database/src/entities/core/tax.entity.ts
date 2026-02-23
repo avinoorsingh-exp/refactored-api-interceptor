@@ -18,7 +18,9 @@ export type TaxIdType = 'SSN' | 'GSN_HST' | 'EIN'
  * TypeORM entity for Tax table.
  * Stores tax identifier information (SSN, EIN, GSN_HST).
  *
- * Stores encrypted ciphertext + blind index + last4 + key metadata.
+ * Stores HMAC blind index + last4 for display. The BYTEA ciphertext column
+ * (type_value) is reserved for Phase 2 KMS encryption and is currently always
+ * null — the encryption layer is not yet wired (see ADR-PII-001).
  *
  * @public
  */
@@ -91,6 +93,7 @@ export class TaxEntity extends AuditableEntity {
 	 * algorithm, SDK version, envelope format. Allows the decrypt layer to
 	 * branch on version if the approach changes in the future.
 	 *
+	 *   0 = Mendix AES-128-CBC (legacy migrated rows — see ADR-PII-002)
 	 *   1 = @aws-crypto/client-node v4, AES-256-GCM, REQUIRE_ENCRYPT_REQUIRE_DECRYPT
 	 *
 	 * Nullable — only populated when encryption is applied.

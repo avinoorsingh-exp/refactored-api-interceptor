@@ -1,6 +1,7 @@
 import { Injectable, ConflictException, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
-import { isMaskedPlaceholder, extractLastFour } from '@exprealty/shared-domain';
-import type { TaxIdHasher } from '../../common/ports/tax-id-hasher.port.js';
+import { randomUUID } from 'node:crypto';
+import { isMaskedPlaceholder } from '@exprealty/shared-domain';
+import type { FieldEncryptionService } from '@exprealty/encryption';
 import type { IAgentTaxRepository } from './ports/agent-tax.repository.port.js';
 import type {
 	CreateAgentTaxInput,
@@ -26,18 +27,18 @@ export class AgentTaxService {
 	constructor(
 		@Inject('IAgentTaxRepository')
 		private readonly repository: IAgentTaxRepository,
-		@Inject('TaxIdHasher')
-		private readonly hasher: TaxIdHasher,
+		@Inject('FIELD_ENCRYPTION')
+		private readonly encryption: FieldEncryptionService,
 		private readonly logger: LoggerService,
 	) {
 		this.logger.setContext(AgentTaxService.name);
 	}
 
 	/**
-	 * Compute valueLast4 and valueToken from a raw tax ID value.
+	 * Compute encrypted fields from a raw tax ID value.
 	 * Rejects masked placeholders (e.g. "*****6789") to prevent persisting display values.
 	 */
-	private computeTaxIdFields(rawValue: string): { valueLast4: string; valueToken: string } {
+	private async computeTaxIdFields(rawValue: string, taxRecordId: string) {
 		if (isMaskedPlaceholder(rawValue)) {
 			throw new BadRequestException({
 				message: 'Cannot accept a masked placeholder as a tax ID value',
@@ -45,9 +46,16 @@ export class AgentTaxService {
 			});
 		}
 
+		const result = await this.encryption.encryptField(rawValue, {
+			tableName: 'tax', recordId: taxRecordId, fieldName: 'type_value',
+		});
 		return {
-			valueLast4: extractLastFour(rawValue),
-			valueToken: this.hasher.hash(rawValue),
+			valueLast4: result.lastFour,
+			valueToken: result.blindIndex,
+			ciphertext: result.ciphertext,
+			encryptionKeyId: result.keyId,
+			encryptionVersion: result.encryptionVersion,
+			encryptedAt: result.encryptedAt,
 		};
 	}
 
@@ -65,26 +73,33 @@ export class AgentTaxService {
 		const startTime = Date.now();
 
 		try {
-			// Check for existing tax of same type for this agent
-			const { items: existingTaxes } = await this.repository.findByAgentId(agentId);
-			const hasSameType = existingTaxes.some(
-				(at) => at.tax?.taxIdType === dto.taxIdType
-			);
+			// Check for existing tax of same type for this agent (targeted query, no fan-out)
+			const existingOfType = await this.repository.findByAgentIdAndType(agentId, dto.taxIdType);
 
-			if (hasSameType) {
+			if (existingOfType) {
 				throw new ConflictException({
 					message: `Agent '${agentId}' already has a tax of type '${dto.taxIdType}'`,
 					i18nType: 'agent.tax.duplicate_type',
 				});
 			}
 
-			// Compute last4 + HMAC token from raw value
-			const { valueLast4, valueToken } = this.computeTaxIdFields(dto.value);
+			// Pre-generate UUID so encryption context is bound to this record
+			const taxRecordId = randomUUID();
+			const fields = await this.computeTaxIdFields(dto.value, taxRecordId);
 
 			// Create tax via repository (handles transaction)
 			const agentTax = await this.repository.createWithTax(
 				agentId,
-				{ taxIdType: dto.taxIdType, valueLast4, valueToken },
+				{
+					taxIdType: dto.taxIdType,
+					valueLast4: fields.valueLast4,
+					valueToken: fields.valueToken,
+					id: taxRecordId,
+					ciphertext: fields.ciphertext,
+					encryptionKeyId: fields.encryptionKeyId,
+					encryptionVersion: fields.encryptionVersion,
+					encryptedAt: fields.encryptedAt,
+				},
 				dto.isPrimary ?? false,
 			);
 
@@ -203,10 +218,18 @@ export class AgentTaxService {
 			// Verify exists + ownership (single DB call)
 			const existing = await this.findById(agentId, taxId);
 
-			// Update tax value if provided
-			if (dto.value !== undefined && existing.tax) {
-				const { valueLast4, valueToken } = this.computeTaxIdFields(dto.value);
-				await this.repository.updateTaxValue(existing.taxId, valueLast4, valueToken);
+			// Update tax value if provided (AgentTax always has a nested Tax — findById joins it)
+			if (dto.value !== undefined) {
+				const fields = await this.computeTaxIdFields(dto.value, existing.taxId);
+				await this.repository.updateTaxValue(
+					existing.taxId,
+					fields.valueLast4,
+					fields.valueToken,
+					fields.ciphertext,
+					fields.encryptionKeyId,
+					fields.encryptionVersion,
+					fields.encryptedAt,
+				);
 			}
 
 			// Update isPrimary if provided

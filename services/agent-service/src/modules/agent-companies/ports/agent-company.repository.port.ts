@@ -10,7 +10,7 @@ export interface IAgentCompanyRepository extends IRepository<string, AgentCompan
 	/**
 	 * Finds an agent company by name.
 	 * Used for duplicate checking.
-	 * 
+	 *
 	 * @param name - Company name
 	 * @returns The company if found, null otherwise
 	 */
@@ -19,9 +19,18 @@ export interface IAgentCompanyRepository extends IRepository<string, AgentCompan
 	/**
 	 * Finds an agent company by legacy ID.
 	 * Used for migration and backward compatibility.
-	 * 
+	 *
 	 * @param legacyId - Legacy system ID
 	 * @returns The company if found, null otherwise
 	 */
 	findByLegacyId(legacyId: string): Promise<AgentCompany | null>;
+
+	/**
+	 * Decrypt the taxId for a company record.
+	 * Version-aware: handles v0 (Mendix), v1 (KMS), and null (not yet encrypted).
+	 *
+	 * @param id - Company UUID
+	 * @returns Decrypted plaintext or null if not encrypted / not found
+	 */
+	decryptTaxId(id: string): Promise<string | null>;
 }

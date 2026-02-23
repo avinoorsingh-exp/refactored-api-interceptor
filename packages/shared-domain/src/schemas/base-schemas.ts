@@ -1,4 +1,4 @@
-// packages/@trupryce/shared-domain/src/validation/schemas/base-schemas.ts
+// packages/@exprealty/shared-domain/src/validation/schemas/base-schemas.ts
 
 import { z } from 'zod';
 

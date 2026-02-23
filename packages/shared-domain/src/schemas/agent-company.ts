@@ -35,6 +35,9 @@ export const AgentCompanyBaseSchema = z
  */
 export const AgentCompanyExpandedSchema = AgentCompanyBaseSchema.extend({
 	taxId: z.string().max(50).nullable().describe('Masked tax ID for display (e.g., "*****6789")'),
+	// Intentionally included in the API response: callers use this non-reversible
+	// HMAC token for client-side deduplication checks without exposing the full tax ID.
+	// Do not remove — see ADR-PII-001 §7.
 	taxIdToken: z.string().nullable().describe('HMAC-SHA256 token for secure lookups'),
 	// Relationships loaded in expanded view
 	agents: z.lazy(() => z.array(z.any())).optional(), // AgentBaseSchema[]
@@ -80,7 +83,7 @@ export const CreateAgentCompanyInput = AgentCompanyBaseSchema.omit({
 	.extend({
 		name: z.string().trim().pipe(NameBranded),
 		phone: z.string().trim().pipe(PhoneNumberBranded),
-		taxId: z.string().trim().pipe(NameBranded).optional().nullable(),
+		taxId: z.string().trim().min(1).max(50).optional().nullable(),
 	})
 	.describe('Payload to create a company')
 

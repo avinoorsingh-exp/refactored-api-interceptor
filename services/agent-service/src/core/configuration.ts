@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { BaseConfig, loadConfig } from '@exprealty/config'
+import { BaseConfig, EncryptionEnvSchema, loadConfig } from '@exprealty/config'
 
 /**
  * Configuration schema for BatchData service
@@ -43,6 +43,10 @@ export const ConfigSchema = BaseConfig.extend({
 		return val;
 	}, z.boolean().default(false)),
 
+	// ===== Encryption =====
+	HMAC_SECRET: z.string().min(32),
+	HMAC_SECRET_PREVIOUS: z.string().min(32).optional(),
+}).merge(EncryptionEnvSchema).extend({
 	// ==================== Metrics Config ====================
 	METRICS_EXPORTER_ENDPOINT: z.string().optional(),
 	METRICS_EXPORTER_PROTOCOL: z.enum(['http', 'grpc']).default('http'),

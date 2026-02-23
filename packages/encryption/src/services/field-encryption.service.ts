@@ -1,4 +1,4 @@
-import { EnvelopeService } from './envelope.service.js';
+import type { IEnvelopeService } from '../types/envelope-service.types.js';
 import { HmacService } from './hmac.service.js';
 import { extractLastFour } from '../utils/last4.js';
 import type { EncryptedFieldResult } from '../types/encrypted-field.types.js';
@@ -7,7 +7,7 @@ import type { EncryptionContext } from '../types/encryption-context.types.js';
 /**
  * Field-level encryption orchestrator.
  *
- * This is the primary public API for @trupryce/encryption. It composes:
+ * This is the primary public API for @exprealty/encryption. It composes:
  * - EnvelopeService (AES-256-GCM via AWS KMS)
  * - HmacService (blind index generation)
  * - last4 utility (masked display values)
@@ -16,11 +16,11 @@ import type { EncryptionContext } from '../types/encryption-context.types.js';
  *
  * Usage:
  * ```typescript
- * import { createFieldEncryptionService } from '@trupryce/encryption';
+ * import { createFieldEncryptionService } from '@exprealty/encryption';
  *
  * const encryption = createFieldEncryptionService({
- *   kms: { keyArn: 'alias/trupryce-pii', region: 'us-east-1' },
- *   hmac: { currentSecret: process.env.HMAC_SECRET },
+ *   kms: { keyArn: 'alias/exprealty-pii', region: 'us-east-1' },
+ *   hmac: { current: process.env.HMAC_SECRET },
  * });
  *
  * const result = await encryption.encryptField('123-45-6789', {
@@ -32,7 +32,7 @@ import type { EncryptionContext } from '../types/encryption-context.types.js';
  */
 export class FieldEncryptionService {
   constructor(
-    private readonly envelope: EnvelopeService,
+    private readonly envelope: IEnvelopeService,
     private readonly hmac: HmacService,
   ) {}
 

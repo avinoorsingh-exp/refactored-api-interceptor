@@ -6,6 +6,7 @@ import {
   getLocalCryptographicMaterialsCache,
 } from '@aws-crypto/client-node';
 import { toSdkEncryptionContext, type EncryptionContext } from '../types/encryption-context.types.js';
+import { ContextMismatchError } from '../errors/encryption-errors.js';
 
 /**
  * Envelope encryption service using AWS KMS + AES-256-GCM via the AWS Encryption SDK.
@@ -49,12 +50,6 @@ export class EnvelopeService {
 
     this.keyring = new KmsKeyringNode({
       generatorKeyId: keyArn,
-      clientProvider: (awsRegion: string) => {
-        // The SDK creates KMS clients internally.
-        // If you need custom credentials, this is where you'd configure them.
-        // For ECS/Lambda with IAM roles, the default credential chain works.
-        return undefined as any; // SDK falls back to default credential provider
-      },
     });
 
     // Optional: cache DEKs to reduce KMS API calls
@@ -120,11 +115,7 @@ export class EnvelopeService {
     const storedContext = messageHeader.encryptionContext;
     for (const [key, value] of Object.entries(expectedContext)) {
       if (storedContext[key] !== value) {
-        throw new Error(
-          `Encryption context mismatch: expected ${key}="${value}", ` +
-            `got ${key}="${storedContext[key]}". ` +
-            'This may indicate the ciphertext was moved between records.',
-        );
+        throw new ContextMismatchError(key, value, storedContext[key]);
       }
     }
 

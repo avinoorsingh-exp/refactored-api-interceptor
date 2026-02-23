@@ -1,4 +1,4 @@
-// packages/@trupryce/shared-domain/src/decorators/agent.decorator.ts
+// packages/@exprealty/shared-domain/src/decorators/agent.decorator.ts
 
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 import { AgentEntity } from '@exprealty/database';

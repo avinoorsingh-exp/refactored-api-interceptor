@@ -1,6 +1,7 @@
 import { Injectable, ConflictException, NotFoundException, BadRequestException, Inject } from '@nestjs/common';
-import { isMaskedPlaceholder, extractLastFour } from '@exprealty/shared-domain';
-import type { TaxIdHasher } from '../../common/ports/tax-id-hasher.port.js';
+import { randomUUID } from 'node:crypto';
+import { isMaskedPlaceholder } from '@exprealty/shared-domain';
+import type { FieldEncryptionService } from '@exprealty/encryption';
 import type { IAgentCompanyRepository } from './ports/agent-company.repository.port.js';
 import type {
 	CreateAgentCompanyInput,
@@ -9,6 +10,18 @@ import type {
 	QueryParams,
 	FieldSelection
 } from '@exprealty/shared-domain';
+
+// Internal write payload: strips the raw taxId from the DTO and substitutes
+// pre-computed derived fields for persistence.
+type AgentCompanyWritePayload = Omit<CreateAgentCompanyInput, 'taxId'> & {
+	id?: string;
+	taxId?: Buffer | null;
+	taxIdLast4?: string | null;
+	taxIdToken?: string | null;
+	encryptionKeyId?: string | null;
+	encryptionVersion?: number | null;
+	encryptedAt?: Date | null;
+};
 import { LoggerService } from '../../core/logger.service.js';
 import type { PageResult } from '../../common/ports/pagination.types.js';
 
@@ -21,44 +34,48 @@ export class AgentCompanyService {
 	constructor(
 		@Inject('IAgentCompanyRepository')
 		private readonly repository: IAgentCompanyRepository,
-		@Inject('TaxIdHasher')
-		private readonly hasher: TaxIdHasher,
+		@Inject('FIELD_ENCRYPTION')
+		private readonly encryption: FieldEncryptionService,
 		private readonly logger: LoggerService,
 	) {
 		this.logger.setContext(AgentCompanyService.name);
 	}
 
 	/**
-	 * Compute taxIdLast4 and taxIdToken from a raw tax ID value.
-	 * Rejects masked placeholders to prevent persisting display values.
+	 * Prepare tax ID fields for persistence from a DTO.
+	 * Encrypts the value and returns all derived columns.
 	 */
-	private computeTaxIdFields(rawValue: string): { taxIdLast4: string; taxIdToken: string } {
-		if (isMaskedPlaceholder(rawValue)) {
+	private async prepareTaxFields(
+		taxId: string | null | undefined,
+		recordId: string,
+	): Promise<Partial<AgentCompanyWritePayload>> {
+		if (taxId === null) {
+			return {
+				taxIdLast4: null, taxIdToken: null, taxId: null,
+				encryptionKeyId: null, encryptionVersion: null, encryptedAt: null,
+			};
+		}
+		if (taxId === undefined) {
+			return {};
+		}
+		if (isMaskedPlaceholder(taxId)) {
 			throw new BadRequestException({
 				message: 'Cannot accept a masked placeholder as a tax ID value',
 				i18nType: 'agent.company.masked_placeholder',
 			});
 		}
 
+		const result = await this.encryption.encryptField(taxId, {
+			tableName: 'agent_company', recordId, fieldName: 'tax_id',
+		});
 		return {
-			taxIdLast4: extractLastFour(rawValue),
-			taxIdToken: this.hasher.hash(rawValue),
+			taxId: result.ciphertext,
+			taxIdLast4: result.lastFour,
+			taxIdToken: result.blindIndex,
+			encryptionKeyId: result.keyId,
+			encryptionVersion: result.encryptionVersion,
+			encryptedAt: result.encryptedAt,
 		};
-	}
-
-	/**
-	 * Prepare tax ID fields for persistence from a DTO.
-	 * Returns an object with taxIdLast4/taxIdToken replacing the raw taxId.
-	 */
-	private prepareTaxFields(taxId: string | null | undefined): Record<string, string | null> {
-		if (taxId === null) {
-			return { taxIdLast4: null as any, taxIdToken: null as any };
-		}
-		if (taxId === undefined) {
-			return {};
-		}
-		const { taxIdLast4, taxIdToken } = this.computeTaxIdFields(taxId);
-		return { taxIdLast4, taxIdToken };
 	}
 
 	/**
@@ -83,10 +100,12 @@ export class AgentCompanyService {
 				});
 			}
 
-			// Compute last4+token from raw taxId, replace in persistence payload
-			const taxFields = this.prepareTaxFields(dto.taxId);
+			// Pre-generate UUID so encryption context is bound to this record
+			const companyId = randomUUID();
+			const taxFields = await this.prepareTaxFields(dto.taxId, companyId);
 			const { taxId: _rawTaxId, ...restDto } = dto;
-			const company = await this.repository.create({ ...restDto, ...taxFields } as any);
+			const payload: AgentCompanyWritePayload = { id: companyId, ...restDto, ...taxFields };
+			const company = await this.repository.create(payload as unknown as Omit<AgentCompany, 'id'>);
 
 			const duration = Date.now() - startTime;
 			this.logger.info(
@@ -190,10 +209,11 @@ export class AgentCompanyService {
 				}
 			}
 
-			// Compute last4+token from raw taxId, replace in persistence payload
-			const taxFields = this.prepareTaxFields(dto.taxId);
+			// Encrypt taxId using the existing company's id as context
+			const taxFields = await this.prepareTaxFields(dto.taxId, id);
 			const { taxId: _rawTaxId, ...restDto } = dto;
-			const updated = await this.repository.update(id, { ...restDto, ...taxFields } as any);
+			const patch: Partial<AgentCompanyWritePayload> = { ...restDto, ...taxFields };
+			const updated = await this.repository.update(id, patch as unknown as Partial<AgentCompany>);
 
 			const duration = Date.now() - startTime;
 			this.logger.info(`Company updated: ${id} in ${duration}ms`);

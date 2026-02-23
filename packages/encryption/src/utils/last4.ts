@@ -13,11 +13,13 @@
  *          value if it's shorter than 4 characters
  * @throws {Error} If plaintext is empty or contains no alphanumeric characters
  */
+import { InvalidInputError } from '../errors/encryption-errors.js';
+
 export function extractLastFour(plaintext: string): string {
   const stripped = plaintext.replace(/[^a-zA-Z0-9]/g, '');
 
   if (stripped.length === 0) {
-    throw new Error(
+    throw new InvalidInputError(
       'Cannot extract last four: plaintext contains no alphanumeric characters',
     );
   }
