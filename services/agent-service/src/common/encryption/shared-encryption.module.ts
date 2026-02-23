@@ -16,9 +16,13 @@ import { LoggerService } from '../../core/logger.service.js';
 				if (config.get('NODE_ENV') === 'local') {
 					return createLocalFieldEncryptionService(config.get('HMAC_SECRET'));
 				}
+				const keyArn = config.get('KMS_KEY_ARN');
+				if (!keyArn) {
+					throw new Error('KMS_KEY_ARN is required when NODE_ENV is not "local"');
+				}
 				return createFieldEncryptionService({
 					kms: {
-						keyArn: config.get('KMS_KEY_ARN'),
+						keyArn,
 						region: config.get('KMS_KEY_REGION'),
 						cacheTtlSeconds: config.get('KMS_CACHE_TTL_SECONDS'),
 						cacheMaxMessages: config.get('KMS_CACHE_MAX_MESSAGES'),

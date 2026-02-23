@@ -109,7 +109,7 @@ export const BaseConfig = z.object({
 
 /** Encryption config — services opt in by merging into their ConfigSchema */
 export const EncryptionEnvSchema = z.object({
-	KMS_KEY_ARN: z.string().min(1),
+	KMS_KEY_ARN: z.string().min(1).optional(),
 	KMS_KEY_REGION: z.string().default('us-east-1'),
 	KMS_CACHE_TTL_SECONDS: z.coerce.number().positive().optional(),
 	KMS_CACHE_MAX_MESSAGES: z.coerce.number().positive().default(100),

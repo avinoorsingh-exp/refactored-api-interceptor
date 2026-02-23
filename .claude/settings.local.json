@@ -10,7 +10,8 @@
       "Bash(pnpm --filter @exprealty/database build:*)",
       "Bash(pnpm --filter @exprealty/shared-domain build:*)",
       "Bash(pnpm --filter @exprealty/encryption test:*)",
-      "Bash(pnpm --filter @exprealty/agent-service test)"
+      "Bash(pnpm --filter @exprealty/agent-service test)",
+      "Bash(npx tsc:*)"
     ]
   }
 }
