@@ -452,7 +452,7 @@ describe('EnterpriseAgentUpdatedConsumer', () => {
 						unit_number: 'A',
 						county: 'Sangamon',
 						label: 'Home',
-						is_primary: true,
+						address_type_key: 'Contactinfo',
 						state: {
 							code: 'IL',
 						},

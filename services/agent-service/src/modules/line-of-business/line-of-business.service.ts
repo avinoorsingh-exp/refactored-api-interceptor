@@ -30,8 +30,11 @@ export class LineOfBusinessService {
 		const startTime = Date.now()
 
 		try {
-			// Check for existing line of business with same name
-			const existing = await this.repository.findByName(dto.name)
+			// Normalize name for duplicate check (lowercase, trim)
+			const normalizedName = dto.name.toLowerCase().trim()
+
+			// Check for existing line of business with same normalized name
+			const existing = await this.repository.findByName(normalizedName)
 
 			if (existing) {
 				throw new ConflictException({
@@ -39,9 +42,11 @@ export class LineOfBusinessService {
 					i18nType: 'lineOfBusiness.duplicate_name',
 				})
 			}
+			// Create line of business with original case (trimmed only)
+			const dtoWithTrimmedName = { ...dto, name: dto.name.trim() }
 
 			// Create line of business via repository
-			const saved = await this.repository.create(dto as any)
+			const saved = await this.repository.create(dtoWithTrimmedName as any)
 
 			const duration = Date.now() - startTime
 			this.logger.info(

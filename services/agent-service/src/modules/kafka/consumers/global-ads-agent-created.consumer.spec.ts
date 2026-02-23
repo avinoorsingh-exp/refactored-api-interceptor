@@ -4,6 +4,7 @@ import { KafkaClientService } from '../kafka-client.service.js';
 import { ConfigService } from '../../../core/config.service.js';
 import { LoggerService } from '../../../core/logger.service.js';
 import { KafkaMessageProcessingService } from '../kafka-message-processing.service.js';
+import { GadsAgentUpsertService } from '../services/gads-agent-upsert.service.js';
 import { Consumer, Kafka, KafkaMessage } from 'kafkajs';
 
 describe('GlobalAdsAgentCreatedConsumer', () => {
@@ -49,6 +50,10 @@ describe('GlobalAdsAgentCreatedConsumer', () => {
 			markAsError: jest.fn().mockResolvedValue(undefined),
 		} as any;
 
+		const mockGadsAgentUpsertService = {
+			upsertAgentWithAssociations: jest.fn().mockResolvedValue(undefined),
+		} as any;
+
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [
 				GlobalAdsAgentCreatedConsumer,
@@ -56,6 +61,7 @@ describe('GlobalAdsAgentCreatedConsumer', () => {
 				{ provide: ConfigService, useValue: mockConfigService },
 				{ provide: LoggerService, useValue: mockLogger },
 				{ provide: KafkaMessageProcessingService, useValue: mockKafkaMessageProcessingService },
+				{ provide: GadsAgentUpsertService, useValue: mockGadsAgentUpsertService },
 			],
 		}).compile();
 
@@ -71,7 +77,13 @@ describe('GlobalAdsAgentCreatedConsumer', () => {
 			expect(consumer).toBeDefined();
 		});
 
-		it('should set logger context', () => {
+		it('should set logger context', async () => {
+			const handler = consumer.getMessageHandler();
+			await handler({
+				topic: 'Global_ADS_AgentCreated_V2',
+				partition: 0,
+				message: { value: Buffer.from(JSON.stringify({ Uuid: 'e6640aa7-f06a-11f0-8c8b-0f306746e3cd', FirstName: 'A', LastName: 'B' })), offset: '0', key: null, headers: {}, timestamp: '' },
+			} as any);
 			expect(mockLogger.setContext).toHaveBeenCalledWith('GlobalAdsAgentCreatedConsumer');
 		});
 	});

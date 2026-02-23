@@ -43,28 +43,36 @@ export class TopCallersQueryDto extends PaginationQueryDto {
 	actorId?: string | string[];
 
 	@ApiPropertyOptional({
-		description: 'Filter by route(s). Supports single value or array for multi-select.',
+		description: 'Filter by route(s). Supports single value, array, or comma-separated list (e.g. route=/v1/agents,/v1/agents/:id). Works regardless of query parser collapsing repeated params.',
 		example: '/v1/agents',
 		type: [String],
 		isArray: true,
 	})
 	@IsOptional()
-	@Transform(({ value }) => Array.isArray(value) ? value : value ? [value] : undefined)
+	@Transform(({ value }) => {
+		if (value == null) return undefined;
+		if (Array.isArray(value)) return value.filter((v): v is string => typeof v === 'string' && v.length > 0);
+		const s = String(value).trim();
+		if (!s) return undefined;
+		return s.split(',').map((r) => r.trim()).filter(Boolean);
+	})
 	@IsArray()
 	@IsString({ each: true })
 	route?: string | string[];
 
 	@ApiPropertyOptional({
-		description: 'Filter by HTTP status code(s). Supports single value or array for multi-select.',
+		description: 'Filter by HTTP status code(s). Supports single value, array, or comma-separated list (e.g. statusCode=200,404). Works regardless of query parser collapsing repeated params.',
 		example: 500,
 		type: [Number],
 		isArray: true,
 	})
 	@IsOptional()
 	@Transform(({ value }) => {
-		if (!value) return undefined;
-		const arr = Array.isArray(value) ? value : [value];
-		return arr.map((v) => parseInt(v, 10));
+		if (value == null) return undefined;
+		const raw = Array.isArray(value) ? value : [value];
+		const expanded = raw.flatMap((v) => String(v).split(',').map((s) => s.trim()).filter(Boolean));
+		if (expanded.length === 0) return undefined;
+		return expanded.map((v) => parseInt(v, 10));
 	})
 	@IsArray()
 	@IsInt({ each: true })

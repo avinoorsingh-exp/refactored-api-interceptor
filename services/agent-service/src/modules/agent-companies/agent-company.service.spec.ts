@@ -1,7 +1,7 @@
 import { ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { AgentCompanyService } from './agent-company.service.js';
 import type { IAgentCompanyRepository } from './ports/agent-company.repository.port.js';
-import type { TaxIdHasher } from '../../common/ports/tax-id-hasher.port.js';
+import type { FieldEncryptionService } from '@exprealty/encryption';
 import type { AgentCompany, CreateAgentCompanyInput, UpdateAgentCompanyInput } from '@exprealty/shared-domain';
 import { LoggerService } from '../../core/logger.service.js';
 
@@ -13,10 +13,13 @@ import { LoggerService } from '../../core/logger.service.js';
 describe('AgentCompanyService', () => {
 	let service: AgentCompanyService;
 	let repository: jest.Mocked<IAgentCompanyRepository>;
-	let hasher: jest.Mocked<TaxIdHasher>;
+	let encryption: jest.Mocked<Pick<FieldEncryptionService, 'encryptField' | 'decryptField' | 'generateBlindIndex' | 'generateBlindIndexWithFallback' | 'isHmacRotationActive'>>;
 	let logger: jest.Mocked<LoggerService>;
 
 	const MOCK_HASH = 'b'.repeat(64);
+	const MOCK_CIPHERTEXT = Buffer.from('encrypted-data');
+	const MOCK_KEY_ID = 'arn:aws:kms:us-east-1:123456789:key/mock-key';
+	const MOCK_ENCRYPTED_AT = new Date('2026-02-23T12:00:00Z');
 
 	const mockAgentCompany: AgentCompany = {
 		id: '6e3cc17b-42e0-48db-9891-2d2a6182f9cc',
@@ -43,8 +46,19 @@ describe('AgentCompanyService', () => {
 			delete: jest.fn(),
 		} as unknown as jest.Mocked<IAgentCompanyRepository>;
 
-		hasher = {
-			hash: jest.fn().mockReturnValue(MOCK_HASH),
+		encryption = {
+			encryptField: jest.fn().mockResolvedValue({
+				ciphertext: MOCK_CIPHERTEXT,
+				lastFour: '6789',
+				blindIndex: MOCK_HASH,
+				keyId: MOCK_KEY_ID,
+				encryptionVersion: 1,
+				encryptedAt: MOCK_ENCRYPTED_AT,
+			}),
+			decryptField: jest.fn(),
+			generateBlindIndex: jest.fn().mockReturnValue(MOCK_HASH),
+			generateBlindIndexWithFallback: jest.fn().mockReturnValue([MOCK_HASH]),
+			isHmacRotationActive: jest.fn().mockReturnValue(false),
 		};
 
 		logger = {
@@ -55,7 +69,7 @@ describe('AgentCompanyService', () => {
 			error: jest.fn(),
 		} as unknown as jest.Mocked<LoggerService>;
 
-		service = new AgentCompanyService(repository, hasher, logger);
+		service = new AgentCompanyService(repository, encryption as unknown as FieldEncryptionService, logger);
 	});
 
 	afterEach(() => {
@@ -83,7 +97,7 @@ describe('AgentCompanyService', () => {
 			expect(logger.info).toHaveBeenCalled();
 		});
 
-		it('should compute taxIdLast4 and taxIdToken when taxId is provided', async () => {
+		it('should compute encrypted tax fields when taxId is provided', async () => {
 			const dtoWithTax = { ...createDto, taxId: '12-3456789' } as CreateAgentCompanyInput;
 			repository.findByName.mockResolvedValue(null);
 			repository.create.mockResolvedValue(mockAgentCompany);
@@ -93,8 +107,14 @@ describe('AgentCompanyService', () => {
 			const createArg = repository.create.mock.calls[0][0] as any;
 			expect(createArg.taxIdLast4).toBe('6789');
 			expect(createArg.taxIdToken).toBe(MOCK_HASH);
-			expect(createArg.taxId).toBeUndefined();
-			expect(hasher.hash).toHaveBeenCalledWith('12-3456789');
+			expect(createArg.taxId).toEqual(MOCK_CIPHERTEXT);
+			expect(createArg.encryptionKeyId).toBe(MOCK_KEY_ID);
+			expect(createArg.encryptionVersion).toBe(1);
+			expect(createArg.encryptedAt).toBe(MOCK_ENCRYPTED_AT);
+			expect(createArg.id).toBeDefined(); // UUID pre-generated
+			expect(encryption.encryptField).toHaveBeenCalledWith('12-3456789', {
+				tableName: 'agent_company', recordId: createArg.id, fieldName: 'tax_id',
+			});
 		});
 
 		it('should throw BadRequestException when taxId is a masked placeholder', async () => {
@@ -103,7 +123,7 @@ describe('AgentCompanyService', () => {
 
 			await expect(service.create(dtoWithMasked)).rejects.toThrow(BadRequestException);
 			expect(repository.create).not.toHaveBeenCalled();
-			expect(hasher.hash).not.toHaveBeenCalled();
+			expect(encryption.encryptField).not.toHaveBeenCalled();
 		});
 
 		it('should throw ConflictException when company with same name exists', async () => {
@@ -248,7 +268,15 @@ describe('AgentCompanyService', () => {
 			expect(logger.error).toHaveBeenCalled();
 		});
 
-		it('should compute taxIdLast4 and taxIdToken when update includes taxId', async () => {
+		it('should compute encrypted tax fields when update includes taxId', async () => {
+			encryption.encryptField.mockResolvedValue({
+				ciphertext: MOCK_CIPHERTEXT,
+				lastFour: '4321',
+				blindIndex: MOCK_HASH,
+				keyId: MOCK_KEY_ID,
+				encryptionVersion: 1,
+				encryptedAt: MOCK_ENCRYPTED_AT,
+			});
 			const updateWithTax: UpdateAgentCompanyInput = { taxId: '98-7654321' } as UpdateAgentCompanyInput;
 			repository.findById.mockResolvedValue(mockAgentCompany);
 			repository.update.mockResolvedValue(mockAgentCompany);
@@ -258,8 +286,12 @@ describe('AgentCompanyService', () => {
 			const updateArg = repository.update.mock.calls[0][1] as any;
 			expect(updateArg.taxIdLast4).toBe('4321');
 			expect(updateArg.taxIdToken).toBe(MOCK_HASH);
-			expect(updateArg.taxId).toBeUndefined();
-			expect(hasher.hash).toHaveBeenCalledWith('98-7654321');
+			expect(updateArg.taxId).toEqual(MOCK_CIPHERTEXT);
+			expect(updateArg.encryptionKeyId).toBe(MOCK_KEY_ID);
+			expect(updateArg.encryptionVersion).toBe(1);
+			expect(encryption.encryptField).toHaveBeenCalledWith('98-7654321', {
+				tableName: 'agent_company', recordId: '6e3cc17b-42e0-48db-9891-2d2a6182f9cc', fieldName: 'tax_id',
+			});
 		});
 
 		it('should clear tax fields when update sets taxId to null', async () => {
@@ -272,7 +304,11 @@ describe('AgentCompanyService', () => {
 			const updateArg = repository.update.mock.calls[0][1] as any;
 			expect(updateArg.taxIdLast4).toBeNull();
 			expect(updateArg.taxIdToken).toBeNull();
-			expect(hasher.hash).not.toHaveBeenCalled();
+			expect(updateArg.taxId).toBeNull();
+			expect(updateArg.encryptionKeyId).toBeNull();
+			expect(updateArg.encryptionVersion).toBeNull();
+			expect(updateArg.encryptedAt).toBeNull();
+			expect(encryption.encryptField).not.toHaveBeenCalled();
 		});
 
 		it('should throw BadRequestException when update taxId is a masked placeholder', async () => {

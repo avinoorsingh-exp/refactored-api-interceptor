@@ -80,16 +80,16 @@ export class AddLineOfBusinessAuditColumns1771100000000 implements MigrationInte
 			END $$;
 		`)
 
-		// Add unique index on name to prevent duplicates at DB level
+		// Add case-insensitive unique index on name to prevent duplicates at DB level
 		await queryRunner.query(`
-			CREATE UNIQUE INDEX IF NOT EXISTS "uq_line_of_business_name"
-			ON "core"."line_of_business" ("name")
+			CREATE UNIQUE INDEX IF NOT EXISTS "uq_line_of_business_name_lower"
+			ON "core"."line_of_business" (LOWER(TRIM("name")))
 		`)
 	}
 
 	public async down(queryRunner: QueryRunner): Promise<void> {
 		await queryRunner.query(`
-			DROP INDEX IF EXISTS "core"."uq_line_of_business_name"
+			DROP INDEX IF EXISTS "core"."uq_line_of_business_name_lower"
 		`)
 
 		await queryRunner.query(`

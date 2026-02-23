@@ -24,7 +24,7 @@
 		"test": "jest",
 		"test:watch": "jest --watch",
 		"test:cov": "jest --coverage",
-		"prepublishOnly": "echo 'Workspace-only during MVP' && exit 1"
+		"prepublishOnly": "pnpm run build && pnpm run test"
 	},
 	"dependencies": {
 		"@aws-crypto/client-node": "^4.0.1",

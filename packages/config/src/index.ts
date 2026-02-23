@@ -107,6 +107,14 @@ export const BaseConfig = z.object({
 	AWS_REGION: z.string().default('us-east-1'),
 })
 
+/** Encryption config — services opt in by merging into their ConfigSchema */
+export const EncryptionEnvSchema = z.object({
+	KMS_KEY_ARN: z.string().min(1).optional(),
+	KMS_KEY_REGION: z.string().default('us-east-1'),
+	KMS_CACHE_TTL_SECONDS: z.coerce.number().positive().optional(),
+	KMS_CACHE_MAX_MESSAGES: z.coerce.number().positive().default(100),
+})
+
 /**
  * Validate process.env against a schema.
  * Returns the typed config and caches it by schema instance to avoid re-parsing.

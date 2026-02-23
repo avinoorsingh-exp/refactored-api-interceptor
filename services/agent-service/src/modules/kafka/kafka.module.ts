@@ -18,6 +18,10 @@ import { KafkaAdminController } from './kafka-admin.controller.js';
 import { KafkaBulkOperationsController } from './kafka-bulk-operations.controller.js';
 import { KafkaBulkOperationsService } from './services/kafka-bulk-operations.service.js';
 import { EnterpriseAgentUpsertService } from './services/enterprise-agent-upsert.service.js';
+import { AgentUpsertExecutorService } from './services/agent-upsert-executor.service.js';
+import { GadsAgentUpsertService } from './services/gads-agent-upsert.service.js';
+import { AuAgentUpsertService } from './services/au-agent-upsert.service.js';
+import { UkAgentUpsertService } from './services/uk-agent-upsert.service.js';
 import { AgentModule } from '../agents/agent.module.js';
 import { StatesModule } from '../states/states.module.js';
 import { CountriesModule } from '../countries/countries.module.js';
@@ -86,6 +90,10 @@ import { PaginationModule } from '../../common/pagination/pagination.module.js';
 		KafkaMessageCleanupService,
 		KafkaBulkOperationsService,
 		EnterpriseAgentUpsertService,
+		AgentUpsertExecutorService,
+		GadsAgentUpsertService,
+		AuAgentUpsertService,
+		UkAgentUpsertService,
 	],
 	controllers: [
 		SponsorChangedController,

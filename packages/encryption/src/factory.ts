@@ -21,12 +21,14 @@ import { FieldEncryptionService } from './services/field-encryption.service.js';
  *   provide: 'FIELD_ENCRYPTION',
  *   useFactory: async (config: ConfigService) =>
  *     createFieldEncryptionService({
- *       kmsKeyArn: await config.get('KMS_KEY_ARN'),
- *       hmacSecrets: {
- *         current: await config.get('HMAC_SECRET_CURRENT'),
+ *       kms: {
+ *         keyArn: await config.get('KMS_KEY_ARN'),
+ *         region: await config.get('AWS_REGION'),
+ *       },
+ *       hmac: {
+ *         current: await config.get('HMAC_SECRET'),
  *         previous: await config.get('HMAC_SECRET_PREVIOUS'), // optional
  *       },
- *       region: await config.get('AWS_REGION'),
  *     }),
  *   inject: [ConfigService],
  * }
@@ -35,9 +37,8 @@ import { FieldEncryptionService } from './services/field-encryption.service.js';
  * @example Standalone script
  * ```typescript
  * const encryption = createFieldEncryptionService({
- *   kmsKeyArn: process.env.KMS_KEY_ARN!,
+ *   kms: { keyArn: process.env.KMS_KEY_ARN!, region: 'us-east-1' },
  *   hmac: { current: process.env.HMAC_SECRET! },
- *   region: 'us-east-1',
  * });
  * ```
  *

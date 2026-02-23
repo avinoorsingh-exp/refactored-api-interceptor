@@ -23,7 +23,7 @@ import {
 	createPaginatedResponse,
 	type PaginatedResponse,
 } from '../utils/pagination.util.js';
-import { toArray, hasValues } from '../utils/filter.util.js';
+import { toArray, hasValues, normalizeStatusCodes, normalizeStringArray } from '../utils/filter.util.js';
 import { normalizeRoute } from '../utils/normalize-route.util.js';
 import { resolveTrendBucketType, calculateBucketCount, getWeekStart } from '../utils/bucket-resolution.util.js';
 import type { TrendsRange } from '../dto/trends-query.dto.js';
@@ -117,10 +117,10 @@ export class ApiMetricsService {
 		// This is optional - we'll use pre-aggregated data if available
 		const useRawLogs = timeRangeMs < oneHourMs && selectedBucket === TimeBucket.MINUTE;
 		
-		// Normalize filters to arrays
-		const routes = toArray(query.route);
-		const methods = toArray(query.method);
-		const statusCodes = toArray(query.statusCode);
+		// Normalize filters to arrays (support comma-separated query params)
+		const routes = normalizeStringArray(query.route);
+		const methods = normalizeStringArray(query.method) as HttpMethod[];
+		const statusCodes = normalizeStatusCodes(query.statusCode);
 
 		// Try pre-aggregated data first (preferred for performance)
 		// Only fall back to raw logs if:
@@ -425,10 +425,10 @@ export class ApiMetricsService {
 		}>
 	> {
 		try {
-			// STEP 1: Normalize filters to arrays
-			const normalizedRoutes = toArray(routes);
-			const normalizedMethods = toArray(methods);
-			const normalizedStatusCodes = toArray(statusCodes);
+			// STEP 1: Normalize filters to arrays (support comma-separated query params)
+			const normalizedRoutes = normalizeStringArray(routes);
+			const normalizedMethods = normalizeStringArray(methods as string | string[] | undefined) as HttpMethod[];
+			const normalizedStatusCodes = normalizeStatusCodes(statusCodes);
 
 			// Determine mode: inspection mode if route filter is present
 			const isInspectionMode = hasValues(normalizedRoutes);
@@ -605,9 +605,9 @@ export class ApiMetricsService {
 			const limitValue = normalizeLimit(query.limit || query.legacyLimit, defaultLimit, maxLimit);
 			const limit = limitValue || defaultLimit;
 			
-			// STEP 2: Normalize filters to arrays (applied FIRST)
-			const normalizedRoutes = toArray(query.route);
-			const normalizedStatusCodes = toArray(query.statusCode);
+			// STEP 2: Normalize filters to arrays (applied FIRST; support comma-separated params)
+			const normalizedRoutes = normalizeStringArray(query.route);
+			const normalizedStatusCodes = normalizeStatusCodes(query.statusCode);
 			
 			if (query.debug) {
 				this.logger.debug('Actor activity - filters', {
@@ -824,10 +824,10 @@ export class ApiMetricsService {
 			const startTimeDate = startTime instanceof Date ? startTime : new Date(startTime);
 			const endTimeDate = endTime instanceof Date ? endTime : new Date(endTime);
 			
-			// STEP 3: Normalize filters to arrays (applied FIRST)
+			// STEP 3: Normalize filters to arrays (applied FIRST; support comma-separated params)
 			const normalizedActorIds = toArray(actorIds);
-			const normalizedRoutes = toArray(routes);
-			const normalizedStatusCodes = toArray(statusCodes);
+			const normalizedRoutes = normalizeStringArray(routes);
+			const normalizedStatusCodes = normalizeStatusCodes(statusCodes);
 
 			if (debug) {
 				this.logger.debug('Top callers - filters', {
@@ -1103,10 +1103,12 @@ export class ApiMetricsService {
 			);
 			const limit = limitValue || defaultLimit;
 			
-			// STEP 2: Normalize filters to arrays (applied FIRST)
-			const normalizedRoutes = toArray(query.route);
-			const normalizedStatusCodes = toArray(query.statusCode);
-			const normalizedClassifications = toArray(query.classification);
+			// STEP 2: Normalize filters to arrays (applied FIRST).
+			// Use normalizeStatusCodes / normalizeStringArray so comma-separated query params
+			// (e.g. statusCode=400,401) work when Nest does not transform the DTO.
+			const normalizedRoutes = normalizeStringArray(query.route);
+			const normalizedStatusCodes = normalizeStatusCodes(query.statusCode);
+			const normalizedClassifications = normalizeStringArray(query.classification as string | string[] | undefined);
 			
 			if (query.debug) {
 				this.logger.debug('Error samples - filters', {
@@ -1750,9 +1752,9 @@ export class ApiMetricsService {
 		const bucketType = resolveTrendBucketType(range);
 		const expectedBucketCount = calculateBucketCount(range, bucketType);
 
-		// Normalize filters
-		const normalizedRoutes = toArray(routes);
-		const normalizedStatusCodes = toArray(statusCodes);
+		// Normalize filters (support comma-separated query params)
+		const normalizedRoutes = normalizeStringArray(routes as string | string[] | undefined);
+		const normalizedStatusCodes = normalizeStatusCodes(statusCodes);
 
 		this.logger.debug('Fetching trends metrics', {
 			range,
@@ -2134,8 +2136,8 @@ export class ApiMetricsService {
 		const previousStartTime = new Date(previousEndTime.getTime() - range * 24 * 60 * 60 * 1000);
 
 		// Query previous period DAY buckets using QueryBuilder for status code filtering
-		const normalizedRoutes = toArray(routes);
-		const normalizedStatusCodes = toArray(statusCodes);
+		const normalizedRoutes = normalizeStringArray(routes);
+		const normalizedStatusCodes = normalizeStatusCodes(statusCodes);
 
 		const qb = this.routeStatsRepo
 			.createQueryBuilder('stats')
