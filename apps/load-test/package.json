@@ -1,0 +1,27 @@
+{
+	"name": "@exprealty/load-test",
+	"version": "0.0.0",
+	"private": true,
+	"description": "k6 load testing suite for AgentDB endpoints",
+	"license": "MIT",
+	"scripts": {
+		"k6:agents": "k6 run --out web src/scenarios/agents.js",
+		"k6:agent-companies": "k6 run --out web src/scenarios/agent-companies.js",
+		"k6:agent-taxes": "k6 run --out web src/scenarios/agent-taxes.js",
+		"k6:admin": "k6 run --out web src/scenarios/admin.js",
+		"k6:companies": "k6 run --out web src/scenarios/companies.js",
+		"k6:countries": "k6 run --out web src/scenarios/countries.js",
+		"k6:currencies": "k6 run --out web src/scenarios/currencies.js",
+		"k6:line-of-business": "k6 run --out web src/scenarios/line-of-business.js",
+		"k6:metadata": "k6 run --out web src/scenarios/metadata.js",
+		"k6:mls": "k6 run --out web src/scenarios/mls.js",
+		"k6:offices": "k6 run --out web src/scenarios/offices.js",
+		"k6:pay-plans": "k6 run --out web src/scenarios/pay-plans.js",
+		"k6:regions": "k6 run --out web src/scenarios/regions.js",
+		"k6:states": "k6 run --out web src/scenarios/states.js",
+		"k6:all": "pnpm k6:agents && pnpm k6:agent-companies && pnpm k6:agent-taxes && pnpm k6:admin && pnpm k6:companies && pnpm k6:countries && pnpm k6:currencies && pnpm k6:line-of-business && pnpm k6:metadata && pnpm k6:mls && pnpm k6:offices && pnpm k6:pay-plans && pnpm k6:regions && pnpm k6:states"
+	},
+	"devDependencies": {
+		"@faker-js/faker": "^9.3.0"
+	}
+}

@@ -1,0 +1,22 @@
+services:
+  k6:
+    image: grafana/k6:0.54.0
+    volumes:
+      - ./apps/load-test/src/scenarios:/scenarios
+      - ./apps/load-test/src/agents/test-data:/test-data/agents
+      - ./apps/load-test/src/agent-companies/test-data:/test-data/agent-companies
+      - ./apps/load-test/src/agent-taxes/test-data:/test-data/agent-taxes
+      - ./apps/load-test/src/admin/test-data:/test-data/admin
+      - ./apps/load-test/src/companies/test-data:/test-data/companies
+      - ./apps/load-test/src/countries/test-data:/test-data/countries
+      - ./apps/load-test/src/currencies/test-data:/test-data/currencies
+      - ./apps/load-test/src/line-of-business/test-data:/test-data/line-of-business
+      - ./apps/load-test/src/metadata/test-data:/test-data/metadata
+      - ./apps/load-test/src/mls/test-data:/test-data/mls
+      - ./apps/load-test/src/offices/test-data:/test-data/offices
+      - ./apps/load-test/src/pay-plans/test-data:/test-data/pay-plans
+      - ./apps/load-test/src/regions/test-data:/test-data/regions
+      - ./apps/load-test/src/states/test-data:/test-data/states
+    environment:
+      - K6_OUT=web
+    network_mode: host
