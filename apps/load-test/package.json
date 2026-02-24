@@ -5,6 +5,9 @@
 	"description": "k6 load testing suite for AgentDB endpoints",
 	"license": "MIT",
 	"scripts": {
+		"smoke": "k6 run src/scenarios/smoke.js",
+		"baseline": "k6 run src/scenarios/baseline.js",
+		"stress": "k6 run src/scenarios/stress.js",
 		"k6:agents": "k6 run --out web src/scenarios/agents.js",
 		"k6:agent-companies": "k6 run --out web src/scenarios/agent-companies.js",
 		"k6:agent-taxes": "k6 run --out web src/scenarios/agent-taxes.js",

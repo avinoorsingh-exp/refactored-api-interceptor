@@ -308,34 +308,50 @@ async function bootstrap() {
 		console.error('[BOOTSTRAP] Step 6: Configuring interceptors...')
 		try {
 			const environment = configService.get('NODE_ENV')
-			const includeQueryMetadata = environment === 'local'
+			const perfQueryMode = configService.get('PERF_QUERY_MODE') || (environment === 'local' ? 'query' : 'off')
+			const slowMs = configService.get('PERF_QUERY_SLOW_MS') || 2000
+			const criticalMs = configService.get('PERF_QUERY_CRITICAL_MS') || 10000
+			const logAll = configService.get('PERF_QUERY_LOG_ALL') || false
+			const includeInResponse = configService.get('PERF_QUERY_INCLUDE_IN_RESPONSE') || false
+			const captureExplain = configService.get('PERF_QUERY_CAPTURE_EXPLAIN') || 'slow'
+			const sampleRate = configService.get('PERF_QUERY_SAMPLE_RATE') ?? (environment === 'local' ? 1.0 : 0.01)
+			const allowlistRaw = configService.get('PERF_QUERY_ENDPOINT_ALLOWLIST') || ''
+			const endpointAllowlist = allowlistRaw ? allowlistRaw.split(',').map((s: string) => s.trim()).filter(Boolean) : []
 
 			// CRITICAL: ResponseHeaderFixInterceptor must run LAST to fix headers after all other interceptors
 			// This ensures Content-Length is removed when Transfer-Encoding is present
 			const headerFixInterceptor = new ResponseHeaderFixInterceptor();
 
-			if (includeQueryMetadata) {
+			if (perfQueryMode === 'query') {
 				app.useGlobalInterceptors(
 					new QueryPerformanceInterceptor(dataSource, {
-						slowQueryThresholdMs: 2000,
-						criticalQueryThresholdMs: 10000,
-						logAllQueries: false,
-						captureExplain: true,
-						includeInResponse: includeQueryMetadata,
+						slowQueryThresholdMs: slowMs,
+						criticalQueryThresholdMs: criticalMs,
+						logAllQueries: logAll,
+						captureExplain,
+						includeInResponse,
+						sampleRate,
+						endpointAllowlist,
 					}),
 					headerFixInterceptor,
 				)
-				logger.info(`Query metadata enabled for environment: ${environment}`)
-			} else {
+				logger.info(`[Microscope] QueryPerformanceInterceptor active — mode=query, sampleRate=${sampleRate}, explain=${captureExplain}, slow=${slowMs}ms, critical=${criticalMs}ms, allowlist=${endpointAllowlist.length > 0 ? endpointAllowlist.join(',') : 'all'}`)
+			} else if (perfQueryMode === 'perf') {
 				app.useGlobalInterceptors(
 					new PerformanceInterceptor({
-						slowQueryThresholdMs: 2000,
-						includeInBody: false,
-						logAllQueries: false,
+						slowQueryThresholdMs: slowMs,
+						includeInBody: includeInResponse,
+						logAllQueries: logAll,
 					}),
 					headerFixInterceptor,
 				)
-				logger.info(`Performance-only interceptor enabled for environment: ${environment}`)
+				logger.info(`[Microscope] PerformanceInterceptor active — mode=perf, slow=${slowMs}ms, logAll=${logAll}`)
+			} else {
+				// mode === 'off': only header fix, no performance logging
+				app.useGlobalInterceptors(
+					headerFixInterceptor,
+				)
+				logger.info(`[Microscope] Performance interceptors disabled — mode=off`)
 			}
 			console.error('[BOOTSTRAP] Step 6: Interceptors configured successfully')
 		} catch (interceptorError) {

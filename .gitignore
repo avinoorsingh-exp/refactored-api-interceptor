@@ -35,6 +35,7 @@ services/*/src/**/*.d.ts
 coverage
 coverage-unit
 *.lcov
+artifacts/
 
 **/tsconfig.build.tsbuildinfo
 

@@ -21,8 +21,12 @@ export interface QueryPerformanceOptions {
   slowQueryThresholdMs: number;
   criticalQueryThresholdMs: number;
   logAllQueries: boolean;
-  captureExplain: boolean;
+  captureExplain: 'off' | 'slow' | 'critical' | 'all';
   includeInResponse: boolean;
+  /** Fraction of requests to instrument (0..1). Default: 1.0 */
+  sampleRate: number;
+  /** If set, only instrument requests whose path starts with one of these prefixes. */
+  endpointAllowlist: string[];
 }
 
 /**
@@ -115,7 +119,7 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
 
   constructor(
     @Optional() @Inject(DataSource) private readonly dataSource?: DataSource,
-    @Optional() @Inject('QUERY_PERFORMANCE_OPTIONS') 
+    @Optional() @Inject('QUERY_PERFORMANCE_OPTIONS')
     private readonly options: Partial<QueryPerformanceOptions> = {},
   ) {
     // Set defaults
@@ -123,9 +127,44 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
       slowQueryThresholdMs: options.slowQueryThresholdMs ?? 2000,
       criticalQueryThresholdMs: options.criticalQueryThresholdMs ?? 10000,
       logAllQueries: options.logAllQueries ?? false,
-      captureExplain: options.captureExplain ?? true,
-      includeInResponse: options.includeInResponse ?? (process.env.NODE_ENV !== 'production'),
+      captureExplain: options.captureExplain ?? 'slow',
+      includeInResponse: options.includeInResponse ?? false,
+      sampleRate: options.sampleRate ?? 1.0,
+      endpointAllowlist: options.endpointAllowlist ?? [],
     };
+  }
+
+  /**
+   * Check if this request should be instrumented based on sample rate and endpoint allowlist.
+   */
+  private shouldInstrument(request: Request): boolean {
+    // Sampling: random check against configured rate
+    const sampleRate = this.options.sampleRate ?? 1.0;
+    if (sampleRate < 1.0 && Math.random() > sampleRate) {
+      return false;
+    }
+
+    // Endpoint allowlist: if set, only instrument matching paths
+    const allowlist = this.options.endpointAllowlist ?? [];
+    if (allowlist.length > 0) {
+      const path = request.path || request.url.split('?')[0];
+      const matched = allowlist.some((prefix) => path.startsWith(prefix));
+      if (!matched) return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Determine whether EXPLAIN should be captured for a given request duration.
+   */
+  private shouldCaptureExplain(totalDurationMs: number): boolean {
+    const mode = this.options.captureExplain ?? 'slow';
+    if (mode === 'off') return false;
+    if (mode === 'all') return true;
+    if (mode === 'critical') return totalDurationMs >= (this.options.criticalQueryThresholdMs ?? 10000);
+    // 'slow' (default)
+    return totalDurationMs >= (this.options.slowQueryThresholdMs ?? 2000);
   }
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
@@ -135,6 +174,9 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
     const timestamp = new Date().toISOString();
     const queryParams = request.query;
     const correlationId = (request.headers['x-correlation-id'] as string) || this.generateId();
+
+    // Skip full instrumentation if not sampled or not in allowlist
+    const instrumented = this.shouldInstrument(request);
 
     // Build query context
     const queryContext: QueryContext = {
@@ -193,8 +235,10 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
       }
     }
 
-    // Setup query capture
-    this.setupQueryCapture(correlationId);
+    // Setup query capture only for instrumented requests
+    if (instrumented) {
+      this.setupQueryCapture(correlationId);
+    }
 
     return next.handle().pipe(
       tap({
@@ -202,10 +246,13 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
           const duration = Date.now() - startTime;
           queryMetadata.performance.durationMs = duration;
 
-          // Get captured queries
-          const queries = this.queryBuffer.get(correlationId) || [];
-          this.queryBuffer.delete(correlationId);
-          this.cleanupQueryCapture();
+          // Get captured queries (only if instrumented)
+          let queries: QueryCapture[] = [];
+          if (instrumented) {
+            queries = this.queryBuffer.get(correlationId) || [];
+            this.queryBuffer.delete(correlationId);
+            this.cleanupQueryCapture();
+          }
 
           // Add headers (only if response hasn't been sent yet)
           // Some endpoints (like retry) manually send responses with @Res({ passthrough: false })
@@ -223,15 +270,17 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
             }
           }
 
-          // Enhance metadata with query details
-          await this.enhanceMetadata(queryMetadata, queries, duration, queryContext);
+          // Enhance metadata with query details (only for instrumented requests)
+          if (instrumented) {
+            await this.enhanceMetadata(queryMetadata, queries, duration, queryContext);
+          }
 
-          // Log based on duration
+          // Log based on duration (always, but SQL details only if instrumented)
           if (duration >= (this.options.criticalQueryThresholdMs ?? 10000)) {
             await this.handleCriticalQuery(queryMetadata, queryContext);
           } else if (duration >= (this.options.slowQueryThresholdMs ?? 2000)) {
             await this.handleSlowQuery(queryMetadata, queryContext);
-          } else if (this.options.logAllQueries) {
+          } else if (this.options.logAllQueries && instrumented) {
             this.logger.debug('Query completed', {
               endpoint: `${request.method} ${request.url}`,
               duration,
@@ -244,9 +293,12 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
           queryMetadata.performance.durationMs = duration;
 
           // Cleanup
-          const queries = this.queryBuffer.get(correlationId) || [];
-          this.queryBuffer.delete(correlationId);
-          this.cleanupQueryCapture();
+          let queries: QueryCapture[] = [];
+          if (instrumented) {
+            queries = this.queryBuffer.get(correlationId) || [];
+            this.queryBuffer.delete(correlationId);
+            this.cleanupQueryCapture();
+          }
 
           // Add headers (only if response hasn't been sent yet)
           if (!response.headersSent && !response.finished) {
@@ -264,7 +316,9 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
           }
 
           // Enhance metadata for error logging
-          await this.enhanceMetadata(queryMetadata, queries, duration, queryContext);
+          if (instrumented) {
+            await this.enhanceMetadata(queryMetadata, queries, duration, queryContext);
+          }
 
           this.logger.error('Query failed', {
             endpoint: `${request.method} ${request.url}`,
@@ -405,11 +459,9 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
       metadata.performance.connectionPool = this.getPoolMetrics();
     }
 
-    // Trigger EXPLAIN for slow queries
-    const isSlowQuery = totalDuration > (this.options.slowQueryThresholdMs ?? 2000);
+    // Trigger EXPLAIN based on configured captureExplain mode
     if (
-      isSlowQuery &&
-      this.options.captureExplain &&
+      this.shouldCaptureExplain(totalDuration) &&
       this.dataSource &&
       queries.length > 0
     ) {
@@ -435,8 +487,8 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
       }
     }
 
-    // Strip detailed info in production responses
-    if (process.env.NODE_ENV === 'production' && !this.options.includeInResponse) {
+    // Strip detailed info from response unless explicitly enabled
+    if (!this.options.includeInResponse) {
       delete metadata.performance.sql;
       delete metadata.performance.parameters;
       delete metadata.performance.explain;

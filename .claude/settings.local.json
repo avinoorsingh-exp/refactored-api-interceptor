@@ -11,7 +11,12 @@
       "Bash(pnpm --filter @exprealty/shared-domain build:*)",
       "Bash(pnpm --filter @exprealty/encryption test:*)",
       "Bash(pnpm --filter @exprealty/agent-service test)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(chmod:*)",
+      "Bash(ls:*)",
+      "Bash(./scripts/export-coverage.sh:*)",
+      "Bash(pnpm --filter @exprealty/encryption test:cov:*)",
+      "Bash(pnpm --filter @exprealty/agent-service test -- --testPathPattern \"agent-company.service|agent-tax.service|interceptor\")"
     ]
   }
 }
