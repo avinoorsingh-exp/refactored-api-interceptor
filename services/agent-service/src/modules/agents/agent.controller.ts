@@ -31,47 +31,13 @@ import { CreateAgentDto } from './dto/create-agent.dto.js';
 import { UpdateAgentDto } from './dto/update-agent.dto.js';
 import { AgentIdParamDto } from './dto/agent-id-param.dto.js';
 import { AgentResponseDto } from './dto/agent-response.dto.js';
+import {
+	MINIMAL_AGENT_FIELDS,
+	MINIMAL_AGENT_INCLUDES,
+	mapToMinimalAgentResponse,
+	type MinimalAgentItem,
+} from './minimal-agent-response.util.js';
 import { PaginationInterceptor } from '../../common/pagination/pagination.interceptor.js';
-
-/** When scope is agent-service/read, only these fields and includes are used (client include is ignored). */
-const MINIMAL_AGENT_FIELDS = ['id', 'firstName', 'lastName', 'lifecycleStatus'] as const;
-const MINIMAL_AGENT_INCLUDES = ['primaryEmail', 'primaryAddress'] as const;
-
-type MinimalAgentItem = {
-	id: string;
-	firstName: string;
-	lastName: string;
-	lifecycleStatus: string;
-	primaryEmail?: { value: string };
-	primaryAddress?: {
-		country?: { name: string };
-		state?: { name: string };
-	};
-
-function mapToMinimalAgentResponse(agent: Record<string, unknown>): MinimalAgentItem {
-	const primaryEmail = agent.primaryEmail as { value?: string } | undefined;
-	const primaryAddress = agent.primaryAddress as {
-		country?: { name?: string };
-		state?: { name?: string };
-	} | undefined;
-	const hasCountry = primaryAddress?.country?.name != null;
-	const hasState = primaryAddress?.state?.name != null;
-	const primaryAddressPayload =
-		primaryAddress != null && (hasCountry || hasState)
-			? {
-					...(hasCountry && { country: { name: primaryAddress.country!.name } }),
-					...(hasState && { state: { name: primaryAddress.state!.name } }),
-				}
-			: undefined;
-	return {
-		id: agent.id as string,
-		firstName: agent.firstName as string,
-		lastName: agent.lastName as string,
-		lifecycleStatus: (agent.lifecycleStatus as string) ?? 'Active',
-		...(primaryEmail?.value != null && { primaryEmail: { value: primaryEmail.value } }),
-		...(primaryAddressPayload && { primaryAddress: primaryAddressPayload }),
-	};
-}
 
 /**
  * Controller for Agent entity endpoints.
@@ -228,7 +194,7 @@ export class AgentController {
 	async findAll(
 		@Query() query: any,
 		@Req() req: Request,
-	): Promise<{ items: AgentResponseDto[]; total: number }> {
+	): Promise<{ items: AgentResponseDto[] | MinimalAgentItem[]; total: number }> {
 		const startTime = Date.now();
 		const correlationId = this.getCorrelationId(req);
 
