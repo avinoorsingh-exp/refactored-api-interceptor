@@ -25,12 +25,53 @@ import {
 } from '@nestjs/swagger';
 import { CreateAgentInput, UpdateAgentInput, AgentIdParamSchema } from '@exprealty/shared-domain';
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js';
+import { isGuestScopeAgentRead } from '../../common/auth/jwt-scope.util.js';
 import { AgentService } from './agent.service.js';
 import { CreateAgentDto } from './dto/create-agent.dto.js';
 import { UpdateAgentDto } from './dto/update-agent.dto.js';
 import { AgentIdParamDto } from './dto/agent-id-param.dto.js';
 import { AgentResponseDto } from './dto/agent-response.dto.js';
 import { PaginationInterceptor } from '../../common/pagination/pagination.interceptor.js';
+
+/** When scope is agent-service/read, only these fields and includes are used (client include is ignored). */
+const MINIMAL_AGENT_FIELDS = ['id', 'firstName', 'lastName', 'lifecycleStatus'] as const;
+const MINIMAL_AGENT_INCLUDES = ['primaryEmail', 'primaryAddress'] as const;
+
+type MinimalAgentItem = {
+	id: string;
+	firstName: string;
+	lastName: string;
+	lifecycleStatus: string;
+	primaryEmail?: { value: string };
+	primaryAddress?: {
+		country?: { name: string };
+		state?: { name: string };
+	};
+
+function mapToMinimalAgentResponse(agent: Record<string, unknown>): MinimalAgentItem {
+	const primaryEmail = agent.primaryEmail as { value?: string } | undefined;
+	const primaryAddress = agent.primaryAddress as {
+		country?: { name?: string };
+		state?: { name?: string };
+	} | undefined;
+	const hasCountry = primaryAddress?.country?.name != null;
+	const hasState = primaryAddress?.state?.name != null;
+	const primaryAddressPayload =
+		primaryAddress != null && (hasCountry || hasState)
+			? {
+					...(hasCountry && { country: { name: primaryAddress.country!.name } }),
+					...(hasState && { state: { name: primaryAddress.state!.name } }),
+				}
+			: undefined;
+	return {
+		id: agent.id as string,
+		firstName: agent.firstName as string,
+		lastName: agent.lastName as string,
+		lifecycleStatus: (agent.lifecycleStatus as string) ?? 'Active',
+		...(primaryEmail?.value != null && { primaryEmail: { value: primaryEmail.value } }),
+		...(primaryAddressPayload && { primaryAddress: primaryAddressPayload }),
+	};
+}
 
 /**
  * Controller for Agent entity endpoints.
@@ -196,11 +237,16 @@ export class AgentController {
 		);
 
 		try {
-			// Extract field selection from query
-			const selection = {
-				fields: query.fields?.split(',').map((f: string) => f.trim()),
-				include: query.include?.split(',').map((r: string) => r.trim()),
-			};
+			// When scope is agent-service/read (guest), ignore client includes and return minimal fields only
+			const selection = isGuestScopeAgentRead(req)
+				? {
+						fields: [...MINIMAL_AGENT_FIELDS],
+						include: [...MINIMAL_AGENT_INCLUDES],
+					}
+				: {
+						fields: query.fields?.split(',').map((f: string) => f.trim()),
+						include: query.include?.split(',').map((r: string) => r.trim()),
+					};
 
 			const result = await this.agentService.findAll(query, selection);
 
@@ -209,7 +255,11 @@ export class AgentController {
 				`[${correlationId}] GET /v1/agents - 200 OK (${duration}ms) - Retrieved ${result.data.length} of ${result.total} Agent records`,
 			);
 
-			return { items: result.data as AgentResponseDto[], total: result.total };
+			const items = isGuestScopeAgentRead(req)
+				? result.data.map((a) => mapToMinimalAgentResponse(a as Record<string, unknown>))
+				: (result.data as AgentResponseDto[]);
+
+			return { items, total: result.total };
 		} catch (error) {
 			const duration = Date.now() - startTime;
 
@@ -291,11 +341,16 @@ export class AgentController {
 		);
 
 		try {
-			// Extract field selection from query
-			const selection = {
-				fields: query.fields?.split(',').map((f: string) => f.trim()),
-				include: query.include?.split(',').map((r: string) => r.trim()),
-			};
+			// When scope is agent-service/read (guest), ignore client includes and return minimal fields only
+			const selection = isGuestScopeAgentRead(req)
+				? {
+						fields: [...MINIMAL_AGENT_FIELDS],
+						include: [...MINIMAL_AGENT_INCLUDES],
+					}
+				: {
+						fields: query.fields?.split(',').map((f: string) => f.trim()),
+						include: query.include?.split(',').map((r: string) => r.trim()),
+					};
 
 			const agent = await this.agentService.findById(params.id, selection);
 
@@ -304,6 +359,9 @@ export class AgentController {
 				`[${correlationId}] GET /v1/agents/${params.id} - 200 OK (${duration}ms) - Agent: ${agent.firstName} ${agent.lastName}`,
 			);
 
+			if (isGuestScopeAgentRead(req)) {
+				return mapToMinimalAgentResponse(agent as unknown as Record<string, unknown>) as AgentResponseDto;
+			}
 			return agent as AgentResponseDto;
 		} catch (error) {
 			const duration = Date.now() - startTime;
