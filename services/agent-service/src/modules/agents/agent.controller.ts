@@ -25,11 +25,18 @@ import {
 } from '@nestjs/swagger';
 import { CreateAgentInput, UpdateAgentInput, AgentIdParamSchema } from '@exprealty/shared-domain';
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js';
+import { isGuestScopeAgentRead } from '../../common/auth/jwt-scope.util.js';
 import { AgentService } from './agent.service.js';
 import { CreateAgentDto } from './dto/create-agent.dto.js';
 import { UpdateAgentDto } from './dto/update-agent.dto.js';
 import { AgentIdParamDto } from './dto/agent-id-param.dto.js';
 import { AgentResponseDto } from './dto/agent-response.dto.js';
+import {
+	MINIMAL_AGENT_FIELDS,
+	MINIMAL_AGENT_INCLUDES,
+	mapToMinimalAgentResponse,
+	type MinimalAgentItem,
+} from './minimal-agent-response.util.js';
 import { PaginationInterceptor } from '../../common/pagination/pagination.interceptor.js';
 
 /**
@@ -187,7 +194,7 @@ export class AgentController {
 	async findAll(
 		@Query() query: any,
 		@Req() req: Request,
-	): Promise<{ items: AgentResponseDto[]; total: number }> {
+	): Promise<{ items: AgentResponseDto[] | MinimalAgentItem[]; total: number }> {
 		const startTime = Date.now();
 		const correlationId = this.getCorrelationId(req);
 
@@ -196,11 +203,16 @@ export class AgentController {
 		);
 
 		try {
-			// Extract field selection from query
-			const selection = {
-				fields: query.fields?.split(',').map((f: string) => f.trim()),
-				include: query.include?.split(',').map((r: string) => r.trim()),
-			};
+			// When scope is agent-service/read (guest), ignore client includes and return minimal fields only
+			const selection = isGuestScopeAgentRead(req)
+				? {
+						fields: [...MINIMAL_AGENT_FIELDS],
+						include: [...MINIMAL_AGENT_INCLUDES],
+					}
+				: {
+						fields: query.fields?.split(',').map((f: string) => f.trim()),
+						include: query.include?.split(',').map((r: string) => r.trim()),
+					};
 
 			const result = await this.agentService.findAll(query, selection);
 
@@ -209,7 +221,11 @@ export class AgentController {
 				`[${correlationId}] GET /v1/agents - 200 OK (${duration}ms) - Retrieved ${result.data.length} of ${result.total} Agent records`,
 			);
 
-			return { items: result.data as AgentResponseDto[], total: result.total };
+			const items = isGuestScopeAgentRead(req)
+				? result.data.map((a) => mapToMinimalAgentResponse(a as Record<string, unknown>))
+				: (result.data as AgentResponseDto[]);
+
+			return { items, total: result.total };
 		} catch (error) {
 			const duration = Date.now() - startTime;
 
@@ -291,11 +307,16 @@ export class AgentController {
 		);
 
 		try {
-			// Extract field selection from query
-			const selection = {
-				fields: query.fields?.split(',').map((f: string) => f.trim()),
-				include: query.include?.split(',').map((r: string) => r.trim()),
-			};
+			// When scope is agent-service/read (guest), ignore client includes and return minimal fields only
+			const selection = isGuestScopeAgentRead(req)
+				? {
+						fields: [...MINIMAL_AGENT_FIELDS],
+						include: [...MINIMAL_AGENT_INCLUDES],
+					}
+				: {
+						fields: query.fields?.split(',').map((f: string) => f.trim()),
+						include: query.include?.split(',').map((r: string) => r.trim()),
+					};
 
 			const agent = await this.agentService.findById(params.id, selection);
 
@@ -304,6 +325,9 @@ export class AgentController {
 				`[${correlationId}] GET /v1/agents/${params.id} - 200 OK (${duration}ms) - Agent: ${agent.firstName} ${agent.lastName}`,
 			);
 
+			if (isGuestScopeAgentRead(req)) {
+				return mapToMinimalAgentResponse(agent as unknown as Record<string, unknown>) as AgentResponseDto;
+			}
 			return agent as AgentResponseDto;
 		} catch (error) {
 			const duration = Date.now() - startTime;
