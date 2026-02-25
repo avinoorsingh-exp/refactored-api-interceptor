@@ -12,6 +12,11 @@ export interface INoteRepository {
 	create(agentId: string, data: { body: string; createdBy?: string }): Promise<Note>;
 
 	/**
+	 * Updates a note that belongs to the specified agent.
+	 */
+	update(agentId: string, noteId: string, data: { body?: string; modifiedBy?: string }): Promise<Note | null>;
+
+	/**
 	 * Finds a note by ID that belongs to the specified agent.
 	 */
 	findByIdForAgent(agentId: string, noteId: string): Promise<Note | null>;

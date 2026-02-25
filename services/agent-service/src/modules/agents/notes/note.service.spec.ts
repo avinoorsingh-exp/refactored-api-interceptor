@@ -27,6 +27,7 @@ describe('NoteService', () => {
 	beforeEach(() => {
 		repository = {
 			create: jest.fn(),
+			update: jest.fn(),
 			findByIdForAgent: jest.fn(),
 			findByAgentId: jest.fn(),
 		} as jest.Mocked<INoteRepository>;
@@ -88,6 +89,46 @@ describe('NoteService', () => {
 			repository.create.mockRejectedValue(error);
 
 			await expect(service.create(mockAgentId, createDto)).rejects.toThrow(error);
+		});
+	});
+
+	describe('update', () => {
+		const updateDto = { body: 'Updated note body.', modifiedBy: 'editor@example.com' };
+
+		it('should update and return the note', async () => {
+			const updatedNote = { ...mockNote, body: 'Updated note body.', modifiedBy: 'editor@example.com' };
+			repository.update.mockResolvedValue(updatedNote);
+
+			const result = await service.update(mockAgentId, mockNote.id, updateDto);
+
+			expect(result).toEqual(updatedNote);
+			expect(repository.update).toHaveBeenCalledWith(mockAgentId, mockNote.id, {
+				body: updateDto.body,
+				modifiedBy: updateDto.modifiedBy,
+			});
+		});
+
+		it('should log successful update with duration', async () => {
+			repository.update.mockResolvedValue(mockNote);
+
+			await service.update(mockAgentId, mockNote.id, updateDto);
+
+			expect(logger.info).toHaveBeenCalledWith(
+				expect.stringContaining(`Updated note ${mockNote.id} for agent ${mockAgentId}`),
+			);
+		});
+
+		it('should throw NotFoundException when note not found', async () => {
+			repository.update.mockResolvedValue(null);
+
+			await expect(service.update(mockAgentId, 'non-existent-id', updateDto)).rejects.toThrow(NotFoundException);
+		});
+
+		it('should propagate unexpected errors from repository', async () => {
+			const error = new Error('Database error');
+			repository.update.mockRejectedValue(error);
+
+			await expect(service.update(mockAgentId, mockNote.id, updateDto)).rejects.toThrow(error);
 		});
 	});
 

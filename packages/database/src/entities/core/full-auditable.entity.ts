@@ -15,7 +15,6 @@ import { Filterable, Sortable, Searchable } from '../../decorators/searchable-de
  */
 export abstract class FullAuditableEntity extends AuditableEntity {
 	@Column({ name: 'created_by', type: 'text', default: 'system' })
-	@Searchable({ weight: 3, behavior: 'exact', description: 'User who created the record' })
 	@Filterable()
 	@Sortable()
 	createdBy!: string

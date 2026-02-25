@@ -1,5 +1,5 @@
 import { z } from 'zod'
-
+import { trimmedStringMin } from './base-schemas.js';
 /**
  * Base audit fields schema for all domain entities.
  *
@@ -14,7 +14,7 @@ import { z } from 'zod'
 export const AuditableSchema = z.object({
 	created: z.coerce.date(),
 	lastModified: z.coerce.date(),
-	modifiedBy: z.string().min(1).default('system'),
+	modifiedBy: trimmedStringMin(1).default('system'),
 	mxid: z.coerce.string().nullable().optional(),
 })
 
@@ -35,7 +35,7 @@ export type Auditable = z.infer<typeof AuditableSchema>
  * @public
  */
 export const FullAuditableSchema = AuditableSchema.extend({
-	createdBy: z.string().min(1).default('system'),
+	createdBy: trimmedStringMin(1).default('system'),
 })
 
 /**

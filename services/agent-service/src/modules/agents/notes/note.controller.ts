@@ -2,6 +2,7 @@ import {
 	Controller,
 	Get,
 	Post,
+	Put,
 	Body,
 	Param,
 	Query,
@@ -21,10 +22,10 @@ import {
 	ApiQuery,
 } from '@nestjs/swagger';
 import { z } from 'zod';
-import { CreateNoteInputSchema } from '@exprealty/shared-domain';
+import { CreateNoteInputSchema, UpdateNoteInputSchema } from '@exprealty/shared-domain';
 import { ZodValidationPipe } from '../../../common/zod-validation.pipe.js';
 import { NoteService } from './note.service.js';
-import { NoteResponseDto, CreateNoteDto } from './dto/index.js';
+import { NoteResponseDto, CreateNoteDto, UpdateNoteDto } from './dto/index.js';
 import { PaginationInterceptor } from '../../../common/pagination/pagination.interceptor.js';
 import { LoggerService } from '../../../core/logger.service.js';
 import { AgentExistsGuard } from '../../../common/guards/agent-exists.guard.js';
@@ -195,6 +196,58 @@ export class NoteController {
 		const note = await this.noteService.create(agent.id, body);
 
 		res.setHeader('Location', `/v1/agents/${agent.id}/notes/${note.id}`);
+
+		return note as unknown as NoteResponseDto;
+	}
+
+	/**
+	 * Updates a note for an agent.
+	 * PUT /v1/agents/:id/notes/:noteId
+	 */
+	@Put(':noteId')
+	@ApiOperation({
+		summary: 'Update a note',
+		description: 'Updates an existing note for the specified agent.',
+	})
+	@ApiParam({
+		name: 'id',
+		type: 'string',
+		description: 'Agent UUID',
+		example: '123e4567-e89b-12d3-a456-426614174000',
+	})
+	@ApiParam({
+		name: 'noteId',
+		type: 'string',
+		description: 'Note UUID',
+		example: '123e4567-e89b-12d3-a456-426614174000',
+	})
+	@ApiBody({
+		type: UpdateNoteDto,
+		description: 'Note data to update',
+	})
+	@ApiResponse({
+		status: 200,
+		description: 'Note updated successfully',
+		type: NoteResponseDto,
+	})
+	@ApiResponse({
+		status: 400,
+		description: 'Validation error',
+	})
+	@ApiResponse({
+		status: 404,
+		description: 'Agent or note not found',
+	})
+	async update(
+		@Agent() agent: AgentType,
+		@Param('noteId', new ZodValidationPipe(NoteIdSchema, 'note.validation'))
+		noteId: string,
+		@Body(new ZodValidationPipe(UpdateNoteInputSchema, 'note.validation'))
+		body: UpdateNoteDto,
+	): Promise<NoteResponseDto> {
+		this.logger.info(`Updating note ${noteId} for agent ${agent.id}`);
+
+		const note = await this.noteService.update(agent.id, noteId, body);
 
 		return note as unknown as NoteResponseDto;
 	}

@@ -119,6 +119,73 @@ describe('NoteTypeOrmRepository', () => {
 		});
 	});
 
+	describe('update', () => {
+		it('should update note body and modifiedBy', async () => {
+			const noteToUpdate = { ...mockNoteEntity };
+			mockAgentNoteRepo.findOne.mockResolvedValue({
+				agentId: mockAgentId,
+				noteId: mockNoteId,
+				note: noteToUpdate,
+			});
+			const updatedEntity = { ...noteToUpdate, body: 'Updated body.', modifiedBy: 'editor@example.com' };
+			mockNoteRepo.save.mockResolvedValue(updatedEntity);
+
+			const result = await repository.update(mockAgentId, mockNoteId, {
+				body: 'Updated body.',
+				modifiedBy: 'editor@example.com',
+			});
+
+			expect(mockAgentNoteRepo.findOne).toHaveBeenCalledWith({
+				where: { agentId: mockAgentId, noteId: mockNoteId },
+				relations: ['note'],
+			});
+			expect(mockNoteRepo.save).toHaveBeenCalled();
+			expect(result).toEqual({
+				id: mockNoteId,
+				body: 'Updated body.',
+				createdBy: 'admin@example.com',
+				created: mockNoteEntity.created,
+				lastModified: mockNoteEntity.lastModified,
+				modifiedBy: 'editor@example.com',
+			});
+		});
+
+		it('should return null when note not found for agent', async () => {
+			mockAgentNoteRepo.findOne.mockResolvedValue(null);
+
+			const result = await repository.update(mockAgentId, mockNoteId, { body: 'Updated.' });
+
+			expect(result).toBeNull();
+		});
+
+		it('should return null when junction exists but note is null', async () => {
+			mockAgentNoteRepo.findOne.mockResolvedValue({
+				agentId: mockAgentId,
+				noteId: mockNoteId,
+				note: null,
+			});
+
+			const result = await repository.update(mockAgentId, mockNoteId, { body: 'Updated.' });
+
+			expect(result).toBeNull();
+		});
+
+		it('should only update provided fields', async () => {
+			const noteToUpdate = { ...mockNoteEntity };
+			mockAgentNoteRepo.findOne.mockResolvedValue({
+				agentId: mockAgentId,
+				noteId: mockNoteId,
+				note: noteToUpdate,
+			});
+			mockNoteRepo.save.mockResolvedValue(noteToUpdate);
+
+			await repository.update(mockAgentId, mockNoteId, { body: 'New body only.' });
+
+			expect(noteToUpdate.body).toBe('New body only.');
+			expect(noteToUpdate.modifiedBy).toBe('system');
+		});
+	});
+
 	describe('findByIdForAgent', () => {
 		it('should return mapped note when junction record exists', async () => {
 			mockAgentNoteRepo.findOne.mockResolvedValue({

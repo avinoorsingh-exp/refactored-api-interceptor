@@ -55,6 +55,21 @@ export class NoteTypeOrmRepository implements INoteRepository {
 		return this.mapToDomain(savedNote);
 	}
 
+	async update(agentId: string, noteId: string, data: { body?: string; modifiedBy?: string }): Promise<Note | null> {
+		const agentNote = await this.agentNoteRepo.findOne({
+			where: { agentId, noteId },
+			relations: ['note'],
+		});
+
+		if (!agentNote?.note) return null;
+
+		if (data.body !== undefined) agentNote.note.body = data.body;
+		if (data.modifiedBy !== undefined) agentNote.note.modifiedBy = data.modifiedBy;
+
+		const saved = await this.noteRepo.save(agentNote.note);
+		return this.mapToDomain(saved);
+	}
+
 	async findByIdForAgent(agentId: string, noteId: string): Promise<Note | null> {
 		const agentNote = await this.agentNoteRepo.findOne({
 			where: { agentId, noteId },

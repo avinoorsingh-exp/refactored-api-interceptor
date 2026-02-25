@@ -3,7 +3,7 @@ import type { Note, QueryParams, FieldSelection } from '@exprealty/shared-domain
 import type { INoteRepository } from './ports/note.repository.port.js';
 import type { PageResult } from '../../../common/ports/pagination.types.js';
 import { LoggerService } from '../../../core/logger.service.js';
-import type { CreateNoteDto } from './dto/index.js';
+import type { CreateNoteDto, UpdateNoteDto } from './dto/index.js';
 
 /**
  * Service layer for note business logic.
@@ -36,6 +36,30 @@ export class NoteService {
 
 		const duration = Date.now() - startTime;
 		this.logger.info(`Created note ${note.id} for agent ${agentId} in ${duration}ms`);
+
+		return note;
+	}
+
+	/**
+	 * Updates a note for an agent.
+	 */
+	async update(agentId: string, noteId: string, data: UpdateNoteDto): Promise<Note> {
+		const startTime = Date.now();
+
+		const note = await this.noteRepo.update(agentId, noteId, {
+			body: data.body,
+			modifiedBy: data.modifiedBy,
+		});
+
+		if (!note) {
+			throw new NotFoundException({
+				message: `Note with id '${noteId}' not found for agent '${agentId}'`,
+				i18nType: 'note.not_found',
+			});
+		}
+
+		const duration = Date.now() - startTime;
+		this.logger.info(`Updated note ${noteId} for agent ${agentId} in ${duration}ms`);
 
 		return note;
 	}
