@@ -50,8 +50,9 @@ try {
 }
 
 const conversionOptions = {
-	schemaFaker: false,
-	requestParametersResolution: 'Schema',
+	schemaFaker: true,
+	requestParametersResolution: 'Example',
+	exampleParametersResolution: 'Example',
 	folderStrategy: 'Tags',
 };
 

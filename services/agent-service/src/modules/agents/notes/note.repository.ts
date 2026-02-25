@@ -1,0 +1,94 @@
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { NoteEntity, AgentNoteEntity } from '@exprealty/database';
+import type { Note, QueryParams, FieldSelection } from '@exprealty/shared-domain';
+import type { INoteRepository } from './ports/note.repository.port.js';
+import type { PageResult } from '../../../common/ports/pagination.types.js';
+import { LoggerService } from '../../../core/logger.service.js';
+
+/**
+ * TypeORM adapter implementing INoteRepository port.
+ * @public
+ */
+@Injectable()
+export class NoteTypeOrmRepository implements INoteRepository {
+	constructor(
+		@InjectRepository(NoteEntity)
+		private readonly noteRepo: Repository<NoteEntity>,
+		@InjectRepository(AgentNoteEntity)
+		private readonly agentNoteRepo: Repository<AgentNoteEntity>,
+		private readonly logger: LoggerService,
+	) {
+		this.logger.setContext('NoteRepository');
+	}
+
+	/**
+	 * Maps a TypeORM NoteEntity to a domain Note type.
+	 */
+	private mapToDomain(entity: NoteEntity): Note {
+		return {
+			id: entity.id,
+			actor: entity.actor,
+			body: entity.body,
+			created: entity.created,
+			lastModified: entity.lastModified,
+			modifiedBy: entity.modifiedBy,
+		} as Note;
+	}
+
+	async create(agentId: string, data: { actor: string; body: string }): Promise<Note> {
+		// Create the note entity
+		const noteEntity = this.noteRepo.create({
+			actor: data.actor,
+			body: data.body,
+		});
+		const savedNote = await this.noteRepo.save(noteEntity);
+
+		// Create the junction record
+		const agentNote = this.agentNoteRepo.create({
+			agentId,
+			noteId: savedNote.id,
+		});
+		await this.agentNoteRepo.save(agentNote);
+
+		return this.mapToDomain(savedNote);
+	}
+
+	async findByIdForAgent(agentId: string, noteId: string): Promise<Note | null> {
+		const agentNote = await this.agentNoteRepo.findOne({
+			where: { agentId, noteId },
+			relations: ['note'],
+		});
+
+		if (!agentNote?.note) return null;
+
+		return this.mapToDomain(agentNote.note);
+	}
+
+	async findByAgentId(
+		agentId: string,
+		query?: Partial<QueryParams>,
+		_selection?: FieldSelection,
+	): Promise<PageResult<Note>> {
+		const offset = query?.offset ?? 0;
+		const limit = Math.min(query?.limit ?? 25, 50);
+
+		const qb = this.agentNoteRepo
+			.createQueryBuilder('an')
+			.innerJoinAndSelect('an.note', 'note')
+			.where('an.agent_id = :agentId', { agentId })
+			.orderBy('note.created', 'DESC')
+			.skip(offset)
+			.take(limit);
+
+		const [agentNotes, total] = await qb.getManyAndCount();
+
+		return {
+			items: agentNotes
+				.filter((an) => an.note != null)
+				.map((an) => this.mapToDomain(an.note!)),
+			total,
+		};
+	}
+}

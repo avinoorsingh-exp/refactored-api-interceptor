@@ -25,6 +25,9 @@ import {
 	LicenseEventEntity,
 	AgentTaxEntity,
 	TaxEntity,
+	NoteEntity,
+	AgentNoteEntity,
+	LifecycleEventEntity,
 	CountryEntity,
 	StateEntity,
 	LineOfBusinessEntity,
@@ -43,6 +46,9 @@ import { AgentAddressTypeOrmRepository } from './addresses/agent-address.reposit
 import { LicenseController } from './licenses/license.controller.js';
 import { LicenseService } from './licenses/license.service.js';
 import { LicenseTypeOrmRepository } from './licenses/license.repository.js';
+import { NoteController } from './notes/note.controller.js';
+import { NoteService } from './notes/note.service.js';
+import { NoteTypeOrmRepository } from './notes/note.repository.js';
 import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 
 /**
@@ -104,6 +110,10 @@ import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 			// Agent tax junction + tax entity for ?include=agentTax
 			AgentTaxEntity,
 			TaxEntity,
+			// Note entities for agent notes
+			NoteEntity,
+			AgentNoteEntity,
+			LifecycleEventEntity,
 			// Reference entities for license validation
 			CountryEntity,
 			StateEntity,
@@ -111,12 +121,13 @@ import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 		]),
 		PaginationModule,
 	],
-	controllers: [AgentController, ContactMethodController, AgentAddressController, LicenseController],
+	controllers: [AgentController, ContactMethodController, AgentAddressController, LicenseController, NoteController],
 	providers: [
 		AgentService,
 		ContactMethodService,
 		AgentAddressService,
 		LicenseService,
+		NoteService,
 		ProjectionService,
 		AgentExistsGuard,
 		// Provide the repository adapter under the port token
@@ -136,6 +147,10 @@ import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 			provide: 'ILicenseRepository',
 			useClass: LicenseTypeOrmRepository,
 		},
+		{
+			provide: 'INoteRepository',
+			useClass: NoteTypeOrmRepository,
+		},
 		// Provide AgentService under AGENT_SERVICE token for AgentExistsGuard
 		{
 			provide: 'AGENT_SERVICE',
@@ -147,6 +162,7 @@ import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 		ContactMethodService,
 		AgentAddressService,
 		LicenseService,
+		NoteService,
 		AgentExistsGuard,
 		// Export AGENT_SERVICE token for AgentExistsGuard in other modules
 		'AGENT_SERVICE',

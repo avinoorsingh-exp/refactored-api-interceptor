@@ -316,6 +316,12 @@ export type { TaxIdType } from './entities/core/tax.entity.js'
 export { AgentTaxEntity } from './entities/core/agent-tax.entity.js'
 
 /**
+ * TypeORM entity for AgentNote junction table.
+ * @public
+ */
+export { AgentNoteEntity } from './entities/core/agent-note.entity.js'
+
+/**
  * TypeORM entity for OfficeAddress join table.
  * @public
  */

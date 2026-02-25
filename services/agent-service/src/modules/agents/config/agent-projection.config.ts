@@ -51,6 +51,7 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		'licensedStates',
 		'agentTax',
 		'tax',
+		'note',
 	],
 
 	// Default fields (when no ?fields specified)
@@ -203,6 +204,11 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 			property: 'agentTaxes',
 			fields: ['id', 'agentId', 'taxId', 'isPrimary'],
 			nested: ['tax'], // Include the nested tax entity
+		},
+		// Notes associated with the agent via agent_note junction table
+		note: {
+			property: 'notes',
+			fields: ['id', 'actor', 'body', 'created', 'lastModified', 'modifiedBy'],
 		},
 		// Direct access to Tax[] - hides junction table
 		// Like agentCompany/mls, this provides a cleaner API when junction metadata isn't needed

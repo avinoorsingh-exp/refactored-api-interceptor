@@ -25,7 +25,8 @@
       "Bash(node apps/load-test/scripts/history.mjs:*)",
       "Bash(artifacts/k6/20260224T170000-def5678/k6-summary.json:*)",
       "Bash(node:*)",
-      "Bash(git check-ignore:*)"
+      "Bash(git check-ignore:*)",
+      "Bash(pnpm --filter @exprealty/agent-service test:*)"
     ]
   }
 }

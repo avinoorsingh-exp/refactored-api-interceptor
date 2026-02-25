@@ -23,6 +23,7 @@
         "manifests-fix": "pnpm manypkg fix",
         "migration:generate": "pnpm -r --filter \"./packages/database\" migration:generate",
         "migration:run": "pnpm -r --filter \"./packages/database\" migration:run",
+        "migration:run:local": "pnpm --filter @exprealty/database migration:run:local",
         "prepare": "husky",
         "test": "pnpm test:unit",
         "test:unit": "pnpm -r --filter \"./services/*\" test",

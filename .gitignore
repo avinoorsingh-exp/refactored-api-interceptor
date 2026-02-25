@@ -59,3 +59,4 @@ docs/ERD/**
 .claude/settings.json
 docs/miro/*
 postman/scripts
+.claude/settings.local.json

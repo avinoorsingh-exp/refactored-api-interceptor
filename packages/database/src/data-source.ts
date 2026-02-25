@@ -50,6 +50,7 @@ import { W9Entity } from './entities/core/w9.entity.js'
 import { W9AddressEntity } from './entities/core/w9-address.entity.js'
 import { TaxEntity } from './entities/core/tax.entity.js'
 import { AgentTaxEntity } from './entities/core/agent-tax.entity.js'
+import { AgentNoteEntity } from './entities/core/agent-note.entity.js'
 import { OfficeAddressEntity } from './entities/core/office-address.entity.js'
 import { ArtifactEntity } from './entities/core/artifact.entity.js'
 import { CustomFlagEntity } from './entities/core/custom-flag.entity.js'
@@ -203,6 +204,7 @@ export const AppDataSource = new DataSource({
 		W9AddressEntity,
 		TaxEntity,
 		AgentTaxEntity,
+		AgentNoteEntity,
 		OfficeAddressEntity,
 		ArtifactEntity,
 		CustomFlagEntity,

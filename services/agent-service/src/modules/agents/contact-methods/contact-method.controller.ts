@@ -84,12 +84,14 @@ export class ContactMethodController {
 		required: false,
 		type: Number,
 		description: 'Pagination offset (default: 0)',
+		example: 0,
 	})
 	@ApiQuery({
 		name: 'limit',
 		required: false,
 		type: Number,
 		description: 'Pagination limit (max: 50, default: 25)',
+		example: 25,
 	})
 	@ApiResponse({
 		status: 200,
