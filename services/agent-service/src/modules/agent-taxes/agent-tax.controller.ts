@@ -48,7 +48,7 @@ import { Agent } from '../../common/decorators/agent.decorator.js';
  * Uses AgentExistsGuard to validate agent exists before processing.
  * The validated agent is available via @Agent() decorator.
  */
-@ApiTags('agents')
+@ApiTags('agents > taxes')
 @Controller('v1/agents/:id/taxes')
 @UseGuards(AgentExistsGuard)
 export class AgentTaxController {

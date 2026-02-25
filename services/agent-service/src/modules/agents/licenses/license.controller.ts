@@ -46,7 +46,7 @@ import type { Agent as AgentType } from '@exprealty/shared-domain';
  * Uses AgentExistsGuard to validate agent exists before processing.
  * The validated agent is available via @Agent() decorator.
  */
-@ApiTags('licenses')
+@ApiTags('agents > licenses')
 @Controller('v1/agents/:id/licenses')
 @UseGuards(AgentExistsGuard)
 export class LicenseController {

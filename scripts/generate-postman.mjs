@@ -56,6 +56,161 @@ const conversionOptions = {
 	folderStrategy: 'Tags',
 };
 
+/**
+ * Converts flat "parent > child" tag folders into nested Postman subfolders.
+ * E.g., a top-level folder named "agents > notes" becomes a "notes" subfolder
+ * inside the "agents" folder. If the parent folder doesn't exist, it is created.
+ */
+function nestHierarchicalFolders(collection) {
+	if (!collection.item || !Array.isArray(collection.item)) return;
+
+	const topLevel = collection.item;
+	const toRemove = [];
+
+	for (let i = 0; i < topLevel.length; i++) {
+		const folder = topLevel[i];
+		if (!folder.name || !folder.name.includes(' > ')) continue;
+
+		const [parentName, childName] = folder.name.split(' > ').map((s) => s.trim());
+
+		// Find or create parent folder
+		let parent = topLevel.find(
+			(f) => f.name === parentName && f.item && !f.name.includes(' > '),
+		);
+		if (!parent) {
+			parent = { name: parentName, item: [] };
+			topLevel.push(parent);
+		}
+		if (!parent.item) parent.item = [];
+
+		// Move as subfolder with the child name
+		parent.item.push({ ...folder, name: childName });
+		toRemove.push(i);
+	}
+
+	// Remove moved folders (reverse order to preserve indices)
+	for (const idx of toRemove.reverse()) {
+		topLevel.splice(idx, 1);
+	}
+}
+
+/**
+ * Configuration for auto-capturing IDs from list endpoints and wiring them
+ * into child route path parameters as Postman collection variables.
+ *
+ * Each entry defines:
+ *   - parentFolder: the top-level folder name (matches @ApiTags)
+ *   - listMethod: HTTP method of the list endpoint (GET)
+ *   - listNamePattern: regex to match the list request name
+ *   - variableName: Postman variable name to set (e.g., "agentId")
+ *   - responsePath: JS expression to extract the ID from the response JSON
+ *   - pathSegment: the URL path variable name to replace in child routes (e.g., ":id")
+ */
+const ID_CAPTURE_CONFIG = [
+	{
+		parentFolder: 'agents',
+		listMethod: 'GET',
+		listNamePattern: /list agent/i,
+		variableName: 'agentId',
+		responsePath: 'data[0].id',
+		pathSegment: ':id',
+	},
+	{
+		parentFolder: 'countries',
+		listMethod: 'GET',
+		listNamePattern: /list countries/i,
+		variableName: 'countryId',
+		responsePath: 'data[0].id',
+		pathSegment: ':countryId',
+	},
+];
+
+/**
+ * Injects Postman "Tests" scripts on list endpoints to capture the first
+ * item's ID into a collection variable, and replaces matching path params
+ * in child routes with the variable reference.
+ */
+function injectIdCaptureScripts(collection) {
+	if (!collection.item || !Array.isArray(collection.item)) return;
+
+	// Ensure collection variables array exists
+	if (!collection.variable) collection.variable = [];
+
+	for (const config of ID_CAPTURE_CONFIG) {
+		const folder = collection.item.find((f) => f.name === config.parentFolder);
+		if (!folder || !folder.item) continue;
+
+		// Register the collection variable with a placeholder
+		if (!collection.variable.find((v) => v.key === config.variableName)) {
+			collection.variable.push({
+				key: config.variableName,
+				value: '',
+				type: 'string',
+				description: `Auto-captured from GET list ${config.parentFolder}`,
+			});
+		}
+
+		// Find the list endpoint in the folder's direct items
+		const listRequest = folder.item.find(
+			(item) =>
+				!item.item && // not a subfolder
+				item.request?.method === config.listMethod &&
+				config.listNamePattern.test(item.name),
+		);
+
+		if (listRequest) {
+			// Inject a "Tests" (post-response) script to capture ID
+			const script = [
+				`// Auto-generated: capture ${config.variableName} from list response`,
+				`const jsonData = pm.response.json();`,
+				`if (jsonData.data && jsonData.data.length > 0) {`,
+				`    const id = jsonData.${config.responsePath};`,
+				`    pm.collectionVariables.set("${config.variableName}", id);`,
+				`    console.log("Captured ${config.variableName}:", id);`,
+				`} else {`,
+				`    console.warn("No ${config.parentFolder} found to capture ID from");`,
+				`}`,
+			];
+
+			if (!listRequest.event) listRequest.event = [];
+			// Remove any existing test script to avoid duplicates
+			listRequest.event = listRequest.event.filter((e) => e.listen !== 'test');
+			listRequest.event.push({
+				listen: 'test',
+				script: { type: 'text/javascript', exec: script },
+			});
+		}
+
+		// Replace path params in child routes (subfolders and direct items)
+		replacePathParam(folder.item, config.pathSegment, `{{${config.variableName}}}`);
+	}
+}
+
+/**
+ * Recursively replaces a path segment variable (e.g., ":id") with a Postman
+ * variable reference (e.g., "{{agentId}}") in all request URL paths.
+ */
+function replacePathParam(items, segment, replacement) {
+	for (const item of items) {
+		if (item.item) {
+			// Recurse into subfolders
+			replacePathParam(item.item, segment, replacement);
+		}
+		if (item.request?.url?.path) {
+			item.request.url.path = item.request.url.path.map((p) =>
+				p === segment ? replacement : p,
+			);
+		}
+		// Also update the raw URL string if present
+		if (item.request?.url?.raw) {
+			item.request.url.raw = item.request.url.raw.replace(
+				new RegExp(segment.replace(':', '\\:'), 'g'),
+				replacement,
+			);
+		}
+	}
+}
+
 await new Promise((resolve, reject) => {
 	Converter.convert(
 		{ type: 'json', data: spec },
@@ -80,6 +235,12 @@ await new Promise((resolve, reject) => {
 				'{{baseUrl}}',
 			);
 			const processedCollection = JSON.parse(collectionStr);
+
+			// Post-process: nest "parent > child" tag folders into subfolders
+			nestHierarchicalFolders(processedCollection);
+
+			// Post-process: inject ID capture scripts and wire collection variables
+			injectIdCaptureScripts(processedCollection);
 
 			// Add auth configuration using Postman variables
 			processedCollection.auth = {

@@ -49,7 +49,7 @@ import type { Agent as AgentType } from '@exprealty/shared-domain';
  * Uses AgentExistsGuard to validate agent exists before processing.
  * The validated agent is available via @Agent() decorator.
  */
-@ApiTags('agents')
+@ApiTags('agents > agent-companies')
 @Controller('v1/agents/:id/agent-companies')
 @UseGuards(AgentExistsGuard)
 export class AgentCompanyAssociationNestedController {

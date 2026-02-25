@@ -158,6 +158,15 @@ export class AgentTypeOrmRepository
 		if (entity.licenses) result.license = entity.licenses;
 		// Direct access to companies (hides junction table)
 		if (entity.agentCompany) result.agentCompany = entity.agentCompany;
+		// Notes associated with the agent via agent_note junction table
+		if (entity.notes) result.note = entity.notes.map((n) => ({
+			id: n.id,
+			actor: n.actor,
+			body: n.body,
+			created: n.created,
+			lastModified: n.lastModified,
+			modifiedBy: n.modifiedBy,
+		}));
 
 		// Virtual relations - include as null if requested but not found
 		// This ensures consistent API responses when include= is specified

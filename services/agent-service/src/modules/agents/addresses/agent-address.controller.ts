@@ -64,7 +64,7 @@ const UpdateAgentAddressSchema = CreateAgentAddressSchema.partial();
  * Uses AgentExistsGuard to validate agent exists before processing.
  * The validated agent is available via @Agent() decorator.
  */
-@ApiTags('agents')
+@ApiTags('agents > addresses')
 @Controller('v1/agents/:id/addresses')
 @UseGuards(AgentExistsGuard)
 export class AgentAddressController {

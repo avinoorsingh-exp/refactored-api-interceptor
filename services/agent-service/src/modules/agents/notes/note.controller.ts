@@ -43,7 +43,7 @@ const NoteIdSchema = z.string().uuid({ message: 'errors.note.id.invalid' });
  * Uses AgentExistsGuard to validate agent exists before processing.
  * The validated agent is available via @Agent() decorator.
  */
-@ApiTags('agents')
+@ApiTags('agents > notes')
 @Controller('v1/agents/:id/notes')
 @UseGuards(AgentExistsGuard)
 export class NoteController {
