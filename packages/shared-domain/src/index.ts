@@ -22,7 +22,7 @@ export { isMaskedPlaceholder, extractLastFour } from './utils/pii.js'
 export { validationErrorMap } from './validation/error-map.js'
 
 // --- Audit
-export { AuditableSchema, type Auditable } from './schemas/audit.js'
+export { AuditableSchema, type Auditable, FullAuditableSchema, type FullAuditable } from './schemas/audit.js'
 
 // ============================================================================
 // VALUE OBJECTS

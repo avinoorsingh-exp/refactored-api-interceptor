@@ -208,7 +208,7 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		// Notes associated with the agent via agent_note junction table
 		note: {
 			property: 'notes',
-			fields: ['id', 'actor', 'body', 'created', 'lastModified', 'modifiedBy'],
+			fields: ['id', 'body', 'createdBy', 'created', 'lastModified', 'modifiedBy'],
 		},
 		// Direct access to Tax[] - hides junction table
 		// Like agentCompany/mls, this provides a cleaner API when junction metadata isn't needed

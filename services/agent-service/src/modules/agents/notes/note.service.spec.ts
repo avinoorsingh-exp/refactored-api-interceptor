@@ -17,8 +17,8 @@ describe('NoteService', () => {
 
 	const mockNote: Note = {
 		id: '660e8400-e29b-41d4-a716-446655440001',
-		actor: 'admin@example.com',
 		body: 'Agent completed onboarding process.',
+		createdBy: 'admin@example.com',
 		created: new Date('2026-02-20T10:00:00Z'),
 		lastModified: new Date('2026-02-20T10:00:00Z'),
 		modifiedBy: 'system',
@@ -48,8 +48,8 @@ describe('NoteService', () => {
 
 	describe('create', () => {
 		const createDto = {
-			actor: 'admin@example.com',
 			body: 'Agent completed onboarding process.',
+			createdBy: 'admin@example.com',
 		};
 
 		/**
@@ -62,8 +62,8 @@ describe('NoteService', () => {
 
 			expect(result).toEqual(mockNote);
 			expect(repository.create).toHaveBeenCalledWith(mockAgentId, {
-				actor: createDto.actor,
 				body: createDto.body,
+				createdBy: createDto.createdBy,
 			});
 		});
 

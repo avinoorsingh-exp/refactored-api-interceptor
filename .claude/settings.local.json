@@ -26,7 +26,8 @@
       "Bash(artifacts/k6/20260224T170000-def5678/k6-summary.json:*)",
       "Bash(node:*)",
       "Bash(git check-ignore:*)",
-      "Bash(pnpm --filter @exprealty/agent-service test:*)"
+      "Bash(pnpm --filter @exprealty/agent-service test:*)",
+      "Bash(pnpm --filter @exprealty/agent-service exec tsc --noEmit 2>&1)"
     ]
   }
 }

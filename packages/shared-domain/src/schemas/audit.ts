@@ -23,3 +23,23 @@ export const AuditableSchema = z.object({
  * @public
  */
 export type Auditable = z.infer<typeof AuditableSchema>
+
+/**
+ * Extended audit fields schema that also tracks who created the record.
+ *
+ * Adds:
+ * - createdBy: Who created the record (user ID or 'system')
+ *
+ * Use for new entities (post phase-1) that need full audit trail.
+ *
+ * @public
+ */
+export const FullAuditableSchema = AuditableSchema.extend({
+	createdBy: z.string().min(1).default('system'),
+})
+
+/**
+ * Type representing full auditable fields.
+ * @public
+ */
+export type FullAuditable = z.infer<typeof FullAuditableSchema>

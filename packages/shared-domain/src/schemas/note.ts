@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { AuditableSchema } from './audit.js'
+import { FullAuditableSchema } from './audit.js'
 
 /**
  * Base schema for Note entity.
@@ -9,10 +9,9 @@ import { AuditableSchema } from './audit.js'
 export const NoteBaseSchema = z
 	.object({
 		id: z.string().uuid(),
-		actor: z.string().min(1).max(255),
 		body: z.string(),
 	})
-	.merge(AuditableSchema)
+	.merge(FullAuditableSchema)
 	.describe('Base Note')
 
 /**

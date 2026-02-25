@@ -26,6 +26,13 @@ export { AuditableEntity } from './entities/core/auditable.entity.js'
  */
 export { SearchableAuditableEntity } from './entities/core/searchable-auditable.entity.js'
 
+/**
+ * Extended auditable entity with createdBy field.
+ * Use for new entities (post phase-1) that need full audit trail.
+ * @public
+ */
+export { FullAuditableEntity } from './entities/core/full-auditable.entity.js'
+
 // ============================================================================
 // Entities
 // ============================================================================

@@ -161,8 +161,8 @@ export class AgentTypeOrmRepository
 		// Notes associated with the agent via agent_note junction table
 		if (entity.notes) result.note = entity.notes.map((n) => ({
 			id: n.id,
-			actor: n.actor,
 			body: n.body,
+			createdBy: n.createdBy,
 			created: n.created,
 			lastModified: n.lastModified,
 			modifiedBy: n.modifiedBy,

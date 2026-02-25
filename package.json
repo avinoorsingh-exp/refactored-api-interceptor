@@ -42,6 +42,7 @@
         "projections:generate": "pnpm --filter @exprealty/load-test projections:generate",
         "openapi:export": "./scripts/export-openapi.sh",
         "postman:generate": "./scripts/export-openapi.sh && node scripts/generate-postman.mjs",
+        "docker:up:k6": "docker compose -f docker-compose.k6.yml up -d",
         "release:version": "changeset version",
         "release:publish": "changeset publish",
         "test:api": "pnpm -r --filter \"./services/*\" test:api",

@@ -16,8 +16,8 @@ describe('NoteTypeOrmRepository', () => {
 
 	const mockNoteEntity = {
 		id: mockNoteId,
-		actor: 'admin@example.com',
 		body: 'Test note body.',
+		createdBy: 'admin@example.com',
 		created: new Date('2026-02-20T10:00:00Z'),
 		lastModified: new Date('2026-02-20T10:00:00Z'),
 		modifiedBy: 'system',
@@ -60,7 +60,7 @@ describe('NoteTypeOrmRepository', () => {
 	});
 
 	describe('create', () => {
-		const createData = { actor: 'admin@example.com', body: 'Test note body.' };
+		const createData = { body: 'Test note body.', createdBy: 'admin@example.com' };
 
 		it('should create a note entity and junction record', async () => {
 			mockNoteRepo.create.mockReturnValue(mockNoteEntity);
@@ -78,8 +78,8 @@ describe('NoteTypeOrmRepository', () => {
 			const result = await repository.create(mockAgentId, createData);
 
 			expect(mockNoteRepo.create).toHaveBeenCalledWith({
-				actor: createData.actor,
 				body: createData.body,
+				createdBy: createData.createdBy,
 			});
 			expect(mockNoteRepo.save).toHaveBeenCalledWith(mockNoteEntity);
 			expect(mockAgentNoteRepo.create).toHaveBeenCalledWith({
@@ -89,11 +89,25 @@ describe('NoteTypeOrmRepository', () => {
 			expect(mockAgentNoteRepo.save).toHaveBeenCalled();
 			expect(result).toEqual({
 				id: mockNoteId,
-				actor: 'admin@example.com',
 				body: 'Test note body.',
+				createdBy: 'admin@example.com',
 				created: mockNoteEntity.created,
 				lastModified: mockNoteEntity.lastModified,
 				modifiedBy: 'system',
+			});
+		});
+
+		it('should default createdBy to system when not provided', async () => {
+			mockNoteRepo.create.mockReturnValue(mockNoteEntity);
+			mockNoteRepo.save.mockResolvedValue(mockNoteEntity);
+			mockAgentNoteRepo.create.mockReturnValue({ agentId: mockAgentId, noteId: mockNoteId });
+			mockAgentNoteRepo.save.mockResolvedValue({ id: 'junction-id', agentId: mockAgentId, noteId: mockNoteId });
+
+			await repository.create(mockAgentId, { body: 'Test note.' });
+
+			expect(mockNoteRepo.create).toHaveBeenCalledWith({
+				body: 'Test note.',
+				createdBy: 'system',
 			});
 		});
 
@@ -121,8 +135,8 @@ describe('NoteTypeOrmRepository', () => {
 			});
 			expect(result).toEqual({
 				id: mockNoteId,
-				actor: 'admin@example.com',
 				body: 'Test note body.',
+				createdBy: 'admin@example.com',
 				created: mockNoteEntity.created,
 				lastModified: mockNoteEntity.lastModified,
 				modifiedBy: 'system',

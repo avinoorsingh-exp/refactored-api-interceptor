@@ -1,5 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm'
-import { AuditableEntity } from './auditable.entity.js'
+import { FullAuditableEntity } from './full-auditable.entity.js'
 import { Searchable, Filterable, Sortable } from '../../decorators/searchable-decorators.js'
 
 /**
@@ -7,17 +7,11 @@ import { Searchable, Filterable, Sortable } from '../../decorators/searchable-de
  * @public
  */
 @Entity({ name: 'note', schema: 'core' })
-export class NoteEntity extends AuditableEntity {
+export class NoteEntity extends FullAuditableEntity {
 	@PrimaryGeneratedColumn('uuid')
 	@Filterable()
 	@Sortable()
 	id!: string
-
-	@Column({ type: 'text' })
-	@Searchable({ weight: 5, behavior: 'partial', description: 'Note author/actor' })
-	@Filterable()
-	@Sortable()
-	actor!: string
 
 	@Column({ type: 'text' })
 	@Searchable({ weight: 8, behavior: 'partial', description: 'Note body text' })

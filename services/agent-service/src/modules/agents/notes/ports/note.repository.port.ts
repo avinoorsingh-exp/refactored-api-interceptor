@@ -9,7 +9,7 @@ export interface INoteRepository {
 	/**
 	 * Creates a new note and links it to an agent via the agent_note junction table.
 	 */
-	create(agentId: string, data: { actor: string; body: string }): Promise<Note>;
+	create(agentId: string, data: { body: string; createdBy?: string }): Promise<Note>;
 
 	/**
 	 * Finds a note by ID that belongs to the specified agent.

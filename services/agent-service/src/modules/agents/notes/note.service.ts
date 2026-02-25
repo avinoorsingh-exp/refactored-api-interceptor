@@ -30,8 +30,8 @@ export class NoteService {
 		const startTime = Date.now();
 
 		const note = await this.noteRepo.create(agentId, {
-			actor: data.actor,
 			body: data.body,
+			createdBy: data.createdBy,
 		});
 
 		const duration = Date.now() - startTime;

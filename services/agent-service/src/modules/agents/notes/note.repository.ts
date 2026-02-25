@@ -29,19 +29,19 @@ export class NoteTypeOrmRepository implements INoteRepository {
 	private mapToDomain(entity: NoteEntity): Note {
 		return {
 			id: entity.id,
-			actor: entity.actor,
 			body: entity.body,
+			createdBy: entity.createdBy,
 			created: entity.created,
 			lastModified: entity.lastModified,
 			modifiedBy: entity.modifiedBy,
 		} as Note;
 	}
 
-	async create(agentId: string, data: { actor: string; body: string }): Promise<Note> {
+	async create(agentId: string, data: { body: string; createdBy?: string }): Promise<Note> {
 		// Create the note entity
 		const noteEntity = this.noteRepo.create({
-			actor: data.actor,
 			body: data.body,
+			createdBy: data.createdBy ?? 'system',
 		});
 		const savedNote = await this.noteRepo.save(noteEntity);
 
