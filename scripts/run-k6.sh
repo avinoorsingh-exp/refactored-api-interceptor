@@ -65,6 +65,18 @@ if [ -f "$ARTIFACT_DIR/k6-summary.json" ]; then
     "$ARTIFACT_DIR" "$SCENARIO" "$BASE_URL" || true
 fi
 
+# Run regression comparison if PERF_COMPARE=true
+PERF_ENV="${PERF_ENV:-local}"
+if [ "${PERF_COMPARE:-}" = "true" ] && [ -f "$ARTIFACT_DIR/k6-summary.json" ]; then
+  echo ""
+  echo "Running regression comparison..."
+  node "$REPO_ROOT/apps/load-test/scripts/compare-summaries.mjs" \
+    --current "$ARTIFACT_DIR/k6-summary.json" \
+    --outdir "$ARTIFACT_DIR" \
+    --env "$PERF_ENV" \
+    --scenario "$SCENARIO" || true
+fi
+
 echo ""
 echo "Artifacts written to: $ARTIFACT_DIR"
 ls -la "$ARTIFACT_DIR"

@@ -36,6 +36,7 @@ coverage
 coverage-unit
 *.lcov
 artifacts/
+artifacts-history/
 
 **/tsconfig.build.tsbuildinfo
 
@@ -49,6 +50,7 @@ artifacts/
 .env*
 !env.example
 !.env.agentservice.example
+!.env.loadtest.example
 .env
 **/temp
 **/*Zone.Identifier*

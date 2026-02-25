@@ -16,7 +16,16 @@
       "Bash(ls:*)",
       "Bash(./scripts/export-coverage.sh:*)",
       "Bash(pnpm --filter @exprealty/encryption test:cov:*)",
-      "Bash(pnpm --filter @exprealty/agent-service test -- --testPathPattern \"agent-company.service|agent-tax.service|interceptor\")"
+      "Bash(pnpm --filter @exprealty/agent-service test -- --testPathPattern \"agent-company.service|agent-tax.service|interceptor\")",
+      "Bash(pnpm add:*)",
+      "Bash(/home/mgexp/dev/platform-upgrade_project/sprint1/agent-service/artifacts/openapi/agent-service.openapi.json:*)",
+      "Bash(node scripts/generate-postman.mjs:*)",
+      "Bash(node -e:*)",
+      "Bash(artifacts/k6/20260224T160000-abc1234/k6-summary.json:*)",
+      "Bash(node apps/load-test/scripts/history.mjs:*)",
+      "Bash(artifacts/k6/20260224T170000-def5678/k6-summary.json:*)",
+      "Bash(node:*)",
+      "Bash(git check-ignore:*)"
     ]
   }
 }

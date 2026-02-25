@@ -111,9 +111,67 @@ BASE_URL=http://localhost:3000 ./scripts/run-k6.sh stress
 
 ---
 
-## Endpoints Hit
+## Agents-Only Scenarios
 
-All three scenarios hit the same endpoints:
+Dedicated scenarios that **only** hit the Agents module routes. Useful for isolating agent query performance.
+
+### Commands
+
+```bash
+# Smoke — quick health check
+BASE_URL=http://localhost:3000 pnpm loadtest:agents:smoke
+
+# Baseline — steady-state with weighted params
+BASE_URL=http://localhost:3000 pnpm loadtest:agents:baseline
+
+# Stress — ramp to 50 VUs, worst-case params
+BASE_URL=http://localhost:3000 pnpm loadtest:agents:stress
+```
+
+### Endpoints Hit
+
+| Endpoint | Journey Function |
+|----------|-----------------|
+| `GET /v1/agent/health` | `healthCheck()` |
+| `GET /v1/agents` | `listAgents(params)` |
+
+### Example: Agents-Focused `.env.loadtest.local`
+
+```bash
+BASE_URL=http://localhost:3000
+AGENTS_INCLUDES=mix
+AGENTS_INCLUDES_WEIGHTS=none:40,light:35,heavy:25
+AGENTS_FIELDS_MODE=mix
+AGENTS_FIELDS_WEIGHTS=default:60,custom:40
+AGENTS_FIELDS_COUNT_SET=5,10,15,20
+SEARCH_MODE=mix
+```
+
+### Example: Worst-Case One-Liner
+
+```bash
+BASE_URL=http://localhost:3000 SEARCH_MODE=contains INCLUDES=heavy \
+  FIELDS_MODE=custom FIELDS_COUNT_SET=20 PAGE_SIZE_SET=100 \
+  pnpm loadtest:agents:stress
+```
+
+### Scenario Tags
+
+Each agents-only scenario sets its scenario tag explicitly:
+
+| Script | Scenario Tag |
+|--------|-------------|
+| `loadtest:agents:smoke` | `agents-smoke` |
+| `loadtest:agents:baseline` | `agents-baseline` |
+| `loadtest:agents:stress` | `agents-stress` |
+
+These appear in hotspot metrics, regression reports, and k6 summary output.
+
+---
+
+## Endpoints Hit (Generic Scenarios)
+
+All three generic scenarios hit the same endpoints:
 
 | Endpoint | Journey Function | Module |
 |----------|-----------------|--------|
@@ -259,6 +317,9 @@ export default function () {
 | `pnpm loadtest:smoke` | Smoke test with artifact generation |
 | `pnpm loadtest:baseline` | Baseline test with artifact generation |
 | `pnpm loadtest:stress` | Stress test with artifact generation |
+| `pnpm loadtest:agents:smoke` | Agents-only smoke test |
+| `pnpm loadtest:agents:baseline` | Agents-only baseline test |
+| `pnpm loadtest:agents:stress` | Agents-only stress test |
 | `./scripts/run-k6.sh <scenario>` | Run any scenario with artifacts |
 | `pnpm --filter @exprealty/load-test smoke` | Direct k6 run (no artifacts) |
 | `pnpm --filter @exprealty/load-test k6:agents` | Legacy per-module scenario |

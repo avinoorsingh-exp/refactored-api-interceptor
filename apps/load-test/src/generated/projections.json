@@ -1,0 +1,268 @@
+{
+  "agent-company-associations": {
+    "required": [
+      "id",
+      "agentId",
+      "agentCompanyId"
+    ],
+    "allowed": [
+      "id",
+      "agentId",
+      "agentCompanyId",
+      "isPrimary"
+    ],
+    "default": [
+      "id",
+      "agentId",
+      "agentCompanyId",
+      "isPrimary"
+    ],
+    "relations": [
+      "agent",
+      "agentCompany"
+    ]
+  },
+  "agent-companies": {
+    "required": [
+      "id",
+      "name"
+    ],
+    "allowed": [
+      "id",
+      "legacyId",
+      "name",
+      "email",
+      "phone",
+      "taxIdLast4",
+      "useSsn",
+      "created",
+      "lastModified",
+      "modifiedBy"
+    ],
+    "default": [
+      "id",
+      "legacyId",
+      "name",
+      "email",
+      "phone",
+      "useSsn",
+      "created",
+      "lastModified"
+    ],
+    "relations": [
+      "agentAssociations"
+    ]
+  },
+  "agents": {
+    "required": [
+      "id",
+      "agentId"
+    ],
+    "allowed": [
+      "id",
+      "agentId",
+      "title",
+      "firstName",
+      "middleName",
+      "lastName",
+      "suffix",
+      "preferredName",
+      "birthDate",
+      "lifecycleStatus",
+      "systemId",
+      "seedAgent",
+      "joinDate",
+      "anniversaryDate",
+      "terminationDate",
+      "isStaff",
+      "agentCompanyId",
+      "created",
+      "lastModified",
+      "modifiedBy"
+    ],
+    "default": [
+      "id",
+      "agentId",
+      "title",
+      "firstName",
+      "middleName",
+      "lastName",
+      "suffix",
+      "preferredName",
+      "birthDate",
+      "lifecycleStatus",
+      "systemId",
+      "seedAgent",
+      "joinDate",
+      "anniversaryDate",
+      "terminationDate",
+      "isStaff",
+      "created",
+      "lastModified",
+      "modifiedBy"
+    ],
+    "relations": [
+      "agentOffice",
+      "office",
+      "mls",
+      "address",
+      "agentAddress",
+      "externalReference",
+      "language",
+      "contactMethod",
+      "paymentSettings",
+      "sponsorConfiguration",
+      "activeLocation",
+      "publicProfile",
+      "license",
+      "primaryEmail",
+      "primaryPhone",
+      "primaryAddress",
+      "primaryLicense",
+      "licensedStates",
+      "agentCompanyAssociation",
+      "agentCompany",
+      "primaryAgentCompany",
+      "agentTax",
+      "tax",
+      "primaryTax"
+    ]
+  },
+  "mls": {
+    "required": [
+      "id",
+      "name"
+    ],
+    "allowed": [
+      "id",
+      "ouid",
+      "globalId",
+      "lifecycleStatus",
+      "name",
+      "shortName",
+      "website",
+      "orgType",
+      "kunversionUrl",
+      "addressId",
+      "created",
+      "lastModified",
+      "modifiedBy"
+    ],
+    "default": [
+      "id",
+      "ouid",
+      "globalId",
+      "lifecycleStatus",
+      "name",
+      "shortName",
+      "website",
+      "orgType",
+      "kunversionUrl",
+      "addressId",
+      "created",
+      "lastModified",
+      "modifiedBy"
+    ],
+    "relations": [
+      "address"
+    ]
+  },
+  "offices": {
+    "required": [
+      "id",
+      "name"
+    ],
+    "allowed": [
+      "id",
+      "website",
+      "name",
+      "phone",
+      "lifecycleStatus",
+      "primaryState",
+      "companyId",
+      "created",
+      "lastModified",
+      "modifiedBy"
+    ],
+    "default": [
+      "id",
+      "website",
+      "name",
+      "phone",
+      "lifecycleStatus",
+      "primaryState",
+      "companyId",
+      "created",
+      "lastModified",
+      "modifiedBy"
+    ],
+    "relations": [
+      "company"
+    ]
+  },
+  "pay-plans": {
+    "required": [
+      "id",
+      "name"
+    ],
+    "allowed": [
+      "id",
+      "name",
+      "active",
+      "agentPercentage",
+      "cap",
+      "created",
+      "lastModified",
+      "modifiedBy"
+    ],
+    "default": [
+      "id",
+      "name",
+      "active",
+      "agentPercentage",
+      "cap",
+      "created",
+      "lastModified",
+      "modifiedBy"
+    ],
+    "relations": [
+      "payPlanVariant"
+    ]
+  },
+  "states": {
+    "required": [
+      "id",
+      "name"
+    ],
+    "allowed": [
+      "id",
+      "name",
+      "code",
+      "isActive",
+      "email",
+      "signatureDistributionEmail",
+      "regionId",
+      "countryId",
+      "created",
+      "lastModified",
+      "modifiedBy"
+    ],
+    "default": [
+      "id",
+      "name",
+      "code",
+      "isActive",
+      "email",
+      "signatureDistributionEmail",
+      "regionId",
+      "countryId",
+      "created",
+      "lastModified",
+      "modifiedBy"
+    ],
+    "relations": [
+      "region",
+      "country"
+    ]
+  }
+}
