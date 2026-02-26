@@ -11,7 +11,7 @@ import { LoggerService } from '../../../core/logger.service.js';
 describe('NoteService', () => {
 	let service: NoteService;
 	let repository: jest.Mocked<INoteRepository>;
-	let logger: jest.Mocked<LoggerService>;
+	let logger: Record<string, jest.Mock>;
 
 	const mockAgentId = '550e8400-e29b-41d4-a716-446655440000';
 
@@ -42,9 +42,13 @@ describe('NoteService', () => {
 			debugTiered: jest.fn(),
 			critical: jest.fn(),
 			lifecycle: jest.fn(),
-		} as unknown as jest.Mocked<LoggerService>;
+		};
 
-		service = new NoteService(repository, logger);
+		const mockLoggerService = {
+			createScopedLogger: jest.fn().mockReturnValue(logger),
+		} as unknown as LoggerService;
+
+		service = new NoteService(repository, mockLoggerService);
 	});
 
 	afterEach(() => {

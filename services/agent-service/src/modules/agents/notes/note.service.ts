@@ -2,7 +2,7 @@ import { Injectable, Inject, NotFoundException } from '@nestjs/common';
 import type { Note, QueryParams, FieldSelection } from '@exprealty/shared-domain';
 import type { INoteRepository } from './ports/note.repository.port.js';
 import type { PageResult } from '../../../common/ports/pagination.types.js';
-import { LoggerService } from '../../../core/logger.service.js';
+import { LoggerService, ScopedLogger } from '../../../core/logger.service.js';
 import type { CreateNoteDto, UpdateNoteDto } from './dto/index.js';
 
 /**
@@ -15,12 +15,14 @@ import type { CreateNoteDto, UpdateNoteDto } from './dto/index.js';
  */
 @Injectable()
 export class NoteService {
+	private readonly logger: ScopedLogger;
+
 	constructor(
 		@Inject('INoteRepository')
 		private readonly noteRepo: INoteRepository,
-		private readonly logger: LoggerService,
+		logger: LoggerService,
 	) {
-		this.logger.setContext('NoteService');
+		this.logger = logger.createScopedLogger('NoteService');
 	}
 
 	/**

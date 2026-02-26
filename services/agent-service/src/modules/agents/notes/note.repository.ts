@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { NoteEntity, AgentNoteEntity } from '@exprealty/database';
 import type { Note, QueryParams, FieldSelection } from '@exprealty/shared-domain';
 import type { INoteRepository } from './ports/note.repository.port.js';
@@ -18,6 +18,7 @@ export class NoteTypeOrmRepository implements INoteRepository {
 		private readonly noteRepo: Repository<NoteEntity>,
 		@InjectRepository(AgentNoteEntity)
 		private readonly agentNoteRepo: Repository<AgentNoteEntity>,
+		private readonly dataSource: DataSource,
 		private readonly logger: LoggerService,
 	) {
 		this.logger.setContext('NoteRepository');
@@ -38,21 +39,32 @@ export class NoteTypeOrmRepository implements INoteRepository {
 	}
 
 	async create(agentId: string, data: { body: string; createdBy?: string }): Promise<Note> {
-		// Create the note entity
-		const noteEntity = this.noteRepo.create({
-			body: data.body,
-			createdBy: data.createdBy ?? 'system',
-		});
-		const savedNote = await this.noteRepo.save(noteEntity);
+		const queryRunner = this.dataSource.createQueryRunner();
+		await queryRunner.connect();
+		await queryRunner.startTransaction();
 
-		// Create the junction record
-		const agentNote = this.agentNoteRepo.create({
-			agentId,
-			noteId: savedNote.id,
-		});
-		await this.agentNoteRepo.save(agentNote);
+		try {
+			const noteEntity = queryRunner.manager.create(NoteEntity, {
+				body: data.body,
+				createdBy: data.createdBy ?? 'system',
+			});
+			const savedNote = await queryRunner.manager.save(noteEntity);
 
-		return this.mapToDomain(savedNote);
+			const agentNote = queryRunner.manager.create(AgentNoteEntity, {
+				agentId,
+				noteId: savedNote.id,
+			});
+			await queryRunner.manager.save(agentNote);
+
+			await queryRunner.commitTransaction();
+
+			return this.mapToDomain(savedNote);
+		} catch (err) {
+			await queryRunner.rollbackTransaction();
+			throw err;
+		} finally {
+			await queryRunner.release();
+		}
 	}
 
 	async update(agentId: string, noteId: string, data: { body?: string; modifiedBy?: string }): Promise<Note | null> {

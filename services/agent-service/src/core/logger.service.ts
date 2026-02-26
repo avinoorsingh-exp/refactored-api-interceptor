@@ -309,6 +309,33 @@ export class LoggerService implements OnModuleInit {
   }
 
   // -------------------------------------------------------------------------
+  // Child Logger (isolated context)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Create a child logger with its own fixed context.
+   *
+   * The returned logger delegates to the same Winston instance but always
+   * stamps `{ context: childContext }` — it never reads AsyncContextStorage
+   * or the parent's `this.context`. This prevents the "last setContext wins"
+   * bug where a shared singleton's context is overwritten by middleware.
+   *
+   * Usage:
+   *   const log = this.logger.createScopedLogger('NoteController');
+   *   log.operational('Creating note');  // context: "NoteController"
+   */
+  createScopedLogger(childContext: string): ScopedLogger {
+    return new ScopedLogger(this, childContext)
+  }
+
+  /** @internal — exposed for ScopedLogger delegation only */
+  get _winston(): WinstonLogger | null { return this.logger }
+  /** @internal */
+  get _initialized(): boolean { return this.initialized }
+  /** @internal */
+  get _env(): string { return this.env }
+
+  // -------------------------------------------------------------------------
   // Metrics Access
   // -------------------------------------------------------------------------
 
@@ -350,5 +377,124 @@ export class LoggerService implements OnModuleInit {
     } catch {
       // Fail silently - service call logging should never break the app
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ScopedLogger — isolated context, delegates to parent's Winston instance
+// ---------------------------------------------------------------------------
+
+/**
+ * Lightweight logger with a fixed context string.
+ *
+ * Never reads AsyncContextStorage, never mutates the parent.
+ * Implements the same public API surface as LoggerService so call sites
+ * can accept either type.
+ */
+export class ScopedLogger {
+  constructor(
+    private readonly parent: LoggerService,
+    private readonly childContext: string,
+  ) {}
+
+  /** No-op — child context is immutable. Provided for interface compat. */
+  setContext(_context: string): void {
+    // Intentionally ignored — child context is fixed at creation time
+  }
+
+  private withContext(meta?: Record<string, unknown>): Record<string, unknown> {
+    return { context: this.childContext, ...meta }
+  }
+
+  private withTier(tier: LogTier, meta?: Record<string, unknown>): Record<string, unknown> {
+    return this.withContext({
+      tier,
+      'dd.forward': shouldForwardLog(tier),
+      ...meta,
+    })
+  }
+
+  info(message: string, meta?: Record<string, unknown>): void {
+    try {
+      if (this.parent._winston && this.parent._initialized) {
+        this.parent._winston.info(message, this.withContext(meta))
+      } else {
+        console.log(`[INFO] ${message}`, meta || '')
+      }
+    } catch { /* fail silently */ }
+  }
+
+  error(message: string, meta?: Record<string, unknown>): void {
+    try {
+      if (this.parent._winston && this.parent._initialized) {
+        this.parent._winston.error(message, this.withContext(meta))
+      } else {
+        console.error(`[ERROR] ${message}`, meta || '')
+      }
+    } catch { /* fail silently */ }
+  }
+
+  warn(message: string, meta?: Record<string, unknown>): void {
+    try {
+      if (this.parent._winston && this.parent._initialized) {
+        this.parent._winston.warn(message, this.withContext(meta))
+      } else {
+        console.warn(`[WARN] ${message}`, meta || '')
+      }
+    } catch { /* fail silently */ }
+  }
+
+  debug(message: string, meta?: Record<string, unknown>): void {
+    try {
+      if (this.parent._winston && this.parent._initialized) {
+        this.parent._winston.debug(message, this.withContext(meta))
+      } else {
+        if (this.parent._env === 'dev' || this.parent._env === 'local') {
+          console.debug(`[DEBUG] ${message}`, meta || '')
+        }
+      }
+    } catch { /* fail silently */ }
+  }
+
+  critical(message: string, meta?: Record<string, unknown>): void {
+    try {
+      if (this.parent._winston && this.parent._initialized) {
+        this.parent._winston.error(message, this.withTier(LogTier.CRITICAL, meta))
+      } else {
+        console.error(`[CRITICAL] ${message}`, meta || '')
+      }
+    } catch { /* fail silently */ }
+  }
+
+  operational(message: string, meta?: Record<string, unknown>): void {
+    try {
+      if (this.parent._winston && this.parent._initialized) {
+        this.parent._winston.info(message, this.withTier(LogTier.OPERATIONAL, meta))
+      } else {
+        console.log(`[OPERATIONAL] ${message}`, meta || '')
+      }
+    } catch { /* fail silently */ }
+  }
+
+  lifecycle(message: string, meta?: Record<string, unknown>): void {
+    try {
+      if (this.parent._winston && this.parent._initialized) {
+        this.parent._winston.info(message, this.withTier(LogTier.LIFECYCLE, meta))
+      } else {
+        console.log(`[LIFECYCLE] ${message}`, meta || '')
+      }
+    } catch { /* fail silently */ }
+  }
+
+  debugTiered(message: string, meta?: Record<string, unknown>): void {
+    try {
+      if (this.parent._winston && this.parent._initialized) {
+        this.parent._winston.debug(message, this.withTier(LogTier.DEBUG, meta))
+      } else {
+        if (this.parent._env === 'dev' || this.parent._env === 'local') {
+          console.debug(`[DEBUG] ${message}`, meta || '')
+        }
+      }
+    } catch { /* fail silently */ }
   }
 }

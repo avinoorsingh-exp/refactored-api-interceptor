@@ -108,7 +108,7 @@ K6_EXIT=${PIPESTATUS[0]}
 # Generate reports (md + html) even if thresholds failed
 if [ -f "$ARTIFACT_DIR/k6-summary.json" ]; then
   node "$REPO_ROOT/apps/load-test/scripts/generate-report.mjs" \
-    "$ARTIFACT_DIR" "$SCENARIO" "$BASE_URL" || true
+    "$ARTIFACT_DIR" "$SCENARIO" "$K6_BASE_URL" || true
 fi
 
 # Run regression comparison if PERF_COMPARE=true

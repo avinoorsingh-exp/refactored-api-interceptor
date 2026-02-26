@@ -39,7 +39,7 @@ export class AgentNoteEntity {
 	 * Many-to-One relationship with Agent.
 	 * @public
 	 */
-	@ManyToOne(() => AgentEntity, (agent) => agent.agentNotes)
+	@ManyToOne(() => AgentEntity, (agent) => agent.agentNotes, { onDelete: 'CASCADE' })
 	@JoinColumn({ name: 'agent_id' })
 	agent?: AgentEntity
 
@@ -47,7 +47,7 @@ export class AgentNoteEntity {
 	 * Many-to-One relationship with Note.
 	 * @public
 	 */
-	@ManyToOne(() => NoteEntity)
+	@ManyToOne(() => NoteEntity, { onDelete: 'CASCADE' })
 	@JoinColumn({ name: 'note_id' })
 	note?: NoteEntity
 }

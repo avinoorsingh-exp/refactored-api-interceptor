@@ -56,7 +56,7 @@ describe('NoteController', () => {
 			findByAgentId: jest.fn(),
 		};
 
-		const mockLogger = {
+		const mockChildLogger = {
 			setContext: jest.fn(),
 			info: jest.fn(),
 			debug: jest.fn(),
@@ -66,6 +66,10 @@ describe('NoteController', () => {
 			debugTiered: jest.fn(),
 			critical: jest.fn(),
 			lifecycle: jest.fn(),
+		};
+
+		const mockLogger = {
+			createScopedLogger: jest.fn().mockReturnValue(mockChildLogger),
 		};
 
 		const module: TestingModule = await Test.createTestingModule({
@@ -188,7 +192,7 @@ describe('NoteController', () => {
 		});
 
 		/**
-		 * Test default pagination params
+		 * Test default pagination params (pipe provides defaults before handler)
 		 */
 		it('should use default pagination params when not provided', async () => {
 			service.findByAgentId.mockResolvedValue({
@@ -196,7 +200,7 @@ describe('NoteController', () => {
 				total: 1,
 			});
 
-			await controller.findAll(mockAgent, {});
+			await controller.findAll(mockAgent, { offset: 0, limit: 25 });
 
 			expect(service.findByAgentId).toHaveBeenCalledWith(
 				mockAgentId,

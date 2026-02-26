@@ -9,6 +9,8 @@ describe('NoteTypeOrmRepository', () => {
 	let repository: NoteTypeOrmRepository;
 	let mockNoteRepo: Record<string, jest.Mock>;
 	let mockAgentNoteRepo: Record<string, jest.Mock>;
+	let mockDataSource: Record<string, jest.Mock>;
+	let mockQueryRunner: Record<string, any>;
 	let mockLogger: Record<string, jest.Mock>;
 
 	const mockAgentId = '550e8400-e29b-41d4-a716-446655440000';
@@ -36,6 +38,22 @@ describe('NoteTypeOrmRepository', () => {
 			createQueryBuilder: jest.fn(),
 		};
 
+		mockQueryRunner = {
+			connect: jest.fn(),
+			startTransaction: jest.fn(),
+			commitTransaction: jest.fn(),
+			rollbackTransaction: jest.fn(),
+			release: jest.fn(),
+			manager: {
+				create: jest.fn(),
+				save: jest.fn(),
+			},
+		};
+
+		mockDataSource = {
+			createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
+		};
+
 		mockLogger = {
 			setContext: jest.fn(),
 			info: jest.fn(),
@@ -47,6 +65,7 @@ describe('NoteTypeOrmRepository', () => {
 		repository = new NoteTypeOrmRepository(
 			mockNoteRepo as any,
 			mockAgentNoteRepo as any,
+			mockDataSource as any,
 			mockLogger as any,
 		);
 	});
@@ -61,32 +80,23 @@ describe('NoteTypeOrmRepository', () => {
 
 	describe('create', () => {
 		const createData = { body: 'Test note body.', createdBy: 'admin@example.com' };
+		const mockJunction = { agentId: mockAgentId, noteId: mockNoteId };
 
-		it('should create a note entity and junction record', async () => {
-			mockNoteRepo.create.mockReturnValue(mockNoteEntity);
-			mockNoteRepo.save.mockResolvedValue(mockNoteEntity);
-			mockAgentNoteRepo.create.mockReturnValue({
-				agentId: mockAgentId,
-				noteId: mockNoteId,
-			});
-			mockAgentNoteRepo.save.mockResolvedValue({
-				id: 'junction-id',
-				agentId: mockAgentId,
-				noteId: mockNoteId,
-			});
+		it('should create note and junction in a transaction', async () => {
+			mockQueryRunner.manager.create
+				.mockReturnValueOnce(mockNoteEntity)
+				.mockReturnValueOnce(mockJunction);
+			mockQueryRunner.manager.save
+				.mockResolvedValueOnce(mockNoteEntity)
+				.mockResolvedValueOnce({ id: 'junction-id', ...mockJunction });
 
 			const result = await repository.create(mockAgentId, createData);
 
-			expect(mockNoteRepo.create).toHaveBeenCalledWith({
-				body: createData.body,
-				createdBy: createData.createdBy,
-			});
-			expect(mockNoteRepo.save).toHaveBeenCalledWith(mockNoteEntity);
-			expect(mockAgentNoteRepo.create).toHaveBeenCalledWith({
-				agentId: mockAgentId,
-				noteId: mockNoteId,
-			});
-			expect(mockAgentNoteRepo.save).toHaveBeenCalled();
+			expect(mockQueryRunner.connect).toHaveBeenCalled();
+			expect(mockQueryRunner.startTransaction).toHaveBeenCalled();
+			expect(mockQueryRunner.manager.save).toHaveBeenCalledTimes(2);
+			expect(mockQueryRunner.commitTransaction).toHaveBeenCalled();
+			expect(mockQueryRunner.release).toHaveBeenCalled();
 			expect(result).toEqual({
 				id: mockNoteId,
 				body: 'Test note body.',
@@ -98,24 +108,31 @@ describe('NoteTypeOrmRepository', () => {
 		});
 
 		it('should default createdBy to system when not provided', async () => {
-			mockNoteRepo.create.mockReturnValue(mockNoteEntity);
-			mockNoteRepo.save.mockResolvedValue(mockNoteEntity);
-			mockAgentNoteRepo.create.mockReturnValue({ agentId: mockAgentId, noteId: mockNoteId });
-			mockAgentNoteRepo.save.mockResolvedValue({ id: 'junction-id', agentId: mockAgentId, noteId: mockNoteId });
+			mockQueryRunner.manager.create
+				.mockReturnValueOnce(mockNoteEntity)
+				.mockReturnValueOnce(mockJunction);
+			mockQueryRunner.manager.save
+				.mockResolvedValueOnce(mockNoteEntity)
+				.mockResolvedValueOnce({ id: 'junction-id', ...mockJunction });
 
 			await repository.create(mockAgentId, { body: 'Test note.' });
 
-			expect(mockNoteRepo.create).toHaveBeenCalledWith({
-				body: 'Test note.',
-				createdBy: 'system',
-			});
+			expect(mockQueryRunner.manager.create).toHaveBeenNthCalledWith(
+				1,
+				expect.anything(),
+				{ body: 'Test note.', createdBy: 'system' },
+			);
 		});
 
-		it('should propagate errors from noteRepo.save', async () => {
-			mockNoteRepo.create.mockReturnValue(mockNoteEntity);
-			mockNoteRepo.save.mockRejectedValue(new Error('DB error'));
+		it('should rollback and release on error', async () => {
+			mockQueryRunner.manager.create.mockReturnValue(mockNoteEntity);
+			mockQueryRunner.manager.save.mockRejectedValue(new Error('DB error'));
 
 			await expect(repository.create(mockAgentId, createData)).rejects.toThrow('DB error');
+
+			expect(mockQueryRunner.rollbackTransaction).toHaveBeenCalled();
+			expect(mockQueryRunner.release).toHaveBeenCalled();
+			expect(mockQueryRunner.commitTransaction).not.toHaveBeenCalled();
 		});
 	});
 

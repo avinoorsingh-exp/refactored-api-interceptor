@@ -368,6 +368,92 @@ describe('LoggerService', () => {
 		})
 	})
 
+	describe('createScopedLogger()', () => {
+		it('should return a ScopedLogger with fixed context', () => {
+			const child = service.createScopedLogger('NoteController')
+			child.info('Test message')
+			expect(mockLogger.info).toHaveBeenCalledWith('Test message', { context: 'NoteController' })
+		})
+
+		it('should not be affected by parent setContext', () => {
+			const child = service.createScopedLogger('NoteController')
+			service.setContext('ApiActorMiddleware') // simulate middleware stomping
+			child.info('Still my context')
+			expect(mockLogger.info).toHaveBeenCalledWith('Still my context', { context: 'NoteController' })
+		})
+
+		it('should not be affected by AsyncContextStorage', () => {
+			const child = service.createScopedLogger('NoteController')
+			const mockContext: RequestContext = {
+				correlationId: 'test-123',
+				timestamp: Date.now(),
+				loggerContext: { serviceName: 'SomeMiddleware' },
+			}
+
+			AsyncContextStorage.run(mockContext, () => {
+				child.info('Isolated context')
+				expect(mockLogger.info).toHaveBeenCalledWith('Isolated context', { context: 'NoteController' })
+			})
+		})
+
+		it('should support tier-aware methods', () => {
+			const child = service.createScopedLogger('PerfInterceptor')
+			child.operational('Slow query', { durationMs: 500 })
+			expect(mockLogger.info).toHaveBeenCalledWith('Slow query', {
+				context: 'PerfInterceptor',
+				tier: 'operational',
+				'dd.forward': true,
+				durationMs: 500,
+			})
+		})
+
+		it('should support critical tier', () => {
+			const child = service.createScopedLogger('ErrorHandler')
+			child.critical('DB down')
+			expect(mockLogger.error).toHaveBeenCalledWith('DB down', {
+				context: 'ErrorHandler',
+				tier: 'critical',
+				'dd.forward': true,
+			})
+		})
+
+		it('should support lifecycle tier', () => {
+			const child = service.createScopedLogger('Bootstrap')
+			child.lifecycle('Module loaded')
+			expect(mockLogger.info).toHaveBeenCalledWith('Module loaded', {
+				context: 'Bootstrap',
+				tier: 'lifecycle',
+				'dd.forward': false,
+			})
+		})
+
+		it('should support debugTiered', () => {
+			const child = service.createScopedLogger('QueryBuilder')
+			child.debugTiered('SQL trace', { sql: 'SELECT 1' })
+			expect(mockLogger.debug).toHaveBeenCalledWith('SQL trace', {
+				context: 'QueryBuilder',
+				tier: 'debug',
+				'dd.forward': false,
+				sql: 'SELECT 1',
+			})
+		})
+
+		it('should ignore setContext calls (no-op)', () => {
+			const child = service.createScopedLogger('FixedContext')
+			child.setContext('Ignored')
+			child.info('Still fixed')
+			expect(mockLogger.info).toHaveBeenCalledWith('Still fixed', { context: 'FixedContext' })
+		})
+
+		it('should support error and warn methods', () => {
+			const child = service.createScopedLogger('TestChild')
+			child.error('An error', { code: 500 })
+			child.warn('A warning')
+			expect(mockLogger.error).toHaveBeenCalledWith('An error', { context: 'TestChild', code: 500 })
+			expect(mockLogger.warn).toHaveBeenCalledWith('A warning', { context: 'TestChild' })
+		})
+	})
+
 	describe('constructor', () => {
 		it('should handle invalid METRICS_EXPORTER_HEADERS JSON', async () => {
 			mockConfigService.get.mockImplementation((key: string) => {

@@ -22,12 +22,12 @@ import {
 	ApiQuery,
 } from '@nestjs/swagger';
 import { z } from 'zod';
-import { CreateNoteInputSchema, UpdateNoteInputSchema } from '@exprealty/shared-domain';
+import { CreateNoteInputSchema, UpdateNoteInputSchema, PaginationQuerySchema, type NormalizedPagination } from '@exprealty/shared-domain';
 import { ZodValidationPipe } from '../../../common/zod-validation.pipe.js';
 import { NoteService } from './note.service.js';
 import { NoteResponseDto, CreateNoteDto, UpdateNoteDto } from './dto/index.js';
 import { PaginationInterceptor } from '../../../common/pagination/pagination.interceptor.js';
-import { LoggerService } from '../../../core/logger.service.js';
+import { LoggerService, ScopedLogger } from '../../../core/logger.service.js';
 import { AgentExistsGuard } from '../../../common/guards/agent-exists.guard.js';
 import { Agent } from '../../../common/decorators/agent.decorator.js';
 import type { Agent as AgentType } from '@exprealty/shared-domain';
@@ -48,11 +48,13 @@ const NoteIdSchema = z.string().uuid({ message: 'errors.note.id.invalid' });
 @Controller('v1/agents/:id/notes')
 @UseGuards(AgentExistsGuard)
 export class NoteController {
+	private readonly logger: ScopedLogger;
+
 	constructor(
 		private readonly noteService: NoteService,
-		private readonly logger: LoggerService,
+		logger: LoggerService,
 	) {
-		this.logger.setContext('NoteController');
+		this.logger = logger.createScopedLogger('NoteController');
 	}
 
 	/**
@@ -95,11 +97,11 @@ export class NoteController {
 	})
 	async findAll(
 		@Agent() agent: AgentType,
-		@Query() query: { offset?: number; limit?: number },
+		@Query(new ZodValidationPipe(PaginationQuerySchema, 'pagination')) query: NormalizedPagination,
 	): Promise<{ items: NoteResponseDto[]; total: number }> {
 		const result = await this.noteService.findByAgentId(agent.id, {
-			offset: query.offset ?? 0,
-			limit: query.limit ?? 25,
+			offset: query.offset,
+			limit: query.limit,
 		});
 
 		return {
