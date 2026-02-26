@@ -381,6 +381,13 @@ export { AdminJobEntity } from './entities/core/admin-job.entity.js'
 export { AdminJobExecutionEntity, AdminJobExecutionStatus } from './entities/core/admin-job-execution.entity.js'
 
 /**
+ * TypeORM entity for FeatureFlag table.
+ * Stores boolean feature flags (PHASE_2, PHASE_3) editable from Admin UI.
+ * @public
+ */
+export { FeatureFlagEntity, type FeatureFlagKeyEntity } from './entities/core/feature-flag.entity.js'
+
+/**
  * TypeORM entity for ApiActor table.
  * Tracks external actors (users, API keys, service accounts) that make API requests.
  * @public

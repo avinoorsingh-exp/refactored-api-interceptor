@@ -18,6 +18,7 @@ import { MLSModule } from './modules/mls/mls.module.js'
 import { AgentModule } from './modules/agents/agent.module.js'
 import { KafkaModule } from './modules/kafka/kafka.module.js'
 import { AdminJobsModule } from './modules/admin/jobs/admin-jobs.module.js'
+import { FeatureFlagModule } from './modules/admin/feature-flags/feature-flag.module.js'
 import { AgentCompanyAssociationModule } from './modules/agent-companies/agent-company-association.module.js'
 import { AgentTaxModule } from './modules/agent-taxes/agent-tax.module.js'
 import { LineOfBusinessModule } from './modules/line-of-business/line-of-business.module.js'
@@ -46,6 +47,7 @@ import { LoggerService } from './core/logger.service.js'
     AgentModule,
     KafkaModule,
     AdminJobsModule,
+    FeatureFlagModule,
     AgentCompanyAssociationModule,
     AgentTaxModule,
     LineOfBusinessModule,
