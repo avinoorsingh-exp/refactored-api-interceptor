@@ -9,6 +9,8 @@ import { Searchable, Filterable, Sortable, SearchValidators } from '../../decora
 import type { AgentOfficeEntity } from './agent-office.entity.js'
 import type { AgentCompanyAssociationEntity } from './agent-company-association.entity.js'
 import type { AgentTaxEntity } from './agent-tax.entity.js'
+import type { AgentNoteEntity } from './agent-note.entity.js'
+import { NoteEntity } from './note.entity.js'
 import type { TaxEntity } from './tax.entity.js'
 
 import type { AgentAddressEntity } from './agent-address.entity.js'
@@ -448,6 +450,35 @@ export class AgentEntity extends AuditableEntity {
 	 */
 	@OneToMany('LicenseEntity', 'agent')
 	licenses?: LicenseEntity[]
+
+	/**
+	 * One-to-Many relationship with AgentNote (junction table).
+	 * An agent can have multiple notes.
+	 * @public
+	 */
+	@OneToMany('AgentNoteEntity', 'agent')
+	agentNotes?: AgentNoteEntity[]
+
+	/**
+	 * Many-to-Many relationship with Note.
+	 * Direct access to notes (hides junction table).
+	 * TypeORM handles agent_note join table transparently.
+	 * @public
+	 */
+	@ManyToMany(() => NoteEntity)
+	@JoinTable({
+		name: 'agent_note',
+		schema: 'core',
+		joinColumn: {
+			name: 'agent_id',
+			referencedColumnName: 'id',
+		},
+		inverseJoinColumn: {
+			name: 'note_id',
+			referencedColumnName: 'id',
+		},
+	})
+	notes?: NoteEntity[]
 
 	/**
 	 * Primary email contact method

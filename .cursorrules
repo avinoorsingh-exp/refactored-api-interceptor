@@ -644,3 +644,15 @@ Assert correct ordering behavior.
 Enforcement Rule
 
 If tests are not generated or updated alongside implementation changes, the task is considered incomplete and invalid.
+
+## Postman Collection Auto-Update
+
+After generating, modifying, or deleting any NestJS route (controller, endpoint, or module):
+
+- Automatically regenerate the Postman collection using the OpenAPI spec.
+- Run the command: `pnpm postman:generate`.
+- Ensure that the updated collection is written to `artifacts/postman/agent-service.postman_collection.json`.
+- New routes must appear in the updated collection.
+- Removed routes must be removed from the collection.
+- Existing routes must be kept in sync with the implementation.
+- This step must happen **after code generation and test updates** to ensure consistency.

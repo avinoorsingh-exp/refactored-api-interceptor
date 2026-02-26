@@ -46,7 +46,7 @@ import type { Agent as AgentType } from '@exprealty/shared-domain';
  * Uses AgentExistsGuard to validate agent exists before processing.
  * The validated agent is available via @Agent() decorator.
  */
-@ApiTags('licenses')
+@ApiTags('agents > licenses')
 @Controller('v1/agents/:id/licenses')
 @UseGuards(AgentExistsGuard)
 export class LicenseController {
@@ -78,12 +78,14 @@ export class LicenseController {
 		required: false,
 		type: Number,
 		description: 'Pagination offset (default: 0)',
+		example: 0,
 	})
 	@ApiQuery({
 		name: 'limit',
 		required: false,
 		type: Number,
 		description: 'Pagination limit (max: 50, default: 25)',
+		example: 25,
 	})
 	@ApiResponse({
 		status: 200,

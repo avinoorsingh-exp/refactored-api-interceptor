@@ -52,7 +52,7 @@ const ContactMethodIdSchema = z.string().regex(/^\d+$/, { message: 'errors.conta
  * Uses AgentExistsGuard to validate agent exists before processing.
  * The validated agent is available via @Agent() decorator.
  */
-@ApiTags('agents')
+@ApiTags('agents > contact-methods')
 @Controller('v1/agents/:id/contactmethods')
 @UseGuards(AgentExistsGuard)
 export class ContactMethodController {
@@ -84,12 +84,14 @@ export class ContactMethodController {
 		required: false,
 		type: Number,
 		description: 'Pagination offset (default: 0)',
+		example: 0,
 	})
 	@ApiQuery({
 		name: 'limit',
 		required: false,
 		type: Number,
 		description: 'Pagination limit (max: 50, default: 25)',
+		example: 25,
 	})
 	@ApiResponse({
 		status: 200,

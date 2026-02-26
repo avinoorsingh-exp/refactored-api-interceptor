@@ -41,7 +41,7 @@ import { CurrencyResponseDto } from '../../currencies/dto/index.js'
  * Controller for System resource endpoints nested under countries.
  * Handles HTTP requests for system operations.
  */
-@ApiTags('systems')
+@ApiTags('countries > systems')
 @Controller('/v1/countries/:countryId/systems')
 @UseGuards(CountryExistsGuard)
 export class SystemsController {

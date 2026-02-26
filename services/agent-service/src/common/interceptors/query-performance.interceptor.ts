@@ -5,7 +5,6 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
-  Logger,
   Inject,
   Optional,
 } from '@nestjs/common';
@@ -13,6 +12,7 @@ import { Observable } from 'rxjs';
 import { map, tap } from 'rxjs/operators';
 import { Request } from 'express';
 import { DataSource } from 'typeorm';
+import type { LoggerService } from '../../core/logger.service.js';
 
 /**
  * Query performance options
@@ -21,8 +21,12 @@ export interface QueryPerformanceOptions {
   slowQueryThresholdMs: number;
   criticalQueryThresholdMs: number;
   logAllQueries: boolean;
-  captureExplain: boolean;
+  captureExplain: 'off' | 'slow' | 'critical' | 'all';
   includeInResponse: boolean;
+  /** Fraction of requests to instrument (0..1). Default: 1.0 */
+  sampleRate: number;
+  /** If set, only instrument requests whose path starts with one of these prefixes. */
+  endpointAllowlist: string[];
 }
 
 /**
@@ -109,23 +113,58 @@ interface QueryContext {
  */
 @Injectable()
 export class QueryPerformanceInterceptor implements NestInterceptor {
-  private readonly logger = new Logger('QueryPerformance');
   private readonly queryBuffer: Map<string, QueryCapture[]> = new Map();
   private originalLogQuery: ((query: string, parameters?: any[]) => void) | null = null;
 
   constructor(
     @Optional() @Inject(DataSource) private readonly dataSource?: DataSource,
-    @Optional() @Inject('QUERY_PERFORMANCE_OPTIONS') 
+    @Optional() @Inject('QUERY_PERFORMANCE_OPTIONS')
     private readonly options: Partial<QueryPerformanceOptions> = {},
+    private readonly logger?: LoggerService,
   ) {
     // Set defaults
     this.options = {
       slowQueryThresholdMs: options.slowQueryThresholdMs ?? 2000,
       criticalQueryThresholdMs: options.criticalQueryThresholdMs ?? 10000,
       logAllQueries: options.logAllQueries ?? false,
-      captureExplain: options.captureExplain ?? true,
-      includeInResponse: options.includeInResponse ?? (process.env.NODE_ENV !== 'production'),
+      captureExplain: options.captureExplain ?? 'slow',
+      includeInResponse: options.includeInResponse ?? false,
+      sampleRate: options.sampleRate ?? 1.0,
+      endpointAllowlist: options.endpointAllowlist ?? [],
     };
+  }
+
+  /**
+   * Check if this request should be instrumented based on sample rate and endpoint allowlist.
+   */
+  private shouldInstrument(request: Request): boolean {
+    // Sampling: random check against configured rate
+    const sampleRate = this.options.sampleRate ?? 1.0;
+    if (sampleRate < 1.0 && Math.random() > sampleRate) {
+      return false;
+    }
+
+    // Endpoint allowlist: if set, only instrument matching paths
+    const allowlist = this.options.endpointAllowlist ?? [];
+    if (allowlist.length > 0) {
+      const path = request.path || request.url.split('?')[0];
+      const matched = allowlist.some((prefix) => path.startsWith(prefix));
+      if (!matched) return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Determine whether EXPLAIN should be captured for a given request duration.
+   */
+  private shouldCaptureExplain(totalDurationMs: number): boolean {
+    const mode = this.options.captureExplain ?? 'slow';
+    if (mode === 'off') return false;
+    if (mode === 'all') return true;
+    if (mode === 'critical') return totalDurationMs >= (this.options.criticalQueryThresholdMs ?? 10000);
+    // 'slow' (default)
+    return totalDurationMs >= (this.options.slowQueryThresholdMs ?? 2000);
   }
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
@@ -135,6 +174,9 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
     const timestamp = new Date().toISOString();
     const queryParams = request.query;
     const correlationId = (request.headers['x-correlation-id'] as string) || this.generateId();
+
+    // Skip full instrumentation if not sampled or not in allowlist
+    const instrumented = this.shouldInstrument(request);
 
     // Build query context
     const queryContext: QueryContext = {
@@ -193,8 +235,10 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
       }
     }
 
-    // Setup query capture
-    this.setupQueryCapture(correlationId);
+    // Setup query capture only for instrumented requests
+    if (instrumented) {
+      this.setupQueryCapture(correlationId);
+    }
 
     return next.handle().pipe(
       tap({
@@ -202,10 +246,13 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
           const duration = Date.now() - startTime;
           queryMetadata.performance.durationMs = duration;
 
-          // Get captured queries
-          const queries = this.queryBuffer.get(correlationId) || [];
-          this.queryBuffer.delete(correlationId);
-          this.cleanupQueryCapture();
+          // Get captured queries (only if instrumented)
+          let queries: QueryCapture[] = [];
+          if (instrumented) {
+            queries = this.queryBuffer.get(correlationId) || [];
+            this.queryBuffer.delete(correlationId);
+            this.cleanupQueryCapture();
+          }
 
           // Add headers (only if response hasn't been sent yet)
           // Some endpoints (like retry) manually send responses with @Res({ passthrough: false })
@@ -216,26 +263,30 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
               response.setHeader('X-Correlation-ID', correlationId);
             } catch (headerError) {
               // Ignore header errors if response was already sent
-              this.logger.debug('Could not set response headers (response already sent)', {
+              this.logger?.debugTiered('[Microscope] Could not set response headers (response already sent)', {
+                channel: 'perf',
                 correlationId,
                 error: (headerError as Error).message,
               });
             }
           }
 
-          // Enhance metadata with query details
-          await this.enhanceMetadata(queryMetadata, queries, duration, queryContext);
+          // Enhance metadata with query details (only for instrumented requests)
+          if (instrumented) {
+            await this.enhanceMetadata(queryMetadata, queries, duration, queryContext);
+          }
 
-          // Log based on duration
+          // Log based on duration (always, but SQL details only if instrumented)
           if (duration >= (this.options.criticalQueryThresholdMs ?? 10000)) {
             await this.handleCriticalQuery(queryMetadata, queryContext);
           } else if (duration >= (this.options.slowQueryThresholdMs ?? 2000)) {
             await this.handleSlowQuery(queryMetadata, queryContext);
-          } else if (this.options.logAllQueries) {
-            this.logger.debug('Query completed', {
-              endpoint: `${request.method} ${request.url}`,
-              duration,
+          } else if (this.options.logAllQueries && instrumented) {
+            this.logger?.debugTiered('[Microscope] Query completed', {
+              channel: 'perf',
               correlationId,
+              endpoint: { method: request.method, path: request.url },
+              perf: { durationMs: duration },
             });
           }
         },
@@ -244,9 +295,12 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
           queryMetadata.performance.durationMs = duration;
 
           // Cleanup
-          const queries = this.queryBuffer.get(correlationId) || [];
-          this.queryBuffer.delete(correlationId);
-          this.cleanupQueryCapture();
+          let queries: QueryCapture[] = [];
+          if (instrumented) {
+            queries = this.queryBuffer.get(correlationId) || [];
+            this.queryBuffer.delete(correlationId);
+            this.cleanupQueryCapture();
+          }
 
           // Add headers (only if response hasn't been sent yet)
           if (!response.headersSent && !response.finished) {
@@ -256,7 +310,8 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
               response.setHeader('X-Correlation-ID', correlationId);
             } catch (headerError) {
               // Ignore header errors if response was already sent
-              this.logger.debug('Could not set response headers on error (response already sent)', {
+              this.logger?.debugTiered('[Microscope] Could not set response headers on error (response already sent)', {
+                channel: 'perf',
                 correlationId,
                 error: (headerError as Error).message,
               });
@@ -264,14 +319,17 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
           }
 
           // Enhance metadata for error logging
-          await this.enhanceMetadata(queryMetadata, queries, duration, queryContext);
+          if (instrumented) {
+            await this.enhanceMetadata(queryMetadata, queries, duration, queryContext);
+          }
 
-          this.logger.error('Query failed', {
-            endpoint: `${request.method} ${request.url}`,
-            duration,
+          this.logger?.critical('[Microscope] Query failed', {
+            channel: 'perf',
             correlationId,
+            endpoint: { method: request.method, path: request.url },
+            perf: { durationMs: duration },
+            query: { sql: queryMetadata.performance.sql?.substring(0, 500) },
             error: error.message,
-            sql: queryMetadata.performance.sql?.substring(0, 500),
             warnings: queryMetadata.performance.warnings,
           });
         },
@@ -360,7 +418,10 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
         };
       }
     } catch (error) {
-      this.logger.debug('Could not setup query capture', { error: (error as Error).message });
+      this.logger?.debugTiered('[Microscope] Could not setup query capture', {
+        channel: 'perf',
+        error: (error as Error).message,
+      });
     }
   }
 
@@ -405,11 +466,9 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
       metadata.performance.connectionPool = this.getPoolMetrics();
     }
 
-    // Trigger EXPLAIN for slow queries
-    const isSlowQuery = totalDuration > (this.options.slowQueryThresholdMs ?? 2000);
+    // Trigger EXPLAIN based on configured captureExplain mode
     if (
-      isSlowQuery &&
-      this.options.captureExplain &&
+      this.shouldCaptureExplain(totalDuration) &&
       this.dataSource &&
       queries.length > 0
     ) {
@@ -427,16 +486,17 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
             totalDuration,
           );
         } catch (error) {
-          this.logger.warn('Failed to generate EXPLAIN', {
-            error: (error as Error).message,
+          this.logger?.operational('[Microscope] Failed to generate EXPLAIN', {
+            channel: 'perf',
             correlationId: context.correlationId,
+            error: (error as Error).message,
           });
         }
       }
     }
 
-    // Strip detailed info in production responses
-    if (process.env.NODE_ENV === 'production' && !this.options.includeInResponse) {
+    // Strip detailed info from response unless explicitly enabled
+    if (!this.options.includeInResponse) {
       delete metadata.performance.sql;
       delete metadata.performance.parameters;
       delete metadata.performance.explain;
@@ -495,9 +555,10 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
       
       return this.parseExplainOutput(plan);
     } catch (error) {
-      this.logger.error('EXPLAIN ANALYZE failed', {
+      this.logger?.critical('[Microscope] EXPLAIN ANALYZE failed', {
+        channel: 'perf',
         error: (error as Error).message,
-        sql: sql.substring(0, 200),
+        query: { sql: sql.substring(0, 200) },
       });
       throw error;
     }
@@ -627,27 +688,72 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
   }
 
   /**
+   * Build structured perf log payload from query metadata and context.
+   */
+  private buildPerfPayload(
+    metadata: CompleteQueryMetadata,
+    context: QueryContext,
+    severity: 'slow' | 'critical',
+    sqlTruncateLength: number,
+  ): Record<string, unknown> {
+    const payload: Record<string, unknown> = {
+      channel: 'perf',
+      correlationId: context.correlationId,
+      endpoint: {
+        method: context.method,
+        path: context.path,
+        controller: context.controller,
+        handler: context.handler,
+      },
+      perf: {
+        durationMs: metadata.performance.durationMs,
+        thresholdMs: severity === 'critical'
+          ? this.options.criticalQueryThresholdMs
+          : this.options.slowQueryThresholdMs,
+        severity,
+      },
+    };
+
+    if (metadata.performance.sql) {
+      payload.query = {
+        sql: metadata.performance.sql.substring(0, sqlTruncateLength),
+        parameters: metadata.performance.parameters,
+      };
+    }
+
+    if (metadata.performance.explain) {
+      payload.explain = {
+        executionTimeMs: metadata.performance.explain.executionTime,
+        planningTimeMs: metadata.performance.explain.planningTime,
+        hasSeqScan: metadata.performance.explain.hasSequentialScan,
+        estimatedRows: metadata.performance.explain.estimatedRows,
+        actualRows: metadata.performance.explain.actualRows,
+        nodeTypes: metadata.performance.explain.nodeTypes,
+      };
+    }
+
+    if (metadata.performance.connectionPool) {
+      payload.pool = metadata.performance.connectionPool;
+    }
+
+    if (metadata.performance.warnings?.length) {
+      payload.warnings = metadata.performance.warnings;
+    }
+
+    return payload;
+  }
+
+  /**
    * Handle slow query logging
    */
   private async handleSlowQuery(
     metadata: CompleteQueryMetadata,
     context: QueryContext,
   ): Promise<void> {
-    this.logger.warn('SLOW query detected', {
-      correlationId: context.correlationId,
-      controller: context.controller,
-      handler: context.handler,
-      method: context.method,
-      path: context.path,
-      durationMs: metadata.performance.durationMs,
-      sql: metadata.performance.sql?.substring(0, 500),
-      parameters: metadata.performance.parameters,
-      hasSequentialScan: metadata.performance.explain?.hasSequentialScan,
-      executionTime: metadata.performance.explain?.executionTime,
-      planningTime: metadata.performance.explain?.planningTime,
-      warnings: metadata.performance.warnings,
-      connectionPool: metadata.performance.connectionPool,
-    });
+    this.logger?.operational(
+      '[Microscope] SLOW query detected',
+      this.buildPerfPayload(metadata, context, 'slow', 500),
+    );
   }
 
   /**
@@ -657,28 +763,15 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
     metadata: CompleteQueryMetadata,
     context: QueryContext,
   ): Promise<void> {
-    this.logger.error('CRITICAL query performance', {
-      correlationId: context.correlationId,
-      controller: context.controller,
-      handler: context.handler,
-      method: context.method,
-      path: context.path,
-      durationMs: metadata.performance.durationMs,
-      sql: metadata.performance.sql?.substring(0, 1000),
-      parameters: metadata.performance.parameters,
-      nodeTypes: metadata.performance.explain?.nodeTypes,
-      hasSequentialScan: metadata.performance.explain?.hasSequentialScan,
-      executionTime: metadata.performance.explain?.executionTime,
-      planningTime: metadata.performance.explain?.planningTime,
-      estimatedRows: metadata.performance.explain?.estimatedRows,
-      actualRows: metadata.performance.explain?.actualRows,
-      warnings: metadata.performance.warnings,
-      connectionPool: metadata.performance.connectionPool,
-    });
+    this.logger?.critical(
+      '[Microscope] CRITICAL query performance',
+      this.buildPerfPayload(metadata, context, 'critical', 1000),
+    );
 
     // Log full EXPLAIN to separate entry for analysis
     if (metadata.performance.explain) {
-      this.logger.debug('Full execution plan', {
+      this.logger?.debugTiered('[Microscope] Full execution plan', {
+        channel: 'perf',
         correlationId: context.correlationId,
         explain: metadata.performance.explain.plan,
       });

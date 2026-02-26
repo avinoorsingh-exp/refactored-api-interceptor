@@ -47,6 +47,22 @@ export const ConfigSchema = BaseConfig.extend({
 	HMAC_SECRET: z.string().min(32),
 	HMAC_SECRET_PREVIOUS: z.string().min(32).optional(),
 }).merge(EncryptionEnvSchema).extend({
+	// ==================== Performance / Microscope Mode ====================
+	PERF_QUERY_MODE: z.enum(['off', 'perf', 'query']).default('off'),
+	PERF_QUERY_INCLUDE_IN_RESPONSE: z.preprocess((val) => {
+		if (typeof val === 'string') return val.toLowerCase() === 'true' || val === '1';
+		return val;
+	}, z.boolean().default(false)),
+	PERF_QUERY_LOG_ALL: z.preprocess((val) => {
+		if (typeof val === 'string') return val.toLowerCase() === 'true' || val === '1';
+		return val;
+	}, z.boolean().default(false)),
+	PERF_QUERY_CAPTURE_EXPLAIN: z.enum(['off', 'slow', 'critical', 'all']).default('slow'),
+	PERF_QUERY_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(1.0),
+	PERF_QUERY_ENDPOINT_ALLOWLIST: z.string().optional(),
+	PERF_QUERY_SLOW_MS: z.coerce.number().positive().default(2000),
+	PERF_QUERY_CRITICAL_MS: z.coerce.number().positive().default(10000),
+
 	// ==================== Metrics Config ====================
 	METRICS_EXPORTER_ENDPOINT: z.string().optional(),
 	METRICS_EXPORTER_PROTOCOL: z.enum(['http', 'grpc']).default('http'),

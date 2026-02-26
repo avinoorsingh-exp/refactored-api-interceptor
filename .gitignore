@@ -35,6 +35,8 @@ services/*/src/**/*.d.ts
 coverage
 coverage-unit
 *.lcov
+artifacts/
+artifacts-history/
 
 **/tsconfig.build.tsbuildinfo
 
@@ -48,6 +50,7 @@ coverage-unit
 .env*
 !env.example
 !.env.agentservice.example
+!.env.loadtest.example
 .env
 **/temp
 **/*Zone.Identifier*
@@ -56,3 +59,4 @@ docs/ERD/**
 .claude/settings.json
 docs/miro/*
 postman/scripts
+.claude/settings.local.json

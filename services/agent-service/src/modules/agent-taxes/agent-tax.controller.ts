@@ -48,7 +48,7 @@ import { Agent } from '../../common/decorators/agent.decorator.js';
  * Uses AgentExistsGuard to validate agent exists before processing.
  * The validated agent is available via @Agent() decorator.
  */
-@ApiTags('agents')
+@ApiTags('agents > taxes')
 @Controller('v1/agents/:id/taxes')
 @UseGuards(AgentExistsGuard)
 export class AgentTaxController {
@@ -80,12 +80,14 @@ export class AgentTaxController {
 		required: false,
 		type: Number,
 		description: 'Pagination offset (default: 0)',
+		example: 0,
 	})
 	@ApiQuery({
 		name: 'limit',
 		required: false,
 		type: Number,
 		description: 'Pagination limit (max: 50, default: 25)',
+		example: 25,
 	})
 	@ApiResponse({
 		status: 200,

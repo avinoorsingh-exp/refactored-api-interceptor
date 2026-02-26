@@ -50,6 +50,7 @@ import { W9Entity } from './entities/core/w9.entity.js'
 import { W9AddressEntity } from './entities/core/w9-address.entity.js'
 import { TaxEntity } from './entities/core/tax.entity.js'
 import { AgentTaxEntity } from './entities/core/agent-tax.entity.js'
+import { AgentNoteEntity } from './entities/core/agent-note.entity.js'
 import { OfficeAddressEntity } from './entities/core/office-address.entity.js'
 import { ArtifactEntity } from './entities/core/artifact.entity.js'
 import { CustomFlagEntity } from './entities/core/custom-flag.entity.js'
@@ -59,6 +60,7 @@ import { KafkaMessageProcessingEntity } from './entities/core/kafka-message-proc
 import { KafkaServiceEntity } from './entities/core/kafka-service.entity.js'
 import { AdminJobEntity } from './entities/core/admin-job.entity.js'
 import { AdminJobExecutionEntity } from './entities/core/admin-job-execution.entity.js'
+import { FeatureFlagEntity } from './entities/core/feature-flag.entity.js'
 import { ApiActorEntity } from './entities/core/api-actor.entity.js'
 import { ApiRequestLogEntity } from './entities/core/api-request-log.entity.js'
 import { ApiRouteStatsEntity } from './entities/core/api-route-stats.entity.js'
@@ -203,6 +205,7 @@ export const AppDataSource = new DataSource({
 		W9AddressEntity,
 		TaxEntity,
 		AgentTaxEntity,
+		AgentNoteEntity,
 		OfficeAddressEntity,
 		ArtifactEntity,
 		CustomFlagEntity,
@@ -212,6 +215,7 @@ export const AppDataSource = new DataSource({
 		KafkaServiceEntity,
 		AdminJobEntity,
 		AdminJobExecutionEntity,
+		FeatureFlagEntity,
 		ApiActorEntity,
 		ApiRequestLogEntity,
 		ApiRouteStatsEntity,

@@ -26,6 +26,13 @@ export { AuditableEntity } from './entities/core/auditable.entity.js'
  */
 export { SearchableAuditableEntity } from './entities/core/searchable-auditable.entity.js'
 
+/**
+ * Extended auditable entity with createdBy field.
+ * Use for new entities (post phase-1) that need full audit trail.
+ * @public
+ */
+export { FullAuditableEntity } from './entities/core/full-auditable.entity.js'
+
 // ============================================================================
 // Entities
 // ============================================================================
@@ -316,6 +323,12 @@ export type { TaxIdType } from './entities/core/tax.entity.js'
 export { AgentTaxEntity } from './entities/core/agent-tax.entity.js'
 
 /**
+ * TypeORM entity for AgentNote junction table.
+ * @public
+ */
+export { AgentNoteEntity } from './entities/core/agent-note.entity.js'
+
+/**
  * TypeORM entity for OfficeAddress join table.
  * @public
  */
@@ -373,6 +386,13 @@ export { AdminJobEntity } from './entities/core/admin-job.entity.js'
  * @public
  */
 export { AdminJobExecutionEntity, AdminJobExecutionStatus } from './entities/core/admin-job-execution.entity.js'
+
+/**
+ * TypeORM entity for FeatureFlag table.
+ * Stores boolean feature flags (PHASE_2, PHASE_3) editable from Admin UI.
+ * @public
+ */
+export { FeatureFlagEntity, type FeatureFlagKeyEntity } from './entities/core/feature-flag.entity.js'
 
 /**
  * TypeORM entity for ApiActor table.
