@@ -385,13 +385,13 @@ describe('PaginationService - Property-Based Tests', () => {
       );
     });
 
-    it('should clamp limit <= 0 to LIMIT_MAX', () => {
+    it('should clamp limit <= 0 to LIMIT_DEFAULT', () => {
       fc.assert(
         fc.property(
           fc.integer({ min: -100, max: 0 }),
           (invalidLimit) => {
             const result = svc.normalized({ limit: invalidLimit });
-            expect(result.limit).toBe(50);
+            expect(result.limit).toBe(25);
           },
         ),
         { numRuns: 50 },

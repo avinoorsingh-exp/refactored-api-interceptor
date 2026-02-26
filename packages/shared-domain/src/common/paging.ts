@@ -5,10 +5,11 @@ export const LIMIT_MAX = 50 as const;
 
 /**
  * Clamps a limit value to the valid range [1, LIMIT_MAX].
- * Values outside [1, LIMIT_MAX] are clamped to LIMIT_MAX (no error thrown).
+ * Values < 1 are clamped to LIMIT_DEFAULT.
+ * Values > LIMIT_MAX are clamped to LIMIT_MAX.
  */
 const clampLimit = (val: number): number =>
-	val < 1 || val > LIMIT_MAX ? LIMIT_MAX : val
+	val < 1 ? LIMIT_DEFAULT : val > LIMIT_MAX ? LIMIT_MAX : val
 
 export const PaginationQuerySchema = z.object({
     offset: z.coerce.number().int().min(0).optional().default(0),

@@ -23,10 +23,20 @@ jest.mock('@exprealty/logger/log-tier', () => ({
 		LIFECYCLE: 'lifecycle',
 		DEBUG: 'debug',
 	},
-	shouldForwardLog: jest.fn((tier: string) => tier === 'critical' || tier === 'operational'),
 }))
 
 import { createLogger } from '@exprealty/logger'
+
+// Helper: build expected envelope fields for tier-aware assertions
+const env = (tier: string, channel: string, extra?: Record<string, unknown>) => ({
+	schema: '1.0.0',
+	serviceVersion: '0.1.0',
+	env: 'test',
+	tier,
+	channel,
+	event: 'log',
+	...extra,
+})
 
 describe('LoggerService', () => {
 	let service: LoggerService
@@ -213,21 +223,18 @@ describe('LoggerService', () => {
 	})
 
 	describe('critical()', () => {
-		it('should log at error level with CRITICAL tier and dd.forward true', () => {
+		it('should log at error level with CRITICAL tier and envelope', () => {
 			service.critical('DB connection lost', { code: '08001' })
-			expect(mockLogger.error).toHaveBeenCalledWith('DB connection lost', {
-				tier: 'critical',
-				'dd.forward': true,
-				code: '08001',
-			})
+			expect(mockLogger.error).toHaveBeenCalledWith('DB connection lost',
+				env('critical', 'operational', { code: '08001' }),
+			)
 		})
 
 		it('should log without meta', () => {
 			service.critical('Unhandled exception')
-			expect(mockLogger.error).toHaveBeenCalledWith('Unhandled exception', {
-				tier: 'critical',
-				'dd.forward': true,
-			})
+			expect(mockLogger.error).toHaveBeenCalledWith('Unhandled exception',
+				env('critical', 'operational'),
+			)
 		})
 
 		it('should include context when set', () => {
@@ -235,67 +242,86 @@ describe('LoggerService', () => {
 			service.critical('Query failed')
 			expect(mockLogger.error).toHaveBeenCalledWith('Query failed', {
 				context: 'AgentService',
-				tier: 'critical',
-				'dd.forward': true,
+				...env('critical', 'operational'),
 			})
 		})
 	})
 
 	describe('operational()', () => {
-		it('should log at info level with OPERATIONAL tier and dd.forward true', () => {
+		it('should log at info level with OPERATIONAL tier and envelope', () => {
 			service.operational('GET /v1/agents completed', { durationMs: 42, status: 200 })
-			expect(mockLogger.info).toHaveBeenCalledWith('GET /v1/agents completed', {
-				tier: 'operational',
-				'dd.forward': true,
-				durationMs: 42,
-				status: 200,
-			})
+			expect(mockLogger.info).toHaveBeenCalledWith('GET /v1/agents completed',
+				env('operational', 'operational', { durationMs: 42, status: 200 }),
+			)
 		})
 
 		it('should log without meta', () => {
 			service.operational('Service listening on port 3000')
-			expect(mockLogger.info).toHaveBeenCalledWith('Service listening on port 3000', {
-				tier: 'operational',
-				'dd.forward': true,
-			})
+			expect(mockLogger.info).toHaveBeenCalledWith('Service listening on port 3000',
+				env('operational', 'operational'),
+			)
 		})
 	})
 
 	describe('lifecycle()', () => {
-		it('should log at info level with LIFECYCLE tier and dd.forward false', () => {
+		it('should log at info level with LIFECYCLE tier and envelope', () => {
 			service.lifecycle('Bootstrap step 1 complete')
-			expect(mockLogger.info).toHaveBeenCalledWith('Bootstrap step 1 complete', {
-				tier: 'lifecycle',
-				'dd.forward': false,
-			})
+			expect(mockLogger.info).toHaveBeenCalledWith('Bootstrap step 1 complete',
+				env('lifecycle', 'lifecycle'),
+			)
 		})
 
 		it('should include meta', () => {
 			service.lifecycle('Module initialized', { module: 'TypeOrmModule' })
-			expect(mockLogger.info).toHaveBeenCalledWith('Module initialized', {
-				tier: 'lifecycle',
-				'dd.forward': false,
-				module: 'TypeOrmModule',
-			})
+			expect(mockLogger.info).toHaveBeenCalledWith('Module initialized',
+				env('lifecycle', 'lifecycle', { module: 'TypeOrmModule' }),
+			)
 		})
 	})
 
 	describe('debugTiered()', () => {
-		it('should log at debug level with DEBUG tier and dd.forward false', () => {
+		it('should log at debug level with DEBUG tier and envelope', () => {
 			service.debugTiered('Aggregation SQL', { sql: 'SELECT ...' })
-			expect(mockLogger.debug).toHaveBeenCalledWith('Aggregation SQL', {
-				tier: 'debug',
-				'dd.forward': false,
-				sql: 'SELECT ...',
-			})
+			expect(mockLogger.debug).toHaveBeenCalledWith('Aggregation SQL',
+				env('debug', 'diagnostic', { sql: 'SELECT ...' }),
+			)
 		})
 
 		it('should log without meta', () => {
 			service.debugTiered('Diagnostic query')
-			expect(mockLogger.debug).toHaveBeenCalledWith('Diagnostic query', {
-				tier: 'debug',
-				'dd.forward': false,
+			expect(mockLogger.debug).toHaveBeenCalledWith('Diagnostic query',
+				env('debug', 'diagnostic'),
+			)
+		})
+	})
+
+	describe('envelope', () => {
+		it('should allow channel override on LoggerService tier methods', () => {
+			service.operational('Perf event', { channel: 'diagnostic', durationMs: 100 })
+			expect(mockLogger.info).toHaveBeenCalledWith('Perf event',
+				env('operational', 'diagnostic', { durationMs: 100 }),
+			)
+		})
+
+		it('should inject requestId from AsyncContextStorage', () => {
+			const mockContext: RequestContext = {
+				correlationId: 'req-xyz-789',
+				timestamp: Date.now(),
+			}
+
+			AsyncContextStorage.run(mockContext, () => {
+				service.critical('Error in request')
+				expect(mockLogger.error).toHaveBeenCalledWith('Error in request',
+					env('critical', 'operational', { requestId: 'req-xyz-789' }),
+				)
 			})
+		})
+
+		it('should not include requestId when outside async context', () => {
+			service.operational('No request context')
+			expect(mockLogger.info).toHaveBeenCalledWith('No request context',
+				env('operational', 'operational'),
+			)
 		})
 	})
 
@@ -396,45 +422,39 @@ describe('LoggerService', () => {
 			})
 		})
 
-		it('should support tier-aware methods', () => {
+		it('should support tier-aware methods with envelope', () => {
 			const child = service.createScopedLogger('PerfInterceptor')
 			child.operational('Slow query', { durationMs: 500 })
 			expect(mockLogger.info).toHaveBeenCalledWith('Slow query', {
 				context: 'PerfInterceptor',
-				tier: 'operational',
-				'dd.forward': true,
-				durationMs: 500,
+				...env('operational', 'operational', { durationMs: 500 }),
 			})
 		})
 
-		it('should support critical tier', () => {
+		it('should support critical tier with envelope', () => {
 			const child = service.createScopedLogger('ErrorHandler')
 			child.critical('DB down')
 			expect(mockLogger.error).toHaveBeenCalledWith('DB down', {
 				context: 'ErrorHandler',
-				tier: 'critical',
-				'dd.forward': true,
+				...env('critical', 'operational'),
 			})
 		})
 
-		it('should support lifecycle tier', () => {
+		it('should support lifecycle tier with envelope', () => {
 			const child = service.createScopedLogger('Bootstrap')
 			child.lifecycle('Module loaded')
 			expect(mockLogger.info).toHaveBeenCalledWith('Module loaded', {
 				context: 'Bootstrap',
-				tier: 'lifecycle',
-				'dd.forward': false,
+				...env('lifecycle', 'lifecycle'),
 			})
 		})
 
-		it('should support debugTiered', () => {
+		it('should support debugTiered with envelope', () => {
 			const child = service.createScopedLogger('QueryBuilder')
 			child.debugTiered('SQL trace', { sql: 'SELECT 1' })
 			expect(mockLogger.debug).toHaveBeenCalledWith('SQL trace', {
 				context: 'QueryBuilder',
-				tier: 'debug',
-				'dd.forward': false,
-				sql: 'SELECT 1',
+				...env('debug', 'diagnostic', { sql: 'SELECT 1' }),
 			})
 		})
 
@@ -451,6 +471,46 @@ describe('LoggerService', () => {
 			child.warn('A warning')
 			expect(mockLogger.error).toHaveBeenCalledWith('An error', { context: 'TestChild', code: 500 })
 			expect(mockLogger.warn).toHaveBeenCalledWith('A warning', { context: 'TestChild' })
+		})
+
+		it('should allow channel override in meta', () => {
+			const child = service.createScopedLogger('PerfInterceptor')
+			child.operational('Slow query', { channel: 'diagnostic', durationMs: 1250 })
+			expect(mockLogger.info).toHaveBeenCalledWith('Slow query', {
+				context: 'PerfInterceptor',
+				...env('operational', 'diagnostic', { durationMs: 1250 }),
+			})
+		})
+
+		it('should allow event override in meta', () => {
+			const child = service.createScopedLogger('NoteService')
+			child.operational('Note created', { event: 'agent.note.created', noteId: '123' })
+			expect(mockLogger.info).toHaveBeenCalledWith('Note created', {
+				context: 'NoteService',
+				schema: '1.0.0',
+				serviceVersion: '0.1.0',
+				env: 'test',
+				tier: 'operational',
+				channel: 'operational',
+				event: 'agent.note.created',
+				noteId: '123',
+			})
+		})
+
+		it('should inject requestId from AsyncContextStorage', () => {
+			const child = service.createScopedLogger('NoteController')
+			const mockContext: RequestContext = {
+				correlationId: 'req-abc-123',
+				timestamp: Date.now(),
+			}
+
+			AsyncContextStorage.run(mockContext, () => {
+				child.operational('Handling request')
+				expect(mockLogger.info).toHaveBeenCalledWith('Handling request', {
+					context: 'NoteController',
+					...env('operational', 'operational', { requestId: 'req-abc-123' }),
+				})
+			})
 		})
 	})
 

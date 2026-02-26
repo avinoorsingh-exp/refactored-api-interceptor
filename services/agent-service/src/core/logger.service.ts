@@ -1,7 +1,7 @@
 // services/agent-service/src/core/logger.service.ts
 import { Injectable, OnModuleInit } from '@nestjs/common'
 import { createLogger, type Logger as WinstonLogger } from '@exprealty/logger'
-import { LogTier, shouldForwardLog } from '@exprealty/logger/log-tier'
+import { LogTier } from '@exprealty/logger/log-tier'
 import { MetricsService, type ExporterProtocol } from '@exprealty/logger/metrics'
 import { z } from 'zod'
 import { AsyncContextStorage } from '@exprealty/cache'
@@ -10,11 +10,22 @@ import {
   ServiceCallEventSchema,
   type ServiceCallEvent,
   EnvEnum,
+  LOG_SCHEMA_VERSION,
+  type LogChannel,
 } from '@exprealty/shared-domain'
+
+// ── Tier → default channel mapping ───────────────────────────────────────────
+// Callers can override channel in meta (e.g. `{ channel: 'diagnostic' }`).
+const TIER_CHANNEL: Record<string, LogChannel> = {
+  [LogTier.CRITICAL]: 'operational',
+  [LogTier.OPERATIONAL]: 'operational',
+  [LogTier.LIFECYCLE]: 'lifecycle',
+  [LogTier.DEBUG]: 'diagnostic',
+}
 
 /**
  * Bootstrap-safe logger service.
- * 
+ *
  * Architecture:
  * - Constructor: Minimal setup, console-only, no dependencies
  * - Post-bootstrap: Initializes Winston logger and metrics via OnModuleInit
@@ -31,6 +42,7 @@ export class LoggerService implements OnModuleInit {
   private logger: WinstonLogger | null = null
   private metrics: MetricsService | null = null
   private readonly service = 'agent-service'
+  private readonly serviceVersion: string
   private readonly env: z.infer<typeof EnvEnum>
   private context?: string
   private initialized = false
@@ -43,9 +55,7 @@ export class LoggerService implements OnModuleInit {
   constructor() {
     // Use process.env directly - no ConfigService dependency
     this.env = (process.env.NODE_ENV as z.infer<typeof EnvEnum>) || 'dev'
-    
-    // Console fallback for bootstrap phase
-    // All methods will use console if logger not initialized
+    this.serviceVersion = process.env.SERVICE_VERSION || '0.1.0'
   }
 
   /**
@@ -231,24 +241,45 @@ export class LoggerService implements OnModuleInit {
   // -------------------------------------------------------------------------
 
   /**
-   * Stamp meta with tier + dd.forward so Datadog pipelines can index or drop.
+   * Build envelope metadata for tier-aware log methods.
+   *
+   * Stamps: schema, serviceVersion, env, tier, channel, event, requestId.
+   * Callers can override `channel` and `event` via meta.
+   * Routing decisions (index vs. archive) are handled by Fluent Bit, not the app.
    */
-  private withTier(tier: LogTier, meta?: Record<string, unknown>): Record<string, unknown> {
+  private withEnvelope(tier: LogTier, meta?: Record<string, unknown>): Record<string, unknown> {
+    const { channel, event, ...rest } = meta ?? {}
+    const requestId = this.getRequestId()
     return this.withContext({
+      schema: LOG_SCHEMA_VERSION,
+      serviceVersion: this.serviceVersion,
+      env: this.env,
       tier,
-      'dd.forward': shouldForwardLog(tier),
-      ...meta,
+      channel: (channel as LogChannel) ?? TIER_CHANNEL[tier],
+      event: (event as string) ?? 'log',
+      ...(requestId && { requestId }),
+      ...rest,
     })
   }
 
   /**
-   * CRITICAL tier — always indexed, always alertable.
-   * PG errors, unhandled exceptions, 5xx, process crashes.
+   * Pull requestId from AsyncContextStorage when in a request context.
+   */
+  private getRequestId(): string | undefined {
+    try {
+      return AsyncContextStorage.getStore()?.correlationId
+    } catch {
+      return undefined
+    }
+  }
+
+  /**
+   * CRITICAL tier — errors, exceptions, 5xx, process crashes.
    */
   critical(message: string, meta?: Record<string, unknown>): void {
     try {
       if (this.logger && this.initialized) {
-        this.logger.error(message, this.withTier(LogTier.CRITICAL, meta))
+        this.logger.error(message, this.withEnvelope(LogTier.CRITICAL, meta))
       } else {
         console.error(`[CRITICAL] ${message}`, meta || '')
       }
@@ -258,13 +289,12 @@ export class LoggerService implements OnModuleInit {
   }
 
   /**
-   * OPERATIONAL tier — always indexed.
-   * Request/response, slow queries, job results, service ready.
+   * OPERATIONAL tier — request/response, slow queries, job results, service ready.
    */
   operational(message: string, meta?: Record<string, unknown>): void {
     try {
       if (this.logger && this.initialized) {
-        this.logger.info(message, this.withTier(LogTier.OPERATIONAL, meta))
+        this.logger.info(message, this.withEnvelope(LogTier.OPERATIONAL, meta))
       } else {
         console.log(`[OPERATIONAL] ${message}`, meta || '')
       }
@@ -274,13 +304,12 @@ export class LoggerService implements OnModuleInit {
   }
 
   /**
-   * LIFECYCLE tier — archive only (dd.forward: false).
-   * Bootstrap steps, module init, route mapping, cron scheduling.
+   * LIFECYCLE tier — bootstrap steps, module init, route mapping, cron scheduling.
    */
   lifecycle(message: string, meta?: Record<string, unknown>): void {
     try {
       if (this.logger && this.initialized) {
-        this.logger.info(message, this.withTier(LogTier.LIFECYCLE, meta))
+        this.logger.info(message, this.withEnvelope(LogTier.LIFECYCLE, meta))
       } else {
         console.log(`[LIFECYCLE] ${message}`, meta || '')
       }
@@ -290,14 +319,12 @@ export class LoggerService implements OnModuleInit {
   }
 
   /**
-   * DEBUG tier — never indexed (dd.forward: false).
-   * Aggregation SQL, diagnostic queries, verbose traces.
-   * Migrates to Datadog APM over time.
+   * DEBUG tier — aggregation SQL, diagnostic queries, verbose traces.
    */
   debugTiered(message: string, meta?: Record<string, unknown>): void {
     try {
       if (this.logger && this.initialized) {
-        this.logger.debug(message, this.withTier(LogTier.DEBUG, meta))
+        this.logger.debug(message, this.withEnvelope(LogTier.DEBUG, meta))
       } else {
         if (this.env === 'dev' || this.env === 'local') {
           console.debug(`[DEBUG] ${message}`, meta || '')
@@ -334,6 +361,8 @@ export class LoggerService implements OnModuleInit {
   get _initialized(): boolean { return this.initialized }
   /** @internal */
   get _env(): string { return this.env }
+  /** @internal */
+  get _serviceVersion(): string { return this.serviceVersion }
 
   // -------------------------------------------------------------------------
   // Metrics Access
@@ -406,12 +435,27 @@ export class ScopedLogger {
     return { context: this.childContext, ...meta }
   }
 
-  private withTier(tier: LogTier, meta?: Record<string, unknown>): Record<string, unknown> {
+  private withEnvelope(tier: LogTier, meta?: Record<string, unknown>): Record<string, unknown> {
+    const { channel, event, ...rest } = meta ?? {}
+    const requestId = this.getRequestId()
     return this.withContext({
+      schema: LOG_SCHEMA_VERSION,
+      serviceVersion: this.parent._serviceVersion,
+      env: this.parent._env,
       tier,
-      'dd.forward': shouldForwardLog(tier),
-      ...meta,
+      channel: (channel as LogChannel) ?? TIER_CHANNEL[tier],
+      event: (event as string) ?? 'log',
+      ...(requestId && { requestId }),
+      ...rest,
     })
+  }
+
+  private getRequestId(): string | undefined {
+    try {
+      return AsyncContextStorage.getStore()?.correlationId
+    } catch {
+      return undefined
+    }
   }
 
   info(message: string, meta?: Record<string, unknown>): void {
@@ -459,7 +503,7 @@ export class ScopedLogger {
   critical(message: string, meta?: Record<string, unknown>): void {
     try {
       if (this.parent._winston && this.parent._initialized) {
-        this.parent._winston.error(message, this.withTier(LogTier.CRITICAL, meta))
+        this.parent._winston.error(message, this.withEnvelope(LogTier.CRITICAL, meta))
       } else {
         console.error(`[CRITICAL] ${message}`, meta || '')
       }
@@ -469,7 +513,7 @@ export class ScopedLogger {
   operational(message: string, meta?: Record<string, unknown>): void {
     try {
       if (this.parent._winston && this.parent._initialized) {
-        this.parent._winston.info(message, this.withTier(LogTier.OPERATIONAL, meta))
+        this.parent._winston.info(message, this.withEnvelope(LogTier.OPERATIONAL, meta))
       } else {
         console.log(`[OPERATIONAL] ${message}`, meta || '')
       }
@@ -479,7 +523,7 @@ export class ScopedLogger {
   lifecycle(message: string, meta?: Record<string, unknown>): void {
     try {
       if (this.parent._winston && this.parent._initialized) {
-        this.parent._winston.info(message, this.withTier(LogTier.LIFECYCLE, meta))
+        this.parent._winston.info(message, this.withEnvelope(LogTier.LIFECYCLE, meta))
       } else {
         console.log(`[LIFECYCLE] ${message}`, meta || '')
       }
@@ -489,7 +533,7 @@ export class ScopedLogger {
   debugTiered(message: string, meta?: Record<string, unknown>): void {
     try {
       if (this.parent._winston && this.parent._initialized) {
-        this.parent._winston.debug(message, this.withTier(LogTier.DEBUG, meta))
+        this.parent._winston.debug(message, this.withEnvelope(LogTier.DEBUG, meta))
       } else {
         if (this.parent._env === 'dev' || this.parent._env === 'local') {
           console.debug(`[DEBUG] ${message}`, meta || '')

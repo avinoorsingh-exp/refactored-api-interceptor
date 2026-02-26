@@ -264,7 +264,7 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
             } catch (headerError) {
               // Ignore header errors if response was already sent
               this.logger?.debugTiered('[Microscope] Could not set response headers (response already sent)', {
-                channel: 'perf',
+                channel: 'diagnostic',
                 correlationId,
                 error: (headerError as Error).message,
               });
@@ -283,7 +283,7 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
             await this.handleSlowQuery(queryMetadata, queryContext);
           } else if (this.options.logAllQueries && instrumented) {
             this.logger?.debugTiered('[Microscope] Query completed', {
-              channel: 'perf',
+              channel: 'diagnostic',
               correlationId,
               endpoint: { method: request.method, path: request.url },
               perf: { durationMs: duration },
@@ -311,7 +311,7 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
             } catch (headerError) {
               // Ignore header errors if response was already sent
               this.logger?.debugTiered('[Microscope] Could not set response headers on error (response already sent)', {
-                channel: 'perf',
+                channel: 'diagnostic',
                 correlationId,
                 error: (headerError as Error).message,
               });
@@ -324,7 +324,7 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
           }
 
           this.logger?.critical('[Microscope] Query failed', {
-            channel: 'perf',
+            channel: 'diagnostic',
             correlationId,
             endpoint: { method: request.method, path: request.url },
             perf: { durationMs: duration },
@@ -419,7 +419,7 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
       }
     } catch (error) {
       this.logger?.debugTiered('[Microscope] Could not setup query capture', {
-        channel: 'perf',
+        channel: 'diagnostic',
         error: (error as Error).message,
       });
     }
@@ -487,7 +487,7 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
           );
         } catch (error) {
           this.logger?.operational('[Microscope] Failed to generate EXPLAIN', {
-            channel: 'perf',
+            channel: 'diagnostic',
             correlationId: context.correlationId,
             error: (error as Error).message,
           });
@@ -556,7 +556,7 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
       return this.parseExplainOutput(plan);
     } catch (error) {
       this.logger?.critical('[Microscope] EXPLAIN ANALYZE failed', {
-        channel: 'perf',
+        channel: 'diagnostic',
         error: (error as Error).message,
         query: { sql: sql.substring(0, 200) },
       });
@@ -697,7 +697,7 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
     sqlTruncateLength: number,
   ): Record<string, unknown> {
     const payload: Record<string, unknown> = {
-      channel: 'perf',
+      channel: 'diagnostic',
       correlationId: context.correlationId,
       endpoint: {
         method: context.method,
@@ -771,7 +771,7 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
     // Log full EXPLAIN to separate entry for analysis
     if (metadata.performance.explain) {
       this.logger?.debugTiered('[Microscope] Full execution plan', {
-        channel: 'perf',
+        channel: 'diagnostic',
         correlationId: context.correlationId,
         explain: metadata.performance.explain.plan,
       });
