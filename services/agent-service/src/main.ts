@@ -332,7 +332,7 @@ async function bootstrap() {
 						includeInResponse,
 						sampleRate,
 						endpointAllowlist,
-					}),
+					}, logger),
 					headerFixInterceptor,
 				)
 				logger.info(`[Microscope] QueryPerformanceInterceptor active — mode=query, sampleRate=${sampleRate}, explain=${captureExplain}, slow=${slowMs}ms, critical=${criticalMs}ms, allowlist=${endpointAllowlist.length > 0 ? endpointAllowlist.join(',') : 'all'}`)

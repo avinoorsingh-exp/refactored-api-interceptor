@@ -18,5 +18,5 @@ services:
       - ./apps/load-test/src/regions/test-data:/test-data/regions
       - ./apps/load-test/src/states/test-data:/test-data/states
     environment:
-      - K6_OUT=web
+      - K6_OUT=web-dashboard
     network_mode: host

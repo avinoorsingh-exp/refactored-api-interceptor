@@ -16,6 +16,16 @@ jest.mock('@exprealty/logger', () => ({
 	})),
 }))
 
+jest.mock('@exprealty/logger/log-tier', () => ({
+	LogTier: {
+		CRITICAL: 'critical',
+		OPERATIONAL: 'operational',
+		LIFECYCLE: 'lifecycle',
+		DEBUG: 'debug',
+	},
+	shouldForwardLog: jest.fn((tier: string) => tier === 'critical' || tier === 'operational'),
+}))
+
 import { createLogger } from '@exprealty/logger'
 
 describe('LoggerService', () => {
@@ -25,6 +35,14 @@ describe('LoggerService', () => {
 
 	beforeEach(async () => {
 		jest.clearAllMocks()
+
+		// Re-set mock return value after clearAllMocks wipes it
+		;(createLogger as jest.Mock).mockReturnValue({
+			info: jest.fn(),
+			error: jest.fn(),
+			warn: jest.fn(),
+			debug: jest.fn(),
+		})
 
 		mockConfigService = {
 			get: jest.fn().mockImplementation((key: string) => {
@@ -54,6 +72,7 @@ describe('LoggerService', () => {
 		}).compile()
 
 		service = module.get<LoggerService>(LoggerService)
+		await service.onModuleInit()
 		mockLogger = (createLogger as jest.Mock).mock.results[0].value
 	})
 
@@ -189,6 +208,93 @@ describe('LoggerService', () => {
 				// Should preserve sourceType
 				expect(loggerContext?.sourceType).toBe('http')
 				expect(loggerContext?.serviceName).toBe('HttpService')
+			})
+		})
+	})
+
+	describe('critical()', () => {
+		it('should log at error level with CRITICAL tier and dd.forward true', () => {
+			service.critical('DB connection lost', { code: '08001' })
+			expect(mockLogger.error).toHaveBeenCalledWith('DB connection lost', {
+				tier: 'critical',
+				'dd.forward': true,
+				code: '08001',
+			})
+		})
+
+		it('should log without meta', () => {
+			service.critical('Unhandled exception')
+			expect(mockLogger.error).toHaveBeenCalledWith('Unhandled exception', {
+				tier: 'critical',
+				'dd.forward': true,
+			})
+		})
+
+		it('should include context when set', () => {
+			service.setContext('AgentService')
+			service.critical('Query failed')
+			expect(mockLogger.error).toHaveBeenCalledWith('Query failed', {
+				context: 'AgentService',
+				tier: 'critical',
+				'dd.forward': true,
+			})
+		})
+	})
+
+	describe('operational()', () => {
+		it('should log at info level with OPERATIONAL tier and dd.forward true', () => {
+			service.operational('GET /v1/agents completed', { durationMs: 42, status: 200 })
+			expect(mockLogger.info).toHaveBeenCalledWith('GET /v1/agents completed', {
+				tier: 'operational',
+				'dd.forward': true,
+				durationMs: 42,
+				status: 200,
+			})
+		})
+
+		it('should log without meta', () => {
+			service.operational('Service listening on port 3000')
+			expect(mockLogger.info).toHaveBeenCalledWith('Service listening on port 3000', {
+				tier: 'operational',
+				'dd.forward': true,
+			})
+		})
+	})
+
+	describe('lifecycle()', () => {
+		it('should log at info level with LIFECYCLE tier and dd.forward false', () => {
+			service.lifecycle('Bootstrap step 1 complete')
+			expect(mockLogger.info).toHaveBeenCalledWith('Bootstrap step 1 complete', {
+				tier: 'lifecycle',
+				'dd.forward': false,
+			})
+		})
+
+		it('should include meta', () => {
+			service.lifecycle('Module initialized', { module: 'TypeOrmModule' })
+			expect(mockLogger.info).toHaveBeenCalledWith('Module initialized', {
+				tier: 'lifecycle',
+				'dd.forward': false,
+				module: 'TypeOrmModule',
+			})
+		})
+	})
+
+	describe('debugTiered()', () => {
+		it('should log at debug level with DEBUG tier and dd.forward false', () => {
+			service.debugTiered('Aggregation SQL', { sql: 'SELECT ...' })
+			expect(mockLogger.debug).toHaveBeenCalledWith('Aggregation SQL', {
+				tier: 'debug',
+				'dd.forward': false,
+				sql: 'SELECT ...',
+			})
+		})
+
+		it('should log without meta', () => {
+			service.debugTiered('Diagnostic query')
+			expect(mockLogger.debug).toHaveBeenCalledWith('Diagnostic query', {
+				tier: 'debug',
+				'dd.forward': false,
 			})
 		})
 	})

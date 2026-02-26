@@ -191,7 +191,7 @@ export class NoteController {
 		body: CreateNoteDto,
 		@Res({ passthrough: true }) res: Response,
 	): Promise<NoteResponseDto> {
-		this.logger.info(`Creating note for agent ${agent.id}`);
+		this.logger.operational(`Creating note for agent ${agent.id}`);
 
 		const note = await this.noteService.create(agent.id, body);
 
@@ -245,7 +245,7 @@ export class NoteController {
 		@Body(new ZodValidationPipe(UpdateNoteInputSchema, 'note.validation'))
 		body: UpdateNoteDto,
 	): Promise<NoteResponseDto> {
-		this.logger.info(`Updating note ${noteId} for agent ${agent.id}`);
+		this.logger.operational(`Updating note ${noteId} for agent ${agent.id}`);
 
 		const note = await this.noteService.update(agent.id, noteId, body);
 

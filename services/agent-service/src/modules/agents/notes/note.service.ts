@@ -35,7 +35,7 @@ export class NoteService {
 		});
 
 		const duration = Date.now() - startTime;
-		this.logger.info(`Created note ${note.id} for agent ${agentId} in ${duration}ms`);
+		this.logger.operational(`Created note ${note.id} for agent ${agentId} in ${duration}ms`);
 
 		return note;
 	}
@@ -59,7 +59,7 @@ export class NoteService {
 		}
 
 		const duration = Date.now() - startTime;
-		this.logger.info(`Updated note ${noteId} for agent ${agentId} in ${duration}ms`);
+		this.logger.operational(`Updated note ${noteId} for agent ${agentId} in ${duration}ms`);
 
 		return note;
 	}
@@ -93,7 +93,7 @@ export class NoteService {
 		const result = await this.noteRepo.findByAgentId(agentId, query, selection);
 
 		const duration = Date.now() - startTime;
-		this.logger.debug(`Fetched ${result.items.length} notes for agent ${agentId} in ${duration}ms`);
+		this.logger.debugTiered(`Fetched ${result.items.length} notes for agent ${agentId} in ${duration}ms`);
 
 		return result;
 	}

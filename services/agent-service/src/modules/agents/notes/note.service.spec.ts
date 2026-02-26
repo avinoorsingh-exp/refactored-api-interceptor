@@ -38,6 +38,10 @@ describe('NoteService', () => {
 			debug: jest.fn(),
 			warn: jest.fn(),
 			error: jest.fn(),
+			operational: jest.fn(),
+			debugTiered: jest.fn(),
+			critical: jest.fn(),
+			lifecycle: jest.fn(),
 		} as unknown as jest.Mocked<LoggerService>;
 
 		service = new NoteService(repository, logger);
@@ -76,7 +80,7 @@ describe('NoteService', () => {
 
 			await service.create(mockAgentId, createDto);
 
-			expect(logger.info).toHaveBeenCalledWith(
+			expect(logger.operational).toHaveBeenCalledWith(
 				expect.stringContaining(`Created note ${mockNote.id} for agent ${mockAgentId}`),
 			);
 		});
@@ -113,7 +117,7 @@ describe('NoteService', () => {
 
 			await service.update(mockAgentId, mockNote.id, updateDto);
 
-			expect(logger.info).toHaveBeenCalledWith(
+			expect(logger.operational).toHaveBeenCalledWith(
 				expect.stringContaining(`Updated note ${mockNote.id} for agent ${mockAgentId}`),
 			);
 		});

@@ -16,6 +16,10 @@
 		"./metrics": {
 			"import": "./dist/metrics.js",
 			"types": "./dist/metrics.d.ts"
+		},
+		"./log-tier": {
+			"import": "./dist/log-tier.js",
+			"types": "./dist/log-tier.d.ts"
 		}
 	},
 	"scripts": {

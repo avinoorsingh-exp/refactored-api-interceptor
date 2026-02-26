@@ -62,6 +62,10 @@ describe('NoteController', () => {
 			debug: jest.fn(),
 			warn: jest.fn(),
 			error: jest.fn(),
+			operational: jest.fn(),
+			debugTiered: jest.fn(),
+			critical: jest.fn(),
+			lifecycle: jest.fn(),
 		};
 
 		const module: TestingModule = await Test.createTestingModule({

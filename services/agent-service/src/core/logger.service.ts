@@ -1,6 +1,7 @@
 // services/agent-service/src/core/logger.service.ts
 import { Injectable, OnModuleInit } from '@nestjs/common'
 import { createLogger, type Logger as WinstonLogger } from '@exprealty/logger'
+import { LogTier, shouldForwardLog } from '@exprealty/logger/log-tier'
 import { MetricsService, type ExporterProtocol } from '@exprealty/logger/metrics'
 import { z } from 'zod'
 import { AsyncContextStorage } from '@exprealty/cache'
@@ -222,6 +223,88 @@ export class LoggerService implements OnModuleInit {
       }
     } catch {
       // Fail silently - logging should never break the app
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Tier-Aware Logging
+  // -------------------------------------------------------------------------
+
+  /**
+   * Stamp meta with tier + dd.forward so Datadog pipelines can index or drop.
+   */
+  private withTier(tier: LogTier, meta?: Record<string, unknown>): Record<string, unknown> {
+    return this.withContext({
+      tier,
+      'dd.forward': shouldForwardLog(tier),
+      ...meta,
+    })
+  }
+
+  /**
+   * CRITICAL tier — always indexed, always alertable.
+   * PG errors, unhandled exceptions, 5xx, process crashes.
+   */
+  critical(message: string, meta?: Record<string, unknown>): void {
+    try {
+      if (this.logger && this.initialized) {
+        this.logger.error(message, this.withTier(LogTier.CRITICAL, meta))
+      } else {
+        console.error(`[CRITICAL] ${message}`, meta || '')
+      }
+    } catch {
+      // Fail silently
+    }
+  }
+
+  /**
+   * OPERATIONAL tier — always indexed.
+   * Request/response, slow queries, job results, service ready.
+   */
+  operational(message: string, meta?: Record<string, unknown>): void {
+    try {
+      if (this.logger && this.initialized) {
+        this.logger.info(message, this.withTier(LogTier.OPERATIONAL, meta))
+      } else {
+        console.log(`[OPERATIONAL] ${message}`, meta || '')
+      }
+    } catch {
+      // Fail silently
+    }
+  }
+
+  /**
+   * LIFECYCLE tier — archive only (dd.forward: false).
+   * Bootstrap steps, module init, route mapping, cron scheduling.
+   */
+  lifecycle(message: string, meta?: Record<string, unknown>): void {
+    try {
+      if (this.logger && this.initialized) {
+        this.logger.info(message, this.withTier(LogTier.LIFECYCLE, meta))
+      } else {
+        console.log(`[LIFECYCLE] ${message}`, meta || '')
+      }
+    } catch {
+      // Fail silently
+    }
+  }
+
+  /**
+   * DEBUG tier — never indexed (dd.forward: false).
+   * Aggregation SQL, diagnostic queries, verbose traces.
+   * Migrates to Datadog APM over time.
+   */
+  debugTiered(message: string, meta?: Record<string, unknown>): void {
+    try {
+      if (this.logger && this.initialized) {
+        this.logger.debug(message, this.withTier(LogTier.DEBUG, meta))
+      } else {
+        if (this.env === 'dev' || this.env === 'local') {
+          console.debug(`[DEBUG] ${message}`, meta || '')
+        }
+      }
+    } catch {
+      // Fail silently
     }
   }
 
