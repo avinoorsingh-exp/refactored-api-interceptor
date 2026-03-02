@@ -910,12 +910,17 @@ export class AgentTypeOrmRepository
 			return;
 		}
 
+		// Only run the CONCAT full-name search when the term contains a space
+		// (e.g. "john smith"). Single-word terms like "joh" are already covered
+		// by the strategy search on firstName and lastName individually, and the
+		// CONCAT expression is unsargable (no index can help).
+		if (!searchQuery.trim().includes(' ')) {
+			return;
+		}
+
 		const alias = this.getAlias();
 		const paramName = 'fullNameSearch';
 
-		// Use CONCAT to concatenate firstName and lastName with a space
-		// TypeORM will resolve property names to column names (firstName -> first_name, lastName -> last_name)
-		// Use COALESCE to handle null values gracefully
 		qb.orWhere(
 			`CONCAT(COALESCE(${alias}.firstName, ''), ' ', COALESCE(${alias}.lastName, '')) ILIKE :${paramName}`,
 			{ [paramName]: `%${searchQuery.trim()}%` },
@@ -932,29 +937,31 @@ export class AgentTypeOrmRepository
 	private applyEmailSearch<T>(
 		qb: SelectQueryBuilder<T>,
 		searchQuery?: string,
+		hasContactMethodInclude = false,
 	): void {
 		if (!searchQuery || !searchQuery.trim()) {
 			return;
 		}
 
-		const alias = this.getAlias();
-		const emailSearchAlias = 'emailSearch';
-		const paramName = 'emailSearchValue';
+		const trimmed = searchQuery.trim();
 
-		// LEFT JOIN contactMethods where channel='email' for email search
-		// This allows searching email addresses even if agent has no email (LEFT JOIN)
-		qb.leftJoin(
-			`${alias}.contactMethods`,
-			emailSearchAlias,
-			`${emailSearchAlias}.channel = :emailSearchChannel`,
-			{ emailSearchChannel: 'email' },
-		);
-
-		// Search on the value field (email address) with case-insensitive partial matching
-		qb.orWhere(
-			`${emailSearchAlias}.value ILIKE :${paramName}`,
-			{ [paramName]: `%${searchQuery.trim()}%` },
-		);
+		if (hasContactMethodInclude) {
+			// When include=contactMethod is present, applyRelations() already joined
+			// contact_method as "agent_contactMethod". Reuse that alias to avoid a
+			// duplicate JOIN that creates a cartesian product (N×M rows per agent).
+			qb.orWhere(
+				`agent_contactMethod.value ILIKE :emailSearchValue`,
+				{ emailSearchValue: `%${trimmed}%` },
+			);
+		} else {
+			// No contactMethod include — use an EXISTS subquery instead of a LEFT JOIN
+			// to prevent row multiplication in the outer query.
+			const alias = this.getAlias();
+			qb.orWhere(
+				`EXISTS (SELECT 1 FROM core.contact_method cm_search WHERE cm_search.agent_id = ${alias}.id AND cm_search.value ILIKE :emailSearchValue)`,
+				{ emailSearchValue: `%${trimmed}%` },
+			);
+		}
 	}
 	/**
  * Applies UUID search exclusively for agent ID.
@@ -1033,6 +1040,7 @@ export class AgentTypeOrmRepository
 		const hasPrimaryAgentCompany = this.hasPrimaryAgentCompanyInclude(selection?.include);
 		const hasPrimaryTax = this.hasPrimaryTaxInclude(selection?.include);
 		const hasAddresses = selection?.include?.includes('address') || false;
+		const hasContactMethodInclude = selection?.include?.includes('contactMethod') || false;
 
 		// When both 'tax' and 'primaryTax' are requested, strip 'tax' to avoid
 		// duplicate joins on the same agent_tax junction table (PG error 42712).
@@ -1187,7 +1195,7 @@ export class AgentTypeOrmRepository
 				} else {
 					// Apply all search methods for normal text search
 					this.applyFullNameSearch(qb, modifiedQuery.search);
-					this.applyEmailSearch(qb, modifiedQuery.search);
+					this.applyEmailSearch(qb, modifiedQuery.search, hasContactMethodInclude);
 				}
 			}, { skipDefaultSort: hasRelationalSort });
 
@@ -1206,7 +1214,7 @@ export class AgentTypeOrmRepository
 			} else {
 				// Apply all search methods for normal text search
 				this.applyFullNameSearch(qb, modifiedQuery.search);
-				this.applyEmailSearch(qb, modifiedQuery.search);
+				this.applyEmailSearch(qb, modifiedQuery.search, hasContactMethodInclude);
 			}
 		});
 
