@@ -2,6 +2,7 @@ import {
 	Entity,
 	Column,
 	PrimaryGeneratedColumn,
+	OneToMany,
 } from 'typeorm'
 import type { Company, Name, Email } from '@exprealty/shared-domain'
 import { AuditableEntity } from './auditable.entity.js'
@@ -43,4 +44,7 @@ export class CompanyEntity extends AuditableEntity implements Company {
 	@Filterable()
 	@Sortable()
 	email?: Email
+
+	@OneToMany('CompanyExternalReferenceEntity', 'company')
+	companyExternalReferences?: unknown[]
 }

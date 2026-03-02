@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { CompanyEntity } from '@exprealty/database'
-import type { CreateCompanyInput, UpdateCompanyInput, Company, Name, NormalizedPagination, QueryParams } from '@exprealty/shared-domain'
+import type { CreateCompanyInput, UpdateCompanyInput, Company, Name, NormalizedPagination, QueryParams, FieldSelection } from '@exprealty/shared-domain'
 import { QueryService } from '../../common/query/query.service.js'
 
 /**
@@ -92,7 +92,7 @@ export class CompaniesService {
 	 * @param query - Query parameters (pagination, filter, sort, search)
 	 * @returns Object containing array of companies and total count
 	 */
-	async findPage(query: Partial<QueryParams>): Promise<{ companies: Company[]; total: number }> {
+	async findPage(query: Partial<QueryParams>, selection?: FieldSelection): Promise<{ companies: Company[]; total: number }> {
 		const startTime = Date.now()
 
 		// Validate and normalize query params using entity decorators
@@ -103,6 +103,13 @@ export class CompaniesService {
 
 		// Apply filters, search, and sorting with strategy-based search for numeric fields
 		this.queryService.applyAllWithStrategies(qb, normalized, CompanyEntity, 'company')
+
+		// Join external references when requested via ?include=externalReference
+		const includeExternalRef = selection?.include?.includes('externalReference')
+		if (includeExternalRef) {
+			qb.leftJoinAndSelect('company.companyExternalReferences', 'company_companyExternalReferences')
+			qb.leftJoinAndSelect('company_companyExternalReferences.externalReference', 'company_companyExternalReferences_externalReference')
+		}
 
 		// Default sort by name ASC if no sort specified (AC-2)
 		if (!normalized.sort || normalized.sort.conditions.length === 0) {
@@ -122,7 +129,7 @@ export class CompaniesService {
 		)
 
 		return {
-			companies: companies.map((c) => this.mapToResponse(c)),
+			companies: companies.map((c) => this.mapToResponse(c, selection)),
 			total,
 		}
 	}
@@ -134,13 +141,23 @@ export class CompaniesService {
 	 * @returns The company entity
 	 * @throws NotFoundException if company with the given id does not exist
 	 */
-	async findById(id: string): Promise<Company> {
+	async findById(id: string, selection?: FieldSelection): Promise<Company> {
 		const startTime = Date.now()
 
 		try {
-			const company = await this.companyRepository.findOne({
-				where: { id },
-			})
+			let company: CompanyEntity | null
+
+			if (selection?.include?.includes('externalReference')) {
+				const qb = this.companyRepository.createQueryBuilder('company')
+					.where('company.id = :id', { id })
+					.leftJoinAndSelect('company.companyExternalReferences', 'company_companyExternalReferences')
+					.leftJoinAndSelect('company_companyExternalReferences.externalReference', 'company_companyExternalReferences_externalReference')
+				company = await qb.getOne()
+			} else {
+				company = await this.companyRepository.findOne({
+					where: { id },
+				})
+			}
 
 			if (!company) {
 				throw new NotFoundException({
@@ -155,7 +172,7 @@ export class CompaniesService {
 				`Company retrieved: ${company.id} (${company.name}) in ${duration}ms`,
 			)
 
-			return this.mapToResponse(company)
+			return this.mapToResponse(company, selection)
 		} catch (error) {
 			const duration = Date.now() - startTime
 
@@ -251,14 +268,20 @@ export class CompaniesService {
 	 * @param entity - The company entity from the database
 	 * @returns The company domain object
 	 */
-	private mapToResponse(entity: CompanyEntity): Company {
-		return {
+	private mapToResponse(entity: CompanyEntity, selection?: FieldSelection): Company {
+		const result: Record<string, unknown> = {
 			id: entity.id,
-			name: entity.name as any,
-			email: entity.email as any,
+			name: entity.name,
+			email: entity.email,
 			created: entity.created,
 			lastModified: entity.lastModified,
 			modifiedBy: entity.modifiedBy,
 		}
+
+		if (entity.companyExternalReferences) {
+			result.companyExternalReferences = entity.companyExternalReferences
+		}
+
+		return result as Company
 	}
 }

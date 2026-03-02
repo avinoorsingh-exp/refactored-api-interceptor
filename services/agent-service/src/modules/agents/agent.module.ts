@@ -49,6 +49,9 @@ import { LicenseTypeOrmRepository } from './licenses/license.repository.js';
 import { NoteController } from './notes/note.controller.js';
 import { NoteService } from './notes/note.service.js';
 import { NoteTypeOrmRepository } from './notes/note.repository.js';
+import { ExternalReferenceController } from './external-references/external-reference.controller.js';
+import { ExternalReferenceService } from './external-references/external-reference.service.js';
+import { ExternalReferenceTypeOrmRepository } from './external-references/external-reference.repository.js';
 import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 
 /**
@@ -121,13 +124,14 @@ import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 		]),
 		PaginationModule,
 	],
-	controllers: [AgentController, ContactMethodController, AgentAddressController, LicenseController, NoteController],
+	controllers: [AgentController, ContactMethodController, AgentAddressController, LicenseController, NoteController, ExternalReferenceController],
 	providers: [
 		AgentService,
 		ContactMethodService,
 		AgentAddressService,
 		LicenseService,
 		NoteService,
+		ExternalReferenceService,
 		ProjectionService,
 		AgentExistsGuard,
 		// Provide the repository adapter under the port token
@@ -151,6 +155,10 @@ import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 			provide: 'INoteRepository',
 			useClass: NoteTypeOrmRepository,
 		},
+		{
+			provide: 'IExternalReferenceRepository',
+			useClass: ExternalReferenceTypeOrmRepository,
+		},
 		// Provide AgentService under AGENT_SERVICE token for AgentExistsGuard
 		{
 			provide: 'AGENT_SERVICE',
@@ -163,6 +171,7 @@ import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
 		AgentAddressService,
 		LicenseService,
 		NoteService,
+		ExternalReferenceService,
 		AgentExistsGuard,
 		// Export AGENT_SERVICE token for AgentExistsGuard in other modules
 		'AGENT_SERVICE',

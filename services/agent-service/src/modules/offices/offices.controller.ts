@@ -257,6 +257,7 @@ export class OfficesController {
 			),
 		)
 		params: OfficeIdParamDto,
+		@Query() query: any,
 		@Req() req: Request,
 	): Promise<OfficeResponseDto> {
 		const startTime = Date.now();
@@ -267,7 +268,11 @@ export class OfficesController {
 		);
 
 		try {
-			const office = await this.officesService.findById(params.id);
+			const selection = {
+				fields: query.fields?.split(',').map((f: string) => f.trim()),
+				include: query.include?.split(',').map((r: string) => r.trim()),
+			};
+			const office = await this.officesService.findById(params.id, selection);
 
 			const duration = Date.now() - startTime;
 			this.logger.log(

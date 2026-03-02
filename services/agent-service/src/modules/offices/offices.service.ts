@@ -80,11 +80,26 @@ export class OfficesService {
 	 * @returns The office entity
 	 * @throws NotFoundException if office with the given id does not exist
 	 */
-	async findById(id: string): Promise<Office> {
+	async findById(id: string, selection?: FieldSelection): Promise<Office> {
 		const startTime = Date.now();
 
 		try {
-			const office = await this.repository.findById(id);
+			let office: Office | null;
+
+			if (selection?.include && selection.include.length > 0) {
+				const params: QueryParams = {
+					filter: {
+						conditions: [{ field: 'id', operator: 'eq' as const, value: id }],
+						logicalOperator: 'AND' as const,
+					},
+					limit: 1,
+					offset: 0,
+				};
+				const result = await this.repository.findPage(params, selection);
+				office = result.items[0] || null;
+			} else {
+				office = await this.repository.findById(id);
+			}
 
 			if (!office) {
 				throw new NotFoundException({

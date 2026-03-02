@@ -101,9 +101,9 @@ describe('Companies Module Property Tests', () => {
         
         mockService.findById.mockResolvedValue(company);
 
-        const result = await controller.findOne({ id });
+        const result = await controller.findOne({ id }, {});
 
-        expect(mockService.findById).toHaveBeenCalledWith(id);
+        expect(mockService.findById).toHaveBeenCalledWith(id, { fields: undefined, include: undefined });
         expect(result).toEqual(company);
       }
     });

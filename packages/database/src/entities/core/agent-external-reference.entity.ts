@@ -15,15 +15,11 @@ export class AgentExternalReferenceEntity {
 	@PrimaryColumn({ name: 'external_reference_id', type: 'uuid' })
 	externalReferenceId!: string
 
-	@ManyToOne(() => AgentEntity)
+	@ManyToOne(() => AgentEntity, { onDelete: 'CASCADE' })
 	@JoinColumn({ name: 'agent_id' })
 	agent?: AgentEntity
 
-	/**
-	 * Many-to-One relationship with ExternalReference.
-	 * @public
-	 */
-	@ManyToOne(() => ExternalReferenceEntity, (ref) => ref.agents)
+	@ManyToOne(() => ExternalReferenceEntity, (ref) => ref.agents, { onDelete: 'CASCADE' })
 	@JoinColumn({ name: 'external_reference_id' })
 	externalReference?: ExternalReferenceEntity
 }

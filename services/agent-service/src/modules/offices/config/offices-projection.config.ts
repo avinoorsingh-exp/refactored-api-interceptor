@@ -20,6 +20,7 @@ export const OFFICES_PROJECTION_CONFIG: ProjectionConfig = {
 		'lastModified',
 		'modifiedBy',
 		'company',
+		'externalReference',
 	],
 
 	// Default fields (when no ?fields specified)
@@ -43,6 +44,11 @@ export const OFFICES_PROJECTION_CONFIG: ProjectionConfig = {
 		company: {
 			property: 'company',
 			fields: ['id', 'name'],
+		},
+		externalReference: {
+			property: 'officeExternalReferences',
+			fields: ['id', 'externalReferenceId'],
+			nested: ['externalReference'],
 		},
 	},
 };

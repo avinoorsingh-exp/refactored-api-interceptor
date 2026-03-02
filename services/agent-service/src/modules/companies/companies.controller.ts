@@ -156,8 +156,14 @@ export class CompaniesController {
 		})
 
 		try {
+			// Extract field selection from query
+			const selection = {
+				fields: query.fields?.split(',').map((f: string) => f.trim()),
+				include: query.include?.split(',').map((r: string) => r.trim()),
+			}
+
 			// Pass query to service - QueryParamsSchema handles all parsing and validation
-			const { companies, total } = await this.companiesService.findPage(query)
+			const { companies, total } = await this.companiesService.findPage(query, selection)
 
 			const items = companies
 
@@ -230,9 +236,15 @@ export class CompaniesController {
 			new ZodValidationPipe(CompanyIdParamSchema, 'agent.company.validation'),
 		)
 		params: CompanyIdParamDto,
+		@Query() query: any,
 	): Promise<CompanyResponseDto> {
-		const company = await this.companiesService.findById(params.id)
-		
+		const selection = {
+			fields: query.fields?.split(',').map((f: string) => f.trim()),
+			include: query.include?.split(',').map((r: string) => r.trim()),
+		}
+
+		const company = await this.companiesService.findById(params.id, selection)
+
 		return company
 	}
 

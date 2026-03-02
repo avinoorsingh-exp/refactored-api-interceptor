@@ -221,10 +221,10 @@ describe('CompaniesController', () => {
     it('should return a company when found by ID', async () => {
       service.findById.mockResolvedValue(mockCompany);
 
-      const result = await controller.findOne({ id: mockCompany.id });
+      const result = await controller.findOne({ id: mockCompany.id }, {});
 
       expect(result).toEqual(mockCompany);
-      expect(service.findById).toHaveBeenCalledWith(mockCompany.id);
+      expect(service.findById).toHaveBeenCalledWith(mockCompany.id, { fields: undefined, include: undefined });
     });
 
     /**
@@ -240,10 +240,10 @@ describe('CompaniesController', () => {
       );
 
       await expect(
-        controller.findOne({ id: 'non-existent-id' }),
+        controller.findOne({ id: 'non-existent-id' }, {}),
       ).rejects.toThrow(NotFoundException);
 
-      expect(service.findById).toHaveBeenCalledWith('non-existent-id');
+      expect(service.findById).toHaveBeenCalledWith('non-existent-id', { fields: undefined, include: undefined });
     });
   });
 

@@ -185,10 +185,10 @@ describe('OfficesController', () => {
       service.findById.mockResolvedValue(mockOffice);
 
       const req = mockRequest();
-      const result = await controller.findById({ id: mockOffice.id }, req);
+      const result = await controller.findById({ id: mockOffice.id }, {}, req);
 
       expect(result).toEqual(mockOffice);
-      expect(service.findById).toHaveBeenCalledWith(mockOffice.id);
+      expect(service.findById).toHaveBeenCalledWith(mockOffice.id, { fields: undefined, include: undefined });
     });
 
     /**
@@ -204,10 +204,10 @@ describe('OfficesController', () => {
 
       const req = mockRequest();
 
-      await expect(controller.findById({ id: '99999' }, req)).rejects.toThrow(
+      await expect(controller.findById({ id: '99999' }, {}, req)).rejects.toThrow(
         NotFoundException,
       );
-      expect(service.findById).toHaveBeenCalledWith('99999');
+      expect(service.findById).toHaveBeenCalledWith('99999', { fields: undefined, include: undefined });
     });
   });
 
