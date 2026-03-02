@@ -75,7 +75,6 @@
       "anniversaryDate",
       "terminationDate",
       "isStaff",
-      "agentCompanyId",
       "created",
       "lastModified",
       "modifiedBy"
@@ -124,6 +123,7 @@
       "agentCompany",
       "primaryAgentCompany",
       "agentTax",
+      "note",
       "tax",
       "primaryTax"
     ]
@@ -197,7 +197,8 @@
       "modifiedBy"
     ],
     "relations": [
-      "company"
+      "company",
+      "externalReference"
     ]
   },
   "pay-plans": {

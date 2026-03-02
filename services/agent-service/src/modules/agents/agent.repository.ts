@@ -460,7 +460,7 @@ export class AgentTypeOrmRepository
 		alias: string,
 	): void {
 		const associationAlias = 'primaryTaxAssoc';
-		const taxAlias = 'primaryTax';
+		const taxAlias = 'primaryTaxEntity';
 
 		// First join the junction table where isPrimary = true
 		// Then map the tax entity directly to the virtual property
@@ -1033,6 +1033,16 @@ export class AgentTypeOrmRepository
 		const hasPrimaryAgentCompany = this.hasPrimaryAgentCompanyInclude(selection?.include);
 		const hasPrimaryTax = this.hasPrimaryTaxInclude(selection?.include);
 		const hasAddresses = selection?.include?.includes('address') || false;
+
+		// When both 'tax' and 'primaryTax' are requested, strip 'tax' to avoid
+		// duplicate joins on the same agent_tax junction table (PG error 42712).
+		// primaryTax is loaded via loadPrimaryTax(); 'tax' M2M conflicts with it.
+		if (hasPrimaryTax && selection?.include?.includes('tax')) {
+			selection = {
+				...selection,
+				include: selection.include.filter((i) => i !== 'tax'),
+			};
+		}
 
 		// Parse filter if it's a JSON string (query params come in as strings)
 		let filterObj: { conditions?: Array<{ field: string; operator: string; value: any }> } | undefined;

@@ -29,7 +29,7 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		'anniversaryDate',
 		'terminationDate',
 		'isStaff',
-		'agentCompanyId',
+		// agentCompanyId is on agent_company_association, not agent — use include=agentCompanyAssociation
 		'created',
 		'lastModified',
 		'modifiedBy',
@@ -109,12 +109,12 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		},
 		externalReference: {
 			property: 'externalReferences',
-			fields: ['id', 'externalReferenceId'],
+			fields: ['agentId', 'externalReferenceId'],
 			nested: ['externalReference'],
 		},
 		language: {
 			property: 'languages',
-			fields: ['id', 'languageId', 'proficiency'],
+			fields: ['agentId', 'languageId'],
 			nested: ['language'],
 		},
 		contactMethod: {
@@ -127,11 +127,11 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		},
 		sponsorConfiguration: {
 			property: 'sponsorConfiguration',
-			fields: ['id', 'sponsorBuffer'],
+			fields: ['agentId', 'uuid', 'buffer', 'sponsorBufferOverride', 'lastModified'],
 		},
 		activeLocation: {
 			property: 'activeLocations',
-			fields: ['id', 'stateId', 'isPrimary'],
+			fields: ['name', 'agentId', 'postalCode', 'city', 'isPrimary'],
 		},
 		publicProfile: {
 			property: 'publicProfile',
@@ -214,14 +214,14 @@ export const AGENT_PROJECTION_CONFIG: ProjectionConfig = {
 		// Like agentCompany/mls, this provides a cleaner API when junction metadata isn't needed
 		tax: {
 			property: 'tax',
-			fields: ['id', 'taxIdType', 'valueLast4', 'valueToken'],
+			fields: ['id', 'taxIdType', 'typeLast4'],
 			// TypeORM handles junction table transparently via @ManyToMany
 		},
 		// Virtual relation - loaded via AgentRepository.loadPrimaryTax()
 		// Returns the tax entity with isPrimary = true from agent's tax associations
 		primaryTax: {
 			property: 'primaryTax',
-			fields: ['id', 'taxIdType', 'valueLast4', 'valueToken'],
+			fields: ['id', 'taxIdType', 'typeLast4'],
 			virtual: true, // Loaded by repository, not ProjectionService
 		},
 	},
