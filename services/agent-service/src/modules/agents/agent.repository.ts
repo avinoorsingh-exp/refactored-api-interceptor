@@ -305,7 +305,14 @@ export class AgentTypeOrmRepository
 		const entity = this.repo.create({
 			...this.mapToEntity(data as Partial<Agent>),
 		});
+		const saveStart = Date.now();
 		const saved = await this.repo.save(entity);
+		const saveDurationMs = Date.now() - saveStart;
+		this.logger.debug('Agent repository create (save) completed', {
+			operation: 'create',
+			entity: 'agent',
+			save_duration_ms: saveDurationMs,
+		});
 		return this.mapToDomain(saved);
 	}
 

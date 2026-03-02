@@ -241,14 +241,18 @@ export class EcsHttpClient {
     const endpoint = normalizeEndpoint(cfg?.url ?? '')
     const method = ((cfg?.method ?? 'get').toUpperCase() || 'GET') as HttpMethod
     const status = err.response?.status ?? 0
+    const resolvedStatus = resolveStatus(err)
+    const hasUpstreamResponse = !!err.response
 
-    // Log internal service call failure
+    // Log internal service call failure (resolved_status and has_upstream_response for 502/504 analysis)
     this.logger.error('Internal service call failed', {
       service: this.ctx.service,
       capability: this.ctx.capability,
       endpoint,
       method,
       status,
+      resolved_status: resolvedStatus,
+      has_upstream_response: hasUpstreamResponse,
       duration_ms,
       request_id: rid,
       retries: meta?.retries ?? 0,

@@ -345,6 +345,30 @@ describe('AgentServiceController', () => {
             });
         });
 
+        it('should return 504 when upstream times out (ECONNABORTED with upstreamProblem)', async () => {
+            const axiosError = new AxiosError('timeout of 60000ms exceeded');
+            axiosError.code = 'ECONNABORTED';
+            axiosError.config = {} as any;
+            const upstreamProblem = {
+                type: ProblemTypes.Timeout,
+                title: 'Gateway Timeout',
+                status: 504,
+                detail: 'timeout of 60000ms exceeded',
+                instance: '/v1/agents',
+            };
+            Object.defineProperty(axiosError, 'upstreamProblem', { value: upstreamProblem, enumerable: true });
+
+            mockClient.proxy.mockRejectedValue(axiosError);
+
+            await controller.proxyToAgentService(
+                mockRequest as Request,
+                mockResponse as Response,
+            );
+
+            expect(mockResponse.status).toHaveBeenCalledWith(504);
+            expect(mockResponse.json).toHaveBeenCalledWith(upstreamProblem);
+        });
+
         it('should handle generic error', async () => {
             const genericError = new Error('Unexpected error');
             mockClient.proxy.mockRejectedValue(genericError);
