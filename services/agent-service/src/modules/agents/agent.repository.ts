@@ -516,6 +516,58 @@ export class AgentTypeOrmRepository
 	}
 
 	/**
+	 * Loads contact methods for agents by ID (post-query).
+	 * Avoids joining contactMethods in the main pagination query where
+	 * the 1:N cardinality (0-50 rows per agent) causes row multiplication.
+	 *
+	 * @param agentIds - Array of agent UUIDs to load contact methods for
+	 * @returns Map of agent ID to array of contact method objects
+	 */
+	private async loadContactMethods(
+		agentIds: string[],
+	): Promise<Map<string, Array<Record<string, unknown>>>> {
+		if (agentIds.length === 0) {
+			return new Map();
+		}
+
+		const results = await this.repo.manager.query<
+			Array<{
+				agent_id: string;
+				id: string;
+				name: string;
+				channel: string;
+				sub_type: string | null;
+				value: string;
+				is_primary: boolean;
+				sms_opt_in: boolean | null;
+			}>
+		>(
+			`SELECT agent_id, id, name, channel, sub_type, value, is_primary, sms_opt_in
+			FROM core.contact_method
+			WHERE agent_id = ANY($1)
+			ORDER BY agent_id, is_primary DESC, name`,
+			[agentIds],
+		);
+
+		const contactMap = new Map<string, Array<Record<string, unknown>>>();
+		for (const row of results) {
+			const contacts = contactMap.get(row.agent_id) ?? [];
+			contacts.push({
+				id: row.id,
+				name: row.name,
+				channel: row.channel,
+				subType: row.sub_type,
+				value: row.value,
+				isPrimary: row.is_primary,
+				smsOptIn: row.sms_opt_in,
+			});
+			contactMap.set(row.agent_id, contacts);
+		}
+
+		return contactMap;
+	}
+
+	/**
 	 * Load addresses with virtual state relations.
 	 * Used when include=address is specified.
 	 * Adds virtual state mapping to addresses already joined by ProjectionService.
@@ -934,41 +986,28 @@ export class AgentTypeOrmRepository
 		);
 	}
 	/**
- * Applies email search using LEFT JOIN on contactMethods.
- * Searches on contactMethods.value where channel='email' to match email addresses.
- * This works alongside existing individual field searches and full name search.
- * 
- * @param qb - Query builder
- * @param searchQuery - Optional search query string
- */
+	 * Applies email search using an EXISTS subquery on contactMethods.
+	 * Searches contactMethods.value to match email addresses.
+	 * Always uses EXISTS (never a JOIN) because contactMethod is loaded
+	 * post-query to avoid row multiplication in the pagination query.
+	 *
+	 * @param qb - Query builder
+	 * @param searchQuery - Optional search query string
+	 */
 	private applyEmailSearch<T>(
 		qb: SelectQueryBuilder<T>,
 		searchQuery?: string,
-		hasContactMethodInclude = false,
 	): void {
 		if (!searchQuery || !searchQuery.trim()) {
 			return;
 		}
 
 		const trimmed = searchQuery.trim();
-
-		if (hasContactMethodInclude) {
-			// When include=contactMethod is present, applyRelations() already joined
-			// contact_method as "agent_contactMethod". Reuse that alias to avoid a
-			// duplicate JOIN that creates a cartesian product (N×M rows per agent).
-			qb.orWhere(
-				`agent_contactMethod.value ILIKE :emailSearchValue`,
-				{ emailSearchValue: `%${trimmed}%` },
-			);
-		} else {
-			// No contactMethod include — use an EXISTS subquery instead of a LEFT JOIN
-			// to prevent row multiplication in the outer query.
-			const alias = this.getAlias();
-			qb.orWhere(
-				`EXISTS (SELECT 1 FROM core.contact_method cm_search WHERE cm_search.agent_id = ${alias}.id AND cm_search.value ILIKE :emailSearchValue)`,
-				{ emailSearchValue: `%${trimmed}%` },
-			);
-		}
+		const alias = this.getAlias();
+		qb.orWhere(
+			`EXISTS (SELECT 1 FROM core.contact_method cm_search WHERE cm_search.agent_id = ${alias}.id AND cm_search.value ILIKE :emailSearchValue)`,
+			{ emailSearchValue: `%${trimmed}%` },
+		);
 	}
 	/**
  * Applies UUID search exclusively for agent ID.
@@ -1059,6 +1098,18 @@ export class AgentTypeOrmRepository
 			};
 		}
 
+		// Strip contactMethod from includes to prevent ProjectionService from
+		// adding a LEFT JOIN on contact_method. This 1:N relation (0-50 rows per
+		// agent) causes row multiplication that makes TypeORM's DISTINCT subquery
+		// in getManyAndCount() process millions of rows, killing the DB connection.
+		// contactMethod is loaded post-query by agent IDs (like licensedStates).
+		if (hasContactMethodInclude && selection?.include) {
+			selection = {
+				...selection,
+				include: selection.include.filter((i) => i !== 'contactMethod'),
+			};
+		}
+
 		// Parse filter if it's a JSON string (query params come in as strings)
 		let filterObj: { conditions?: Array<{ field: string; operator: string; value: any }> } | undefined;
 		try {
@@ -1126,17 +1177,34 @@ export class AgentTypeOrmRepository
 			if (!hasLicensedStates || result.items.length === 0) {
 				return result;
 			}
-			
+
 			const agentIds = result.items.map(a => a.id);
 			const statesMap = await this.loadLicensedStates(agentIds);
-			
+
 			// Add licensedStates to each agent
 			const itemsWithStates = result.items.map(agent => ({
 				...agent,
 				licensedStates: statesMap.get(agent.id) ?? [],
 			}));
-			
+
 			return { ...result, items: itemsWithStates };
+		};
+
+		// Helper to post-process results with contactMethods if requested
+		const addContactMethods = async (result: PageResult<Agent>): Promise<PageResult<Agent>> => {
+			if (!hasContactMethodInclude || result.items.length === 0) {
+				return result;
+			}
+
+			const agentIds = result.items.map(a => a.id);
+			const contactMap = await this.loadContactMethods(agentIds);
+
+			const itemsWithContacts = result.items.map(agent => ({
+				...agent,
+				contactMethod: contactMap.get(agent.id) ?? [],
+			}));
+
+			return { ...result, items: itemsWithContacts };
 		};
 
 		if (needsCustomQuery) {
@@ -1202,11 +1270,11 @@ export class AgentTypeOrmRepository
 				} else {
 					// Apply all search methods for normal text search
 					this.applyFullNameSearch(qb, modifiedQuery.search);
-					this.applyEmailSearch(qb, modifiedQuery.search, hasContactMethodInclude);
+					this.applyEmailSearch(qb, modifiedQuery.search);
 				}
 			}, { skipDefaultSort: hasRelationalSort });
 
-			return addLicensedStates(result);
+			return addContactMethods(await addLicensedStates(result));
 		}
 
 		const result = await this.findWithQuery(modifiedQuery, selection, (qb) => {
@@ -1221,10 +1289,10 @@ export class AgentTypeOrmRepository
 			} else {
 				// Apply all search methods for normal text search
 				this.applyFullNameSearch(qb, modifiedQuery.search);
-				this.applyEmailSearch(qb, modifiedQuery.search, hasContactMethodInclude);
+				this.applyEmailSearch(qb, modifiedQuery.search);
 			}
 		});
 
-		return addLicensedStates(result);
+		return addContactMethods(await addLicensedStates(result));
 	}
 }

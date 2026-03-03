@@ -28,6 +28,7 @@ Your expertise includes:
 - Use leftJoin + addSelect (not leftJoinAndSelect) when field selection is present
 - Always configure relation fields explicitly in ProjectionConfig
 - Support nested relations (e.g., "agentOfficeAssociations.office")
+- **Performance: 1:N Relation Loading** — When a 1:N relation with unbounded cardinality (e.g., `contactMethod`, 0-50 rows per agent) is joined via `applyRelations()`, it multiplies rows in the main pagination query. TypeORM's DISTINCT subquery in `getManyAndCount()` must process the full cartesian product, causing OOM/connection crashes. **Solution**: Strip the relation from `selection.include` before `findWithQuery()` and load it post-query by entity IDs (like `licensedStates` and `contactMethod`). 1:1 or filtered-to-1 relations (e.g., `primaryAddress` with `isPrimary=true`) are safe to join inline.
 
 ## Many-to-Many Relationships (NEW)
 - Hidden junction pattern: Use @ManyToMany + @JoinTable for clean API

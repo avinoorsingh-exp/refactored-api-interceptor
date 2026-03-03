@@ -62,6 +62,11 @@ You own the query infrastructure that all repositories use.
 2. Repository loads it with `leftJoinAndMapOne` and a filter condition
 3. `mapToDomain` handles the loaded data
 
+**Performance: 1:N Relation Loading:**
+- When a 1:N relation with unbounded cardinality (e.g., `contactMethod` with 0-50 rows per agent) is included via `ProjectionService.applyRelations()`, it multiplies rows in the main pagination query, causing TypeORM's DISTINCT subquery in `getManyAndCount()` to process a cartesian product of millions of rows
+- **Solution**: Strip the relation from `selection.include` before `findWithQuery()` and load it **post-query** by agent IDs in a separate query, like `licensedStates` and `contactMethod`
+- 1:1 or filtered-to-1 relations (e.g., `primaryAddress` with `isPrimary=true`) are safe to join inline
+
 ---
 
 ## Phase Awareness
