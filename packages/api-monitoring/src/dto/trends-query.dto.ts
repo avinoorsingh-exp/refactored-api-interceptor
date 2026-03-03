@@ -53,9 +53,11 @@ export class TrendsQueryDto {
 	@ApiPropertyOptional({
 		description: 'Filter by route(s). Can be a single route or array of routes.',
 		example: '/v1/agents',
-		type: [String],
+		type: String,
+		isArray: true,
+		nullable: true,
 	})
-	@Transform(({ value }) => toArray(value))
+	@Transform(({ value }) => (value == null || (typeof value === 'string' && value.trim() === '')) ? [] : toArray(value))
 	@IsOptional()
 	@IsArray()
 	@IsString({ each: true })
@@ -72,9 +74,11 @@ export class TrendsQueryDto {
 	@ApiPropertyOptional({
 		description: 'Filter by status code(s). Can be a single status code or array of status codes.',
 		example: 200,
-		type: [Number],
+		type: Number,
+		isArray: true,
+		nullable: true,
 	})
-	@Transform(({ value }) => toArray(value).map((v: string | number) => typeof v === 'string' ? parseInt(v, 10) : v))
+	@Transform(({ value }) => (value == null || (typeof value === 'string' && value.trim() === '')) ? [] : toArray(value).map((v: string | number) => typeof v === 'string' ? parseInt(v, 10) : v))
 	@IsOptional()
 	@IsArray()
 	@IsNumber({}, { each: true })
