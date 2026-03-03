@@ -79,6 +79,7 @@ export class ApiMonitoringController {
 	@ApiOperation({
 		summary: 'Get time-series metrics',
 		description: 'Returns aggregated API metrics grouped by time bucket (minute/hour/day).',
+		operationId: 'getTimeSeriesMetrics',
 	})
 	@ApiResponse({
 		status: HttpStatus.OK,
@@ -127,6 +128,7 @@ export class ApiMonitoringController {
 	@ApiOperation({
 		summary: 'Get route breakdown',
 		description: 'Returns aggregated statistics per route (request count, error rate, latency percentiles).',
+		operationId: 'getRouteBreakdown',
 	})
 	@ApiResponse({
 		status: HttpStatus.OK,
@@ -177,6 +179,7 @@ export class ApiMonitoringController {
 	@ApiOperation({
 		summary: 'Get top callers',
 		description: 'Returns top external callers (actors) by request count. Supports cursor-based pagination.',
+		operationId: 'getTopCallers',
 	})
 	@ApiResponse({
 		status: HttpStatus.OK,
@@ -296,6 +299,7 @@ export class ApiMonitoringController {
 	@ApiOperation({
 		summary: 'Get error samples',
 		description: 'Returns sample error logs for analysis and debugging. Supports cursor-based pagination.',
+		operationId: 'getErrorSamples',
 	})
 	@ApiResponse({
 		status: HttpStatus.OK,
@@ -452,6 +456,7 @@ export class ApiMonitoringController {
 	@ApiOperation({
 		summary: 'Get trends metrics',
 		description: 'Returns long-term trend metrics for fixed ranges (30, 60, 90 days) with time-bucketed data and KPI summary. Uses daily buckets for ≤14 days, weekly buckets for >14 days.',
+		operationId: 'getTrendsMetrics',
 	})
 	@ApiResponse({
 		status: HttpStatus.OK,

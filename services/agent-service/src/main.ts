@@ -386,6 +386,7 @@ async function bootstrap() {
 				.addTag('countries', 'Country management endpoints')
 				.addTag('companies', 'Company management endpoints')
 				.addTag('regions', 'Region management endpoints')
+				.addTag('api-monitoring', 'API monitoring and metrics (GET only). Use ISO 8601 for dates.')
 				.build()
 
 			// Apply bearer auth globally to all routes in the Swagger spec
@@ -393,7 +394,24 @@ async function bootstrap() {
 			const document = SwaggerModule.createDocument(app, swaggerConfig)
 			document.security = [{ bearer: [] }]
 
-			SwaggerModule.setup('api', app, document)
+			// Ensure GET/HEAD never have requestBody so Swagger UI only sends query params (request then reaches server).
+			const paths = document.paths as Record<string, Record<string, { requestBody?: unknown }>> | undefined
+			if (paths) {
+				for (const pathKey of Object.keys(paths)) {
+					const pathItem = paths[pathKey]
+					if (!pathItem || typeof pathItem !== 'object') continue
+					for (const method of ['get', 'head']) {
+						const op = pathItem[method]
+						if (op && typeof op === 'object' && 'requestBody' in op) {
+							delete op.requestBody
+						}
+					}
+				}
+			}
+
+			SwaggerModule.setup('api', app, document, {
+				swaggerOptions: { displayRequestDuration: true, filter: true, tryItOutEnabled: true },
+			})
 			console.error('[BOOTSTRAP] Step 8: Swagger setup completed successfully')
 		} catch (swaggerError) {
 			console.error('[BOOTSTRAP] Step 8: Swagger setup FAILED:', swaggerError)

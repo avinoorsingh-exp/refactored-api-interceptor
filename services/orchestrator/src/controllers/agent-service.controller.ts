@@ -84,16 +84,21 @@ export class AgentServiceController {
       //
       const client = this.agentFactory.get()
 
-      // Proxy the request - Forward ALL headers to preserve API Gateway context
-      // This ensures user identification headers (X-User-Id, X-Cognito-Username, etc.) reach agent-service
+      // Proxy the request - Forward headers to preserve API Gateway context, but NOT body framing headers.
+      // We send req.body (parsed by Express) re-serialized by Axios; the byte length can differ from the
+      // client's original body (key order, normalization). If we forward the client's content-length,
+      // the downstream expects that many bytes and waits for them → request aborted when connection closes.
       const forwardedHeaders: Record<string, string> = {};
-      
-      // Forward all headers (API Gateway may set custom headers for user identification)
+      const skipRequestFraming = ['content-length', 'transfer-encoding'];
+
       Object.keys(headers).forEach((key) => {
+        const lower = key.toLowerCase();
+        if (skipRequestFraming.includes(lower)) {
+          return;
+        }
         const value = headers[key];
         if (value) {
-          // Handle array values (Express can return arrays for duplicate headers)
-          forwardedHeaders[key.toLowerCase()] = Array.isArray(value) ? value[0] : value;
+          forwardedHeaders[lower] = Array.isArray(value) ? value[0] : value;
         }
       });
 
@@ -203,23 +208,35 @@ export class AgentServiceController {
 
     } catch (error) {
       const duration = Date.now() - startTime
+      const axiosErr = isAxiosError(error) ? error : null
+      const upstreamProblem = axiosErr ? (axiosErr as { upstreamProblem?: { status: number; type?: string; [k: string]: unknown } }).upstreamProblem : undefined
+      const resolvedStatus = upstreamProblem?.status ?? axiosErr?.response?.status ?? HttpStatus.BAD_GATEWAY
 
+      const requestId = (headers['x-request-id'] as string) || (Array.isArray(headers['x-request-id']) ? headers['x-request-id'][0] : undefined)
+      const correlationId = (headers['x-correlation-id'] as string) || (Array.isArray(headers['x-correlation-id']) ? headers['x-correlation-id'][0] : undefined)
       this.logger.error('Agent service request failed', {
         method,
         path,
         duration_ms: duration,
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
+        error_code: axiosErr?.code,
+        resolved_status: resolvedStatus,
+        is_upstream_timeout: axiosErr?.code === 'ECONNABORTED' || resolvedStatus === 504,
+        upstream_problem_type: upstreamProblem?.type,
+        upstream_returned_response: !!axiosErr?.response,
+        request_id: requestId,
+        correlation_id: correlationId,
       })
 
-      // Handle Axios errors
-      if (isAxiosError(error)) {
-        const status = error.response?.status || HttpStatus.BAD_GATEWAY
-        const data = error.response?.data || {
+      // Handle Axios errors: use upstreamProblem when present (e.g. 504 for ECONNABORTED)
+      if (axiosErr) {
+        const status = resolvedStatus
+        const data = upstreamProblem ?? axiosErr.response?.data ?? {
           type: ProblemTypes.Upstream,
           title: ProblemTitles[ProblemTypes.Upstream],
           status,
-          detail: error.message || 'Failed to communicate with agent service',
+          detail: axiosErr.message || 'Failed to communicate with agent service',
           instance: path,
         }
 

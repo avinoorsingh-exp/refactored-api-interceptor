@@ -32,38 +32,39 @@ export class ErrorSampleQueryDto extends PaginationQueryDto {
 	@ApiPropertyOptional({
 		description: 'Filter by error classification(s). Supports single value, array, or comma-separated list (e.g. classification=CLIENT_ERROR,SERVER_ERROR).',
 		enum: ApiErrorClassification,
-		type: [String],
 		isArray: true,
+		nullable: true,
 	})
 	@IsOptional()
 	@Transform(({ value }) => {
-		if (value == null) return undefined;
+		if (value == null || (typeof value === 'string' && value.trim() === '')) return [];
 		const raw = Array.isArray(value) ? value : [value];
 		const expanded = raw.flatMap((v) => String(v).split(',').map((s) => s.trim()).filter(Boolean));
-		return expanded.length > 0 ? expanded : undefined;
+		return expanded.length > 0 ? expanded : [];
 	})
 	@IsArray()
 	@IsEnum(ApiErrorClassification, { each: true })
-	classification?: ApiErrorClassification | ApiErrorClassification[];
+	classification?: ApiErrorClassification[];
 
 	@ApiPropertyOptional({
 		description: 'Filter by route(s). Supports single value, array, or comma-separated list (e.g. route=/v1/agents,/v1/countries). Note: repeated route= params may collapse to one value by the query parser; use comma-separated for multiple routes.',
 		example: '/v1/agents',
-		type: [String],
+		type: String,
 		isArray: true,
+		nullable: true,
 	})
 	@IsOptional()
 	@Transform(({ value }) => {
-		if (value == null) return undefined;
+		if (value == null || (typeof value === 'string' && value.trim() === '')) return [];
 		if (Array.isArray(value)) return value.filter((v): v is string => typeof v === 'string' && v.length > 0);
 		const s = String(value).trim();
-		if (!s) return undefined;
+		if (!s) return [];
 		// Support comma-separated routes so multiple routes work regardless of query parser
 		return s.split(',').map((r) => r.trim()).filter(Boolean);
 	})
 	@IsArray()
 	@IsString({ each: true })
-	route?: string | string[];
+	route?: string[];
 
 	/**
 	 * Filter by HTTP status code(s).
@@ -73,20 +74,21 @@ export class ErrorSampleQueryDto extends PaginationQueryDto {
 	@ApiPropertyOptional({
 		description: 'Filter by HTTP status code(s) (e.g., 404, 500). Supports single value, array, or comma-separated list (e.g. statusCode=200,400).',
 		example: 500,
-		type: [Number],
+		type: Number,
 		isArray: true,
+		nullable: true,
 	})
 	@IsOptional()
 	@Transform(({ value }) => {
-		if (value == null) return undefined;
+		if (value == null || (typeof value === 'string' && value.trim() === '')) return [];
 		const raw = Array.isArray(value) ? value : [value];
 		const expanded = raw.flatMap((v) => String(v).split(',').map((s) => s.trim()).filter(Boolean));
-		if (expanded.length === 0) return undefined;
+		if (expanded.length === 0) return [];
 		return expanded.map((v) => parseInt(v, 10));
 	})
 	@IsArray()
 	@IsInt({ each: true })
-	statusCode?: number | number[];
+	statusCode?: number[];
 
 	/**
 	 * Legacy limit field (deprecated, use limit from PaginationQueryDto).
