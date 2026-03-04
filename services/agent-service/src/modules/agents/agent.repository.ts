@@ -568,6 +568,156 @@ export class AgentTypeOrmRepository
 	}
 
 	/**
+	 * Loads primary contact methods (email/phone) for a batch of agent IDs.
+	 * Post-query alternative to loadPrimaryContacts() which adds JOINs to the
+	 * main pagination query. This avoids inflating the COUNT query.
+	 *
+	 * @param agentIds - Array of agent UUIDs
+	 * @param types - Contact channels to load (e.g., ['email', 'phone'])
+	 * @returns Map<agentId, Map<channel, contactRecord>>
+	 */
+	private async loadPrimaryContactsByIds(
+		agentIds: string[],
+		types: string[],
+	): Promise<Map<string, Map<string, Record<string, unknown>>>> {
+		if (agentIds.length === 0 || types.length === 0) {
+			return new Map();
+		}
+
+		const results = await this.repo.manager.query<
+			Array<{
+				agent_id: string;
+				id: string;
+				name: string;
+				channel: string;
+				sub_type: string | null;
+				value: string;
+				is_primary: boolean;
+				sms_opt_in: boolean | null;
+			}>
+		>(
+			`SELECT agent_id, id, name, channel, sub_type, value, is_primary, sms_opt_in
+			FROM core.contact_method
+			WHERE agent_id = ANY($1) AND is_primary = true AND channel = ANY($2)`,
+			[agentIds, types],
+		);
+
+		const contactMap = new Map<string, Map<string, Record<string, unknown>>>();
+		for (const row of results) {
+			let agentContacts = contactMap.get(row.agent_id);
+			if (!agentContacts) {
+				agentContacts = new Map();
+				contactMap.set(row.agent_id, agentContacts);
+			}
+			agentContacts.set(row.channel, {
+				id: row.id,
+				name: row.name,
+				channel: row.channel,
+				subType: row.sub_type,
+				value: row.value,
+				isPrimary: row.is_primary,
+				smsOptIn: row.sms_opt_in,
+			});
+		}
+
+		return contactMap;
+	}
+
+	/**
+	 * Loads primary addresses for a batch of agent IDs.
+	 * Post-query alternative to loadPrimaryAddress() which adds 4 LEFT JOINs
+	 * to the main pagination query. This avoids inflating the COUNT query.
+	 *
+	 * @param agentIds - Array of agent UUIDs
+	 * @returns Map<agentId, addressObject> with nested country/state
+	 */
+	private async loadPrimaryAddressesByIds(
+		agentIds: string[],
+	): Promise<Map<string, Record<string, unknown>>> {
+		if (agentIds.length === 0) {
+			return new Map();
+		}
+
+		const results = await this.repo.manager.query<
+			Array<{
+				agent_id: string;
+				id: string;
+				type: string | null;
+				role: string | null;
+				line_1: string | null;
+				line_2: string | null;
+				city: string | null;
+				unit: string | null;
+				postal_code: string | null;
+				county: string | null;
+				label: string | null;
+				country_id: number | null;
+				state_code: string | null;
+				country_pk: number | null;
+				country_name: string | null;
+				alpha_2: string | null;
+				alpha_3: string | null;
+				country_number: string | null;
+				dialing_code: string | null;
+				state_id: number | null;
+				state_name: string | null;
+				state_code_val: string | null;
+			}>
+		>(
+			`SELECT
+				aa.agent_id,
+				a.id, a.type, a.role, a.line_1, a.line_2, a.city, a.unit,
+				a.postal_code, a.county, a.label, a.country_id, a.state_code,
+				c.id AS country_pk, c.name AS country_name, c.alpha_2, c.alpha_3,
+				c.number AS country_number, c.dialing_code,
+				s.id AS state_id, s.name AS state_name, s.code AS state_code_val
+			FROM core.agent_address aa
+			JOIN core.address a ON a.id = aa.address_id
+			LEFT JOIN core.country c ON c.id = a.country_id
+			LEFT JOIN core.state s ON s.country_id = a.country_id AND s.code = a.state_code
+			WHERE aa.agent_id = ANY($1) AND aa.is_primary = true`,
+			[agentIds],
+		);
+
+		const addressMap = new Map<string, Record<string, unknown>>();
+		for (const row of results) {
+			const country = row.country_pk != null ? {
+				id: row.country_pk,
+				name: row.country_name,
+				alpha2: row.alpha_2,
+				alpha3: row.alpha_3,
+				number: row.country_number,
+				dialingCode: row.dialing_code,
+			} : null;
+
+			const state = row.state_id != null ? {
+				id: row.state_id,
+				name: row.state_name,
+				code: row.state_code_val,
+			} : null;
+
+			addressMap.set(row.agent_id, {
+				id: row.id,
+				type: row.type,
+				role: row.role,
+				line1: row.line_1,
+				line2: row.line_2,
+				city: row.city,
+				unit: row.unit,
+				postalCode: row.postal_code,
+				county: row.county,
+				label: row.label,
+				countryId: row.country_id,
+				stateCode: row.state_code,
+				country,
+				state,
+			});
+		}
+
+		return addressMap;
+	}
+
+	/**
 	 * Load addresses with virtual state relations.
 	 * Used when include=address is specified.
 	 * Adds virtual state mapping to addresses already joined by ProjectionService.
@@ -1071,9 +1221,9 @@ export class AgentTypeOrmRepository
 
 	/**
 	 * Finds agents with pagination, filtering, sorting, and search.
-	 * Handles primary contact and address loading via custom joins.
+	 * Primary contacts (email/phone), primary address, contact methods, and
+	 * licensed states are loaded post-query to keep the COUNT query lean.
 	 * Supports relational filtering (email, country) and sorting (primaryEmail).
-	 * Supports licensedStates virtual field via post-query loading.
 	 */
 	async findPage(
 		query: Partial<QueryParams>,
@@ -1139,8 +1289,6 @@ export class AgentTypeOrmRepository
 			emailFilters.length > 0 || countryFilters.length > 0 || licensedStatesFilters.length > 0;
 		const hasRelationalSort = primaryEmailSort !== null || licensedStatesSort !== null;
 		const needsCustomQuery =
-			primaryContactTypes.length > 0 ||
-			hasPrimaryAddress ||
 			hasPrimaryLicense ||
 			hasPrimaryAgentCompany ||
 			hasPrimaryTax ||
@@ -1207,18 +1355,48 @@ export class AgentTypeOrmRepository
 			return { ...result, items: itemsWithContacts };
 		};
 
-		if (needsCustomQuery) {
-			// Check if primaryEmail is already being included (so we don't double-join)
-			const primaryEmailIncluded = primaryContactTypes.includes('email');
+		// Helper to post-process results with primary contacts (email/phone) if requested
+		const addPrimaryContacts = async (result: PageResult<Agent>): Promise<PageResult<Agent>> => {
+			if (primaryContactTypes.length === 0 || result.items.length === 0) {
+				return result;
+			}
 
+			const agentIds = result.items.map(a => a.id);
+			const contactMap = await this.loadPrimaryContactsByIds(agentIds, primaryContactTypes);
+
+			const items = result.items.map(agent => {
+				const contacts = contactMap.get(agent.id);
+				const updated = { ...agent } as Record<string, unknown>;
+				for (const type of primaryContactTypes) {
+					const key = `primary${type.charAt(0).toUpperCase() + type.slice(1)}`;
+					updated[key] = contacts?.get(type) ?? null;
+				}
+				return updated as Agent;
+			});
+
+			return { ...result, items };
+		};
+
+		// Helper to post-process results with primary address if requested
+		const addPrimaryAddresses = async (result: PageResult<Agent>): Promise<PageResult<Agent>> => {
+			if (!hasPrimaryAddress || result.items.length === 0) {
+				return result;
+			}
+
+			const agentIds = result.items.map(a => a.id);
+			const addressMap = await this.loadPrimaryAddressesByIds(agentIds);
+
+			const items = result.items.map(agent => ({
+				...agent,
+				primaryAddress: addressMap.get(agent.id) ?? null,
+			}));
+
+			return { ...result, items };
+		};
+
+		if (needsCustomQuery) {
 			const result = await this.findWithQuery(modifiedQuery, selection, (qb) => {
 				// Add virtual relation joins for includes
-				if (primaryContactTypes.length > 0) {
-					this.loadPrimaryContacts(qb, this.getAlias(), primaryContactTypes);
-				}
-				if (hasPrimaryAddress) {
-					this.loadPrimaryAddress(qb, this.getAlias());
-				}
 				if (hasPrimaryLicense) {
 					this.loadPrimaryLicense(qb, this.getAlias());
 				}
@@ -1249,7 +1427,7 @@ export class AgentTypeOrmRepository
 						qb,
 						this.getAlias(),
 						primaryEmailSort,
-						!primaryEmailIncluded,
+						true, // always needs own join since include no longer adds one
 					);
 				}
 				if (licensedStatesSort) {
@@ -1274,7 +1452,13 @@ export class AgentTypeOrmRepository
 				}
 			}, { skipDefaultSort: hasRelationalSort });
 
-			return addContactMethods(await addLicensedStates(result));
+			return addPrimaryAddresses(
+				await addPrimaryContacts(
+					await addContactMethods(
+						await addLicensedStates(result),
+					),
+				),
+			);
 		}
 
 		const result = await this.findWithQuery(modifiedQuery, selection, (qb) => {
@@ -1293,6 +1477,12 @@ export class AgentTypeOrmRepository
 			}
 		});
 
-		return addContactMethods(await addLicensedStates(result));
+		return addPrimaryAddresses(
+			await addPrimaryContacts(
+				await addContactMethods(
+					await addLicensedStates(result),
+				),
+			),
+		);
 	}
 }
