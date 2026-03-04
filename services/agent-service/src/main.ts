@@ -312,7 +312,7 @@ async function bootstrap() {
 			const slowMs = configService.get('PERF_QUERY_SLOW_MS') || 2000
 			const criticalMs = configService.get('PERF_QUERY_CRITICAL_MS') || 10000
 			const logAll = configService.get('PERF_QUERY_LOG_ALL') || false
-			const includeInResponse = configService.get('PERF_QUERY_INCLUDE_IN_RESPONSE') || false
+			const includeInResponse = configService.get('PERF_QUERY_INCLUDE_IN_RESPONSE') ?? true
 			const captureExplain = configService.get('PERF_QUERY_CAPTURE_EXPLAIN') || 'off'
 			const sampleRate = configService.get('PERF_QUERY_SAMPLE_RATE') ?? (environment === 'local' ? 1.0 : 0.1)
 			const allowlistRaw = configService.get('PERF_QUERY_ENDPOINT_ALLOWLIST') || ''
