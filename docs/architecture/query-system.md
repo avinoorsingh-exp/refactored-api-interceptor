@@ -491,10 +491,72 @@ const searchableFields = SearchMetadataReader.getSearchableFields(AgentEntity);
    - Avoid N+1 queries by loading relations upfront
    - Use pagination for large result sets
 
-3. **Query Logging**
+3. **Post-Query Loading for Pagination**
+   - Relations with high cardinality (1:N with many rows per parent) must **not** be LEFT JOINed
+     in `getManyAndCount()` because the JOIN inflates both the data query and the COUNT query.
+   - Instead, run the pagination query without the relation, then load the relation data in a
+     second query using the page's IDs (`WHERE agent_id = ANY($1)`).
+   - This pattern is used for: `contactMethod`, `primaryEmail`, `primaryPhone`, `primaryAddress`,
+     `licensedStates`.
+   - Relations that are effectively 1:1 with `isPrimary = true` (e.g., `primaryLicense`,
+     `primaryAgentCompany`, `primaryTax`) can stay as JOINs because they add at most 1 row per
+     agent and don't inflate the COUNT.
+   - Relations required for ORDER BY (e.g., `primaryEmail` when sorting) must remain in the main
+     query — you can't sort post-query. Use a lightweight `leftJoin` (not `leftJoinAndSelect`)
+     for the sort column only.
+
+4. **Query Logging**
    - Log generated SQL for debugging
    - Monitor slow queries (>500ms)
-   - Use EXPLAIN ANALYZE for optimization
+   - Use EXPLAIN ANALYZE for optimization (see Query Performance Monitoring below)
+
+## Query Performance Monitoring (Microscope)
+
+The `QueryPerformanceInterceptor` instruments API requests to capture SQL timing, connection pool
+metrics, and optional EXPLAIN ANALYZE plans.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `PERF_QUERY_MODE` | `query` | `query` (full), `perf` (timing only), `off` |
+| `PERF_QUERY_SLOW_MS` | `2000` | Slow query threshold (ms) |
+| `PERF_QUERY_CRITICAL_MS` | `10000` | Critical query threshold (ms) |
+| `PERF_QUERY_LOG_ALL` | `false` | Log every instrumented request |
+| `PERF_QUERY_INCLUDE_IN_RESPONSE` | `false` | Include SQL/EXPLAIN in response body |
+| `PERF_QUERY_CAPTURE_EXPLAIN` | `off` | When to run EXPLAIN ANALYZE (see below) |
+| `PERF_QUERY_SAMPLE_RATE` | `1.0` (local) / `0.1` (deployed) | Fraction of requests to instrument |
+| `PERF_QUERY_ENDPOINT_ALLOWLIST` | `""` (all) | Comma-separated path prefixes |
+
+### EXPLAIN ANALYZE Modes
+
+| Mode | Fires when | Use case |
+|---|---|---|
+| `off` | Never | **Production default.** Safe, zero overhead. |
+| `slow` | Query > `PERF_QUERY_SLOW_MS` | Temporary diagnosis of slow endpoints |
+| `critical` | Query > `PERF_QUERY_CRITICAL_MS` | Catch only severe regressions |
+| `all` | Every instrumented request | Local profiling only |
+
+**CAUTION**: `EXPLAIN (ANALYZE)` **re-executes the query**. A 3s slow query triggers a 3s+ EXPLAIN,
+doubling response time to 6s+. This can push borderline requests past gateway timeouts.
+Only enable `slow` or `critical` temporarily for diagnostics, then set back to `off`.
+
+### What Gets Logged
+
+- **Always** (when `PERF_QUERY_MODE=query`): `durationMs`, `source`, connection pool metrics
+- **Slow queries** (> `PERF_QUERY_SLOW_MS`): logged at `operational` level with SQL text
+- **Critical queries** (> `PERF_QUERY_CRITICAL_MS`): logged at `critical` level with full SQL
+- **EXPLAIN** (when enabled): execution plan, sequential scan detection, row estimate accuracy
+
+### Response Headers
+
+Every instrumented request gets these headers (regardless of `includeInResponse`):
+
+| Header | Example | Description |
+|---|---|---|
+| `X-Response-Time` | `142ms` | Total response time |
+| `X-Query-Timestamp` | `2026-03-04T16:29:52.770Z` | Request timestamp |
+| `X-Correlation-ID` | `1709571592770-abc123def` | Correlation ID for log tracing |
 
 ## Common Pitfalls
 

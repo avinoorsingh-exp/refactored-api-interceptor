@@ -335,6 +335,29 @@ pnpm lint:fix               # Fix linting issues
 
 ---
 
+## Query Performance Monitoring (Microscope)
+
+The `QueryPerformanceInterceptor` captures SQL timing, pool metrics, and optional EXPLAIN plans.
+Configuration lives in `main.ts` with env var overrides.
+
+### Production-Safe Defaults
+
+| Variable | Default | Notes |
+|---|---|---|
+| `PERF_QUERY_MODE` | `query` | Always on — captures timing and logs slow queries |
+| `PERF_QUERY_CAPTURE_EXPLAIN` | `off` | **Must stay `off` in production.** EXPLAIN ANALYZE re-executes the query, doubling response time. Only enable temporarily for diagnostics. |
+| `PERF_QUERY_SAMPLE_RATE` | `1.0` (local) / `0.1` (deployed) | 10% sampling in deployed environments |
+| `PERF_QUERY_INCLUDE_IN_RESPONSE` | `false` | Never enable in production — exposes SQL to clients |
+
+### Rules for AI Agents
+
+- **Never** set `PERF_QUERY_CAPTURE_EXPLAIN` to `slow` or `all` as a default. It causes slow queries to time out by re-executing them.
+- **Never** set `PERF_QUERY_INCLUDE_IN_RESPONSE=true` for deployed environments.
+- When adding new paginated endpoints with 1:N relations, use **post-query loading** (load by IDs after pagination) instead of LEFT JOINs in `getManyAndCount()`. JOINs inflate the COUNT query.
+- See `docs/runbooks/query-performance-tuning.md` for the full diagnostic runbook.
+
+---
+
 ## Role-Specific Instructions
 
 For detailed patterns by role, see:

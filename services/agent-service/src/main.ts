@@ -308,13 +308,13 @@ async function bootstrap() {
 		console.error('[BOOTSTRAP] Step 6: Configuring interceptors...')
 		try {
 			const environment = configService.get('NODE_ENV')
-			const perfQueryMode = configService.get('PERF_QUERY_MODE') || (environment === 'local' ? 'query' : 'off')
+			const perfQueryMode = configService.get('PERF_QUERY_MODE') || 'query'
 			const slowMs = configService.get('PERF_QUERY_SLOW_MS') || 2000
 			const criticalMs = configService.get('PERF_QUERY_CRITICAL_MS') || 10000
 			const logAll = configService.get('PERF_QUERY_LOG_ALL') || false
 			const includeInResponse = configService.get('PERF_QUERY_INCLUDE_IN_RESPONSE') || false
-			const captureExplain = configService.get('PERF_QUERY_CAPTURE_EXPLAIN') || 'slow'
-			const sampleRate = configService.get('PERF_QUERY_SAMPLE_RATE') ?? (environment === 'local' ? 1.0 : 0.01)
+			const captureExplain = configService.get('PERF_QUERY_CAPTURE_EXPLAIN') || 'off'
+			const sampleRate = configService.get('PERF_QUERY_SAMPLE_RATE') ?? (environment === 'local' ? 1.0 : 0.1)
 			const allowlistRaw = configService.get('PERF_QUERY_ENDPOINT_ALLOWLIST') || ''
 			const endpointAllowlist = allowlistRaw ? allowlistRaw.split(',').map((s: string) => s.trim()).filter(Boolean) : []
 
