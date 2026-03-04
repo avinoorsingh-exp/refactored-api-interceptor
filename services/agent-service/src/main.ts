@@ -307,14 +307,15 @@ async function bootstrap() {
 
 		console.error('[BOOTSTRAP] Step 6: Configuring interceptors...')
 		try {
-			const environment = configService.get('NODE_ENV')
-			const perfQueryMode = configService.get('PERF_QUERY_MODE') || (environment === 'local' ? 'query' : 'off')
-			const slowMs = configService.get('PERF_QUERY_SLOW_MS') || 2000
-			const criticalMs = configService.get('PERF_QUERY_CRITICAL_MS') || 10000
-			const logAll = configService.get('PERF_QUERY_LOG_ALL') || false
-			const includeInResponse = configService.get('PERF_QUERY_INCLUDE_IN_RESPONSE') || false
-			const captureExplain = configService.get('PERF_QUERY_CAPTURE_EXPLAIN') || 'slow'
-			const sampleRate = configService.get('PERF_QUERY_SAMPLE_RATE') ?? (environment === 'local' ? 1.0 : 0.01)
+			// All defaults are defined in the Zod schema (configuration.ts)
+			const perfQueryMode = configService.get('PERF_QUERY_MODE')
+			const slowMs = configService.get('PERF_QUERY_SLOW_MS')
+			const criticalMs = configService.get('PERF_QUERY_CRITICAL_MS')
+			const logAll = configService.get('PERF_QUERY_LOG_ALL')
+			const includeInResponse = configService.get('PERF_QUERY_INCLUDE_IN_RESPONSE')
+			const includeSql = configService.get('PERF_QUERY_INCLUDE_SQL')
+			const captureExplain = configService.get('PERF_QUERY_CAPTURE_EXPLAIN')
+			const sampleRate = configService.get('PERF_QUERY_SAMPLE_RATE')
 			const allowlistRaw = configService.get('PERF_QUERY_ENDPOINT_ALLOWLIST') || ''
 			const endpointAllowlist = allowlistRaw ? allowlistRaw.split(',').map((s: string) => s.trim()).filter(Boolean) : []
 
@@ -330,6 +331,7 @@ async function bootstrap() {
 						logAllQueries: logAll,
 						captureExplain,
 						includeInResponse,
+						includeSql,
 						sampleRate,
 						endpointAllowlist,
 					}, logger),

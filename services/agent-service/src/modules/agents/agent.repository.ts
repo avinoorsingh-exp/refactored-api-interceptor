@@ -1141,6 +1141,11 @@ export class AgentTypeOrmRepository
 	 * Always uses EXISTS (never a JOIN) because contactMethod is loaded
 	 * post-query to avoid row multiplication in the pagination query.
 	 *
+	 * Only triggers when the search term contains '@', which indicates an
+	 * email-like search. For plain name searches (e.g., "John"), the EXISTS
+	 * correlated subquery against 267K+ agents is expensive and provides
+	 * negligible value — name fields already cover those matches.
+	 *
 	 * @param qb - Query builder
 	 * @param searchQuery - Optional search query string
 	 */
@@ -1153,6 +1158,14 @@ export class AgentTypeOrmRepository
 		}
 
 		const trimmed = searchQuery.trim();
+
+		// Only search contact_method.value when the term looks like an email.
+		// The EXISTS correlated subquery scans every row in the COUNT query;
+		// gating on '@' eliminates that overhead for name-based searches.
+		if (!trimmed.includes('@')) {
+			return;
+		}
+
 		const alias = this.getAlias();
 		qb.orWhere(
 			`EXISTS (SELECT 1 FROM core.contact_method cm_search WHERE cm_search.agent_id = ${alias}.id AND cm_search.value ILIKE :emailSearchValue)`,

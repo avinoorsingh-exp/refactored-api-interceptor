@@ -287,6 +287,39 @@ async findPageWithCursor(
 }
 ```
 
+## Pagination Performance — Post-Query Loading
+
+### The Problem
+
+`getManyAndCount()` includes ALL LEFT JOINs in both the data query (LIMIT 25) and the
+COUNT query (scans entire table). A 1:N JOIN on a table with 267K parents and 0-50 children
+per parent causes the COUNT to process millions of joined rows.
+
+### The Pattern
+
+1. Strip the 1:N relation from includes before `findWithQuery()`
+2. Run the pagination query without the JOIN → COUNT is clean
+3. Load relation data post-query: `WHERE parent_id = ANY($1)` with page IDs
+4. Merge into results via a post-query helper
+
+### When to Use
+
+| Relation Type | Example | Pattern |
+|---|---|---|
+| 1:N unbounded | contactMethods, notes | Always post-load |
+| Filtered 1:1 via include | primaryEmail, primaryAddress | Post-load |
+| True 1:1 low-cardinality | primaryLicense, primaryTax | JOIN is fine |
+| Required for ORDER BY | sort by primaryEmail | JOIN (lightweight leftJoin only) |
+| Required for WHERE | filter by email | Prefer EXISTS subquery |
+
+### Reference Implementation
+
+`AgentTypeOrmRepository` in `services/agent-service/src/modules/agents/agent.repository.ts`:
+- `loadContactMethods()` — 1:N post-load
+- `loadPrimaryContactsByIds()` — filtered 1:1 post-load
+- `loadPrimaryAddressesByIds()` — multi-table post-load with nested country/state
+- `addContactMethods` / `addPrimaryContacts` / `addPrimaryAddresses` — post-query helpers
+
 ## Critical Rules
 
 1. **Never use COUNT(*) on tables >100K rows** without WHERE clause

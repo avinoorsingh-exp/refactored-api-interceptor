@@ -115,6 +115,23 @@ Projection config must declare:
 - Expanded fields (detail view with relations)
 - Virtual relations if needed (mark `virtual: true`, loaded via `leftJoinAndMapOne`)
 
+### Pagination Performance
+
+When the new entity has 1:N relations (e.g., child records, tags, contact methods):
+- Do NOT add them as LEFT JOINs in `findPage()` / `getManyAndCount()`
+- Instead, implement a private `loadXxxByIds(parentIds: string[])` method using raw SQL:
+  `SELECT ... FROM child_table WHERE parent_id = ANY($1)`
+- Strip the relation from the includes before passing to `findWithQuery()`
+- Add a post-query helper that loads the relation data for the page's IDs
+- Chain the helper after `findWithQuery()` returns
+
+Reference implementation: `AgentTypeOrmRepository.loadContactMethods()` and
+`loadPrimaryContactsByIds()` in `services/agent-service/src/modules/agents/agent.repository.ts`.
+
+For filtered 1:1 virtual relations (e.g., `primaryX WHERE isPrimary=true`):
+- Also post-load these to keep the COUNT query clean
+- Reference: `AgentTypeOrmRepository.loadPrimaryAddressesByIds()`
+
 **Gate**: Repository compiles. Port interface matches domain type from Phase 1. `pnpm build` passes.
 
 ---
