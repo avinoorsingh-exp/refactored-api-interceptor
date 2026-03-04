@@ -127,6 +127,50 @@ If a PR touches `shared-domain`, every downstream package is in the blast radius
 
 ---
 
+## Pagination Performance Rules
+
+These rules prevent COUNT query inflation in `getManyAndCount()`, which scans the full table
+with all LEFT JOINs included. Violations are **High** severity.
+
+### When to POST-LOAD (by IDs after pagination)
+
+- **1:N relations with unbounded cardinality** — e.g., contactMethods (0-50 per agent),
+  addresses, notes, external references. A LEFT JOIN multiplies rows, and the COUNT
+  re-scans the full joined result set.
+- **Filtered 1:1 virtual relations requested via `?include=`** — e.g., primaryEmail,
+  primaryPhone, primaryAddress. Even though `isPrimary=true` filters to 1 row, the JOIN
+  is still present in the COUNT query which doesn't need it.
+- Pattern: strip from includes, run pagination query clean, then
+  `SELECT ... FROM table WHERE parent_id = ANY($1)` with the page's IDs (typically 25).
+
+### When JOINs are acceptable in pagination
+
+- **True 1:1 relations** — e.g., primaryLicense, primaryAgentCompany, primaryTax —
+  where the relation has low total row count and adds at most 1 row per parent.
+- **Relations required for ORDER BY** — e.g., sorting by primaryEmail.value. Use a
+  lightweight `leftJoin` (not `leftJoinAndSelect`) for the sort column only. This JOIN
+  will appear in the COUNT but is unavoidable for correct sorting.
+- **Relations required for WHERE** — e.g., filtering by email, country. Use EXISTS
+  subqueries where possible to avoid the JOIN entirely.
+
+### EXPLAIN ANALYZE safety
+
+- `PERF_QUERY_CAPTURE_EXPLAIN` must default to `off`. EXPLAIN ANALYZE **re-executes
+  the query**, doubling response time. A 3s slow query + 3s EXPLAIN = 6s+ → gateway timeout.
+- Only enable temporarily for diagnostics, then set back to `off`.
+- Defaults are defined in the Zod schema (`services/agent-service/src/core/configuration.ts`),
+  NOT in `main.ts` fallbacks.
+
+### Code review flags (auto-Critical/High)
+
+- `leftJoinAndSelect` or `leftJoinAndMapOne` on a 1:N relation inside `findPage()` → **High**
+- `contactMethods`, `addresses`, `notes`, `externalReferences` joined in pagination → **High**
+- `PERF_QUERY_CAPTURE_EXPLAIN` defaulting to `slow` or `all` → **Critical**
+- Post-query loader missing `if (items.length === 0) return result` guard → **Medium**
+- `mapToDomain` setting a field that a post-query helper will overwrite → **Low** (tech debt)
+
+---
+
 ## Error Handling Rules
 
 - Database error code mapping:

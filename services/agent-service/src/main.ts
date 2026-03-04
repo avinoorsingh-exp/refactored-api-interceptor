@@ -313,6 +313,7 @@ async function bootstrap() {
 			const criticalMs = configService.get('PERF_QUERY_CRITICAL_MS')
 			const logAll = configService.get('PERF_QUERY_LOG_ALL')
 			const includeInResponse = configService.get('PERF_QUERY_INCLUDE_IN_RESPONSE')
+			const includeSql = configService.get('PERF_QUERY_INCLUDE_SQL')
 			const captureExplain = configService.get('PERF_QUERY_CAPTURE_EXPLAIN')
 			const sampleRate = configService.get('PERF_QUERY_SAMPLE_RATE')
 			const allowlistRaw = configService.get('PERF_QUERY_ENDPOINT_ALLOWLIST') || ''
@@ -330,6 +331,7 @@ async function bootstrap() {
 						logAllQueries: logAll,
 						captureExplain,
 						includeInResponse,
+						includeSql,
 						sampleRate,
 						endpointAllowlist,
 					}, logger),

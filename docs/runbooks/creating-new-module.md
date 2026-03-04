@@ -267,6 +267,17 @@ export class MyResourceTypeOrmRepository implements IMyResourceRepository {
 }
 ```
 
+#### Pagination Performance
+
+If the entity has 1:N child relations that will be included via `?include=`:
+
+1. Mark the relation as `virtual: true` in the projection config
+2. Strip it from includes before `findWithQuery()` (like `contactMethod` in AgentRepository)
+3. Add a private `loadXxxByIds(ids: string[])` method with raw SQL
+4. Add a post-query helper function that chains after `findWithQuery()`
+
+See `docs/architecture/repository-patterns.md` → "Pagination Performance — Post-Query Loading" for the full pattern.
+
 ### 8. Create Service
 
 ```typescript

@@ -23,6 +23,8 @@ export interface QueryPerformanceOptions {
   logAllQueries: boolean;
   captureExplain: 'off' | 'slow' | 'critical' | 'all';
   includeInResponse: boolean;
+  /** Include raw SQL text and parameters in the response. Default: false */
+  includeSql: boolean;
   /** Fraction of requests to instrument (0..1). Default: 1.0 */
   sampleRate: number;
   /** If set, only instrument requests whose path starts with one of these prefixes. */
@@ -46,6 +48,7 @@ export interface ExplainResult {
  * Connection pool metrics
  */
 export interface PoolMetrics {
+  max: number;
   total: number;
   idle: number;
   active: number;
@@ -129,6 +132,7 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
       logAllQueries: options.logAllQueries ?? false,
       captureExplain: options.captureExplain ?? 'slow',
       includeInResponse: options.includeInResponse ?? false,
+      includeSql: options.includeSql ?? false,
       sampleRate: options.sampleRate ?? 1.0,
       endpointAllowlist: options.endpointAllowlist ?? [],
     };
@@ -500,6 +504,10 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
       delete metadata.performance.sql;
       delete metadata.performance.parameters;
       delete metadata.performance.explain;
+    } else if (!this.options.includeSql) {
+      // Keep timing/pool metrics but strip raw SQL from the response payload
+      delete metadata.performance.sql;
+      delete metadata.performance.parameters;
     }
   }
 
@@ -666,14 +674,15 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
    */
   private getPoolMetrics(): PoolMetrics {
     if (!this.dataSource) {
-      return { total: 0, idle: 0, active: 0, waiting: 0 };
+      return { max: 0, total: 0, idle: 0, active: 0, waiting: 0 };
     }
 
     try {
       const pool = (this.dataSource.driver as any).master;
-      
+
       if (pool) {
         return {
+          max: pool.options?.max ?? pool._maxSize ?? 0,
           total: pool.totalCount || 0,
           idle: pool.idleCount || 0,
           active: (pool.totalCount || 0) - (pool.idleCount || 0),
@@ -684,7 +693,7 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
       // Pool metrics not available
     }
 
-    return { total: 0, idle: 0, active: 0, waiting: 0 };
+    return { max: 0, total: 0, idle: 0, active: 0, waiting: 0 };
   }
 
   /**

@@ -53,6 +53,10 @@ export const ConfigSchema = BaseConfig.extend({
 		if (typeof val === 'string') return val.toLowerCase() === 'true' || val === '1';
 		return val;
 	}, z.boolean().default(true)),
+	PERF_QUERY_INCLUDE_SQL: z.preprocess((val) => {
+		if (typeof val === 'string') return val.toLowerCase() === 'true' || val === '1';
+		return val;
+	}, z.boolean().default(false)),
 	PERF_QUERY_LOG_ALL: z.preprocess((val) => {
 		if (typeof val === 'string') return val.toLowerCase() === 'true' || val === '1';
 		return val;

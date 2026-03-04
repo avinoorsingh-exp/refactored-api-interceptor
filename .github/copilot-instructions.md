@@ -347,14 +347,22 @@ Configuration lives in `main.ts` with env var overrides.
 | `PERF_QUERY_MODE` | `query` | Always on — captures timing and logs slow queries |
 | `PERF_QUERY_CAPTURE_EXPLAIN` | `off` | **Must stay `off` in production.** EXPLAIN ANALYZE re-executes the query, doubling response time. Only enable temporarily for diagnostics. |
 | `PERF_QUERY_SAMPLE_RATE` | `1.0` | 100% instrumentation by default. Override via env var to reduce overhead in production. |
-| `PERF_QUERY_INCLUDE_IN_RESPONSE` | `true` | Performance metrics (SQL, timing, pool) included in `meta.query.performance` |
+| `PERF_QUERY_INCLUDE_IN_RESPONSE` | `true` | Performance metrics (timing, pool) included in `meta.query.performance` |
+| `PERF_QUERY_INCLUDE_SQL` | `false` | Raw SQL text and parameters in response. Off by default — enable only for debugging. |
 
 ### Rules for AI Agents
 
 - **Never** set `PERF_QUERY_CAPTURE_EXPLAIN` to `slow` or `all` as a default. It causes slow queries to time out by re-executing them.
-- `PERF_QUERY_INCLUDE_IN_RESPONSE` defaults to `true`. This is intentional for observability. Set to `false` only if SQL exposure is a concern for a specific deployment.
+- `PERF_QUERY_INCLUDE_IN_RESPONSE` defaults to `true`. This is intentional for observability. Set to `false` only to completely hide performance data.
+- `PERF_QUERY_INCLUDE_SQL` defaults to `false`. Raw SQL is excluded from responses by default to avoid leaking schema details. Enable temporarily for debugging only.
 - When adding new paginated endpoints with 1:N relations, use **post-query loading** (load by IDs after pagination) instead of LEFT JOINs in `getManyAndCount()`. JOINs inflate the COUNT query.
 - See `docs/runbooks/query-performance-tuning.md` for the full diagnostic runbook.
+
+### Pagination Performance
+
+1:N relations must NOT be LEFT JOINed in `findPage()` / `getManyAndCount()` — this inflates
+the COUNT query. Use post-query loading by IDs instead. See
+`docs/architecture/repository-patterns.md` → "Pagination Performance — Post-Query Loading".
 
 ---
 
