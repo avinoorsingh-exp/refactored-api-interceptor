@@ -517,15 +517,17 @@ metrics, and optional EXPLAIN ANALYZE plans.
 
 ### Environment Variables
 
+Defaults are defined in the Zod schema at `services/agent-service/src/core/configuration.ts`.
+
 | Variable | Default | Description |
 |---|---|---|
 | `PERF_QUERY_MODE` | `query` | `query` (full), `perf` (timing only), `off` |
 | `PERF_QUERY_SLOW_MS` | `2000` | Slow query threshold (ms) |
 | `PERF_QUERY_CRITICAL_MS` | `10000` | Critical query threshold (ms) |
 | `PERF_QUERY_LOG_ALL` | `false` | Log every instrumented request |
-| `PERF_QUERY_INCLUDE_IN_RESPONSE` | `false` | Include SQL/EXPLAIN in response body |
+| `PERF_QUERY_INCLUDE_IN_RESPONSE` | `true` | Include SQL and performance metrics in `meta.query.performance` |
 | `PERF_QUERY_CAPTURE_EXPLAIN` | `off` | When to run EXPLAIN ANALYZE (see below) |
-| `PERF_QUERY_SAMPLE_RATE` | `1.0` (local) / `0.1` (deployed) | Fraction of requests to instrument |
+| `PERF_QUERY_SAMPLE_RATE` | `1.0` | Fraction of requests to instrument |
 | `PERF_QUERY_ENDPOINT_ALLOWLIST` | `""` (all) | Comma-separated path prefixes |
 
 ### EXPLAIN ANALYZE Modes

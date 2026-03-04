@@ -340,19 +340,19 @@ pnpm lint:fix               # Fix linting issues
 The `QueryPerformanceInterceptor` captures SQL timing, pool metrics, and optional EXPLAIN plans.
 Configuration lives in `main.ts` with env var overrides.
 
-### Production-Safe Defaults
+### Defaults (defined in Zod schema: `services/agent-service/src/core/configuration.ts`)
 
 | Variable | Default | Notes |
 |---|---|---|
 | `PERF_QUERY_MODE` | `query` | Always on — captures timing and logs slow queries |
 | `PERF_QUERY_CAPTURE_EXPLAIN` | `off` | **Must stay `off` in production.** EXPLAIN ANALYZE re-executes the query, doubling response time. Only enable temporarily for diagnostics. |
-| `PERF_QUERY_SAMPLE_RATE` | `1.0` (local) / `0.1` (deployed) | 10% sampling in deployed environments |
-| `PERF_QUERY_INCLUDE_IN_RESPONSE` | `false` | Never enable in production — exposes SQL to clients |
+| `PERF_QUERY_SAMPLE_RATE` | `1.0` | 100% instrumentation by default. Override via env var to reduce overhead in production. |
+| `PERF_QUERY_INCLUDE_IN_RESPONSE` | `true` | Performance metrics (SQL, timing, pool) included in `meta.query.performance` |
 
 ### Rules for AI Agents
 
 - **Never** set `PERF_QUERY_CAPTURE_EXPLAIN` to `slow` or `all` as a default. It causes slow queries to time out by re-executing them.
-- **Never** set `PERF_QUERY_INCLUDE_IN_RESPONSE=true` for deployed environments.
+- `PERF_QUERY_INCLUDE_IN_RESPONSE` defaults to `true`. This is intentional for observability. Set to `false` only if SQL exposure is a concern for a specific deployment.
 - When adding new paginated endpoints with 1:N relations, use **post-query loading** (load by IDs after pagination) instead of LEFT JOINs in `getManyAndCount()`. JOINs inflate the COUNT query.
 - See `docs/runbooks/query-performance-tuning.md` for the full diagnostic runbook.
 

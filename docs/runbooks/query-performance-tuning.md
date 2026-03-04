@@ -16,14 +16,16 @@
 
 The `QueryPerformanceInterceptor` (Microscope) is controlled by these env vars:
 
+Defaults are defined in the Zod schema at `services/agent-service/src/core/configuration.ts`.
+
 | Variable | Default | Description |
 |---|---|---|
 | `PERF_QUERY_MODE` | `query` | `query` / `perf` / `off` |
 | `PERF_QUERY_SLOW_MS` | `2000` | Slow threshold (ms) |
 | `PERF_QUERY_CRITICAL_MS` | `10000` | Critical threshold (ms) |
 | `PERF_QUERY_CAPTURE_EXPLAIN` | `off` | When to run EXPLAIN ANALYZE |
-| `PERF_QUERY_SAMPLE_RATE` | `0.1` (deployed) | Fraction of requests instrumented |
-| `PERF_QUERY_INCLUDE_IN_RESPONSE` | `false` | Show SQL in response body |
+| `PERF_QUERY_SAMPLE_RATE` | `1.0` | Fraction of requests instrumented |
+| `PERF_QUERY_INCLUDE_IN_RESPONSE` | `true` | Show SQL and metrics in `meta.query.performance` |
 
 If `PERF_QUERY_MODE` is `off`, no performance data is captured. Set it to `query` first.
 
@@ -154,14 +156,16 @@ After applying a fix:
 3. Check application logs for absence of `[Microscope] SLOW query` entries
 4. Monitor over 24h for regression
 
-## Quick Reference: Safe Production Settings
+## Quick Reference: Production Defaults
+
+These are the Zod schema defaults — no env vars needed unless overriding.
 
 ```bash
-PERF_QUERY_MODE=query
-PERF_QUERY_SLOW_MS=2000
-PERF_QUERY_CRITICAL_MS=10000
-PERF_QUERY_LOG_ALL=false
-PERF_QUERY_INCLUDE_IN_RESPONSE=false
-PERF_QUERY_CAPTURE_EXPLAIN=off
-PERF_QUERY_SAMPLE_RATE=0.1
+PERF_QUERY_MODE=query              # always on
+PERF_QUERY_SLOW_MS=2000            # log slow queries >2s
+PERF_QUERY_CRITICAL_MS=10000       # log critical queries >10s
+PERF_QUERY_LOG_ALL=false           # don't log fast queries
+PERF_QUERY_INCLUDE_IN_RESPONSE=true  # metrics in meta.query.performance
+PERF_QUERY_CAPTURE_EXPLAIN=off     # NEVER default this to slow/all
+PERF_QUERY_SAMPLE_RATE=1.0         # instrument all requests
 ```
