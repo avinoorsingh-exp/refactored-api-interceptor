@@ -71,7 +71,8 @@ pipeline
           VERSION = shortCommitHash
           // set the build display name
           currentBuild.displayName = "#${BUILD_ID}-orchestrator-${VERSION}"
-          if (env.BRANCH_NAME == 'development') {
+          def sanitizedBranchName = env.BRANCH_NAME.replaceAll('/', '-')
+          if (env.BRANCH_NAME == 'dev') {
               IMAGE = "$PROJECT:dev-$VERSION" 
           } else if (env.BRANCH_NAME == 'test') {
               IMAGE = "$PROJECT:test-$VERSION" 
@@ -79,6 +80,8 @@ pipeline
               IMAGE = "$PROJECT:qa-$VERSION"
           } else if (env.BRANCH_NAME == 'main') {
               IMAGE = "$PROJECT:prod-$VERSION"
+          } else {
+              IMAGE = "$PROJECT:${sanitizedBranchName}-$VERSION"
           }
         }
 
@@ -98,12 +101,9 @@ pipeline
 
     stage('Test + Coverage') {
       when {
-        allOf {
-          anyOf {
-            branch 'development'
-            expression { env.BRANCH_NAME.startsWith('feature/') }
-          }
-          expression { env.SKIP_BUILD != 'true' }
+        anyOf {
+          branch 'dev'
+          expression { env.BRANCH_NAME.startsWith('feature/') }
         }
       }
       steps {
@@ -141,7 +141,14 @@ pipeline
 
     stage('Docker push') {
       when {
-        expression { env.SKIP_BUILD != 'true' }
+        anyOf {
+          branch 'development'
+          branch 'dev'
+          branch 'qa'
+          branch 'test'
+          branch 'accp'
+          branch 'main'
+        }
       }
       steps {
         script {
@@ -163,10 +170,7 @@ pipeline
 
     stage('Deploy - Development') {
       when {
-        allOf {
-          branch 'development'
-          expression { env.SKIP_BUILD != 'true' }
-        }
+        branch 'dev'
       }
 
       steps
@@ -237,10 +241,7 @@ pipeline
     }
     stage('Deploy - QA/Acceptance') {
       when {
-        allOf {
-          branch 'qa'
-          expression { env.SKIP_BUILD != 'true' }
-        }
+        branch 'qa'
       }
 
       steps

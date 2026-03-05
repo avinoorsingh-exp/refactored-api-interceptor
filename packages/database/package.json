@@ -20,7 +20,8 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "tsc -p tsconfig.build.json",
+		"clean": "rimraf dist",
+		"build": "npm run clean && tsc -p tsconfig.build.json",
 		"dev": "tsc -p tsconfig.build.json --watch",
 		"check": "tsc -p tsconfig.json --noEmit",
 		"lint": "eslint . --max-warnings=0",
@@ -38,15 +39,18 @@
 		"api:report": "api-documenter markdown -i temp -o docs"
 	},
 	"dependencies": {
+		"@exprealty/config": "workspace:*",
 		"@exprealty/shared-domain": "workspace:*",
 		"pg": "^8.11.3",
 		"reflect-metadata": "^0.2.1",
-		"typeorm": "^0.3.20"
+		"typeorm": "^0.3.20",
+		"zod": "^3.24.1"
 	},
 	"devDependencies": {
 		"@microsoft/api-documenter": "^7.27.1",
 		"@microsoft/api-extractor": "^7.53.1",
 		"@types/node": "^24.9.1",
+		"rimraf": "^4.4.1",
 		"ts-node": "^10.9.2",
 		"tsx": "^4.20.6",
 		"typescript": "^5.8.3"

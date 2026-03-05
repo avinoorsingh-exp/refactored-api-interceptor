@@ -12,7 +12,11 @@
     "skipLibCheck": true,
     "baseUrl": ".",                  
     "paths": {
-      "@exprealty/*": ["packages/*/src"]
+      "@exprealty/*": ["packages/*/src"],
+      "@exprealty/logger/metrics": ["packages/logger/src/metrics"],
+      "@common/*": ["../src/common/*"],
+      "@modules/*": ["../src/modules/*"],
+      "@test/*": ["./*"]                 // <-- shared test utils under /test
     },
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,

@@ -6,31 +6,40 @@ RUN npm install -g pnpm
 
 WORKDIR /app
 
-# Copy package files
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nodeuser -u 1001
+
+# Copy all source code first
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY packages/config/package.json ./packages/config/
-COPY packages/logger/package.json ./packages/logger/
-COPY packages/shared-domain/package.json ./packages/shared-domain/
-COPY services/orchestrator/package.json ./services/orchestrator/
-
-# Install dependencies (skip prepare scripts like husky)
-ENV HUSKY=0
-RUN pnpm install --frozen-lockfile --ignore-scripts
-
-# Copy source code and tsconfig
 COPY tsconfig.json ./
+COPY packages/cache ./packages/cache
 COPY packages/config ./packages/config
 COPY packages/logger ./packages/logger
 COPY packages/shared-domain ./packages/shared-domain
 COPY services/orchestrator ./services/orchestrator
 
-# Build packages in order
+# Install dependencies (allow build scripts to run, but skip husky)
+ENV HUSKY=0
+RUN pnpm install --frozen-lockfile
+
+# Build packages in dependency order
+# 1. Config (no dependencies)
 WORKDIR /app/packages/config
 RUN pnpm build
 
+# 2. Logger (depends on config)
 WORKDIR /app/packages/logger
 RUN pnpm build
 
+# 3. Cache (depends on logger)
+WORKDIR /app/packages/cache
+RUN pnpm build
+
+# 4. Shared-domain (depends on config, logger)
 WORKDIR /app/packages/shared-domain
 RUN pnpm build
 
@@ -44,26 +53,37 @@ FROM node:20-alpine
 # Install pnpm
 RUN npm install -g pnpm
 
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs && adduser -S nodeuser -u 1001
+
 WORKDIR /app
 
 # Copy package files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/cache/package.json ./packages/cache/
 COPY packages/config/package.json ./packages/config/
 COPY packages/logger/package.json ./packages/logger/
 COPY packages/shared-domain/package.json ./packages/shared-domain/
 COPY services/orchestrator/package.json ./services/orchestrator/
 
-# Install all dependencies including peerDependencies (skip prepare scripts like husky)
+# Install only production dependencies
 ENV HUSKY=0
-RUN pnpm install --frozen-lockfile --ignore-scripts
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 
 # Copy built files from builder
+COPY --from=builder /app/packages/cache/dist ./packages/cache/dist
 COPY --from=builder /app/packages/config/dist ./packages/config/dist
 COPY --from=builder /app/packages/logger/dist ./packages/logger/dist
 COPY --from=builder /app/packages/shared-domain/dist ./packages/shared-domain/dist
 COPY --from=builder /app/services/orchestrator/dist ./services/orchestrator/dist
 
 WORKDIR /app/services/orchestrator
+
+# Create logs directory with full write permissions for the non-root user
+RUN mkdir -p ./logs && chown -R nodeuser:nodejs ./logs && chmod -R 755 ./logs
+
+# Switch to non-root user
+USER nodeuser
 
 EXPOSE 8081
 

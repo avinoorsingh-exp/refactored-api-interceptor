@@ -11,7 +11,8 @@ module.exports = {
 
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
-    // map workspace package aliases to source
+    // map workspace package aliases to source with sub-paths
+    '^@exprealty/([^/]+)/(.+)$': '<rootDir>/packages/$1/src/$2',
     '^@exprealty/(.*)$': '<rootDir>/packages/$1/src',
   },
   // ⬇️ Put this *first* so it wins before the generic rules

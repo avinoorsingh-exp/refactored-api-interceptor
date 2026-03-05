@@ -31,12 +31,14 @@ beforeEach(() => {
 jest.setTimeout(30000);
 
 // Set environment variables for testing
-process.env.NODE_ENV = 'test';
+// Use 'local' to avoid AWS Secrets Manager loading in tests
+process.env.NODE_ENV = 'local';
 process.env.ADDRESS_PROVIDER_SMARTY_URL = 'http://localhost:3010';
 process.env.ADDRESS_PROVIDER_BATCHDATA_URL = 'http://localhost:3011';
 process.env.PROPERTY_PROVIDER_BATCHDATA_URL = 'http://localhost:3012';
 process.env.PHONE_PROVIDER_BATCHDATA_URL = 'http://localhost:3013';
 process.env.DEMOGRAPHICS_PROVIDER_CENSUS_URL = 'http://localhost:3014';
+process.env.AGENT_SERVICE_URL = 'http://localhost:3001';
 process.env.S2S_INTERNAL_KEY = 'test-key';
 process.env.PORT = '3000';
 process.env.LOG_LEVEL = 'error';
