@@ -399,11 +399,15 @@ The extraction methods must handle the **array format** because they run before 
 
 | Route | Virtual Relations | Relational Sort | Relational Filter |
 |-------|-------------------|-----------------|-------------------|
-| `/agents` | primaryEmail, primaryPhone, primaryAddress | primaryEmail | email, country |
+| `/agents` | primaryEmail, primaryPhone, primaryAddress | primaryEmail, licensedStates | email, country, licensedStates |
 | `/offices` | - | - | - |
 | `/states` | - | - | - |
 | `/mls` | - | - | - |
 | `/pay-plans` | - | - | - |
+
+**Note:** Relational filters on `/agents` (email, country, licensedStates) use `EXISTS`
+subqueries — not LEFT JOINs — to avoid inflating the COUNT in `getManyAndCount()`.
+See [Repository Patterns — EXISTS Subquery](./repository-patterns.md#exists-subquery-for-relational-filters).
 
 ## Type Casting Rules
 

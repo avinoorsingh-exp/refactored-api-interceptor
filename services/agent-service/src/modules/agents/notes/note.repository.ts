@@ -105,7 +105,7 @@ export class NoteTypeOrmRepository implements INoteRepository {
 			.createQueryBuilder('an')
 			.innerJoinAndSelect('an.note', 'note')
 			.where('an.agent_id = :agentId', { agentId })
-			.orderBy('note.created', 'DESC')
+			.orderBy('note.last_modified', 'DESC')
 			.skip(offset)
 			.take(limit);
 

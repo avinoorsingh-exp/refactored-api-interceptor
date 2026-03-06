@@ -43,6 +43,7 @@ You own the query infrastructure that all repositories use.
 - **NEVER** cast for numeric comparison operators (`>`, `<`, `=`) — use the native type
 - **ALWAYS** extract relational sort/filter fields before sending to `normalizeWithValidation()` — virtual relation fields are not on the entity and will fail decorator-based validation
 - **ALWAYS** pass `{ skipDefaultSort: true }` when a relational sort is applied — prevents default sort from overriding the user's intent
+- **ALWAYS** use `EXISTS` subqueries for relational filters (`email`, `country`, `licensedStates`) — **NEVER** `LEFT JOIN` chains, which inflate the COUNT query in `getManyAndCount()`. See `docs/architecture/repository-patterns.md` → "EXISTS Subquery for Relational Filters"
 - For `mapToDomain` guidance in repositories, prefer spread operator over field-by-field mapping:
   ```typescript
   // Correct: spread, override only what needs transformation

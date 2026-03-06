@@ -898,8 +898,9 @@ export class AgentTypeOrmRepository
 	}
 
 	/**
-	 * Apply email filter conditions to the query builder.
-	 * Joins contactMethods and filters where channel='email'.
+	 * Apply email filter conditions using EXISTS subqueries.
+	 * Avoids LEFT JOIN on contact_method which inflates COUNT in getManyAndCount().
+	 * Covered by: idx_contact_method_agent_channel + IDX_contact_method_value_trgm.
 	 */
 	private applyEmailFilters<T>(
 		qb: SelectQueryBuilder<T>,
@@ -908,26 +909,49 @@ export class AgentTypeOrmRepository
 	): void {
 		if (filters.length === 0) return;
 
-		const emailAlias = 'emailFilter';
+		const aliasRef = `"${alias}".id`;
 
-		// Join contactMethods for email filtering
-		qb.leftJoin(
-			`${alias}.contactMethods`,
-			emailAlias,
-			`${emailAlias}.channel = :emailFilterChannel`,
-			{ emailFilterChannel: 'email' },
-		);
-
-		// Apply each email filter condition
 		filters.forEach((condition, index) => {
 			const paramName = `emailFilter_${index}`;
-			this.applyRelationalFilterCondition(qb, `${emailAlias}.value`, condition, paramName);
+			const base = `EXISTS (SELECT 1 FROM core.contact_method cm WHERE cm.agent_id = ${aliasRef} AND cm.channel = 'email'`;
+
+			switch (condition.operator) {
+				case 'eq':
+					qb.andWhere(`${base} AND cm.value = :${paramName})`, { [paramName]: condition.value });
+					break;
+				case 'ne':
+					qb.andWhere(`${base} AND cm.value != :${paramName})`, { [paramName]: condition.value });
+					break;
+				case 'ilike':
+				case 'contains':
+					qb.andWhere(`${base} AND cm.value ILIKE :${paramName})`, { [paramName]: `%${condition.value}%` });
+					break;
+				case 'startsWith':
+					qb.andWhere(`${base} AND cm.value ILIKE :${paramName})`, { [paramName]: `${condition.value}%` });
+					break;
+				case 'endsWith':
+					qb.andWhere(`${base} AND cm.value ILIKE :${paramName})`, { [paramName]: `%${condition.value}` });
+					break;
+				case 'in':
+					qb.andWhere(`${base} AND cm.value IN (:...${paramName}))`, { [paramName]: condition.value });
+					break;
+				case 'isNull':
+					qb.andWhere(`NOT EXISTS (SELECT 1 FROM core.contact_method cm WHERE cm.agent_id = ${aliasRef} AND cm.channel = 'email' AND cm.value IS NOT NULL)`);
+					break;
+				case 'isNotNull':
+					qb.andWhere(`${base} AND cm.value IS NOT NULL)`);
+					break;
+				default:
+					qb.andWhere(`${base} AND cm.value = :${paramName})`, { [paramName]: condition.value });
+			}
 		});
 	}
 
 	/**
-	 * Apply country filter conditions to the query builder.
-	 * Joins agentAddresses → address → country (state is now optional via countryId + stateCode).
+	 * Apply country filter conditions using EXISTS subqueries.
+	 * Avoids 3-hop LEFT JOIN chain (agentAddresses → address → country) which
+	 * inflates COUNT in getManyAndCount().
+	 * Covered by: PK_agent_address (agent_id, address_id), PK_address_id, PK_country.
 	 */
 	private applyCountryFilters<T>(
 		qb: SelectQueryBuilder<T>,
@@ -936,32 +960,49 @@ export class AgentTypeOrmRepository
 	): void {
 		if (filters.length === 0) return;
 
-		const junctionAlias = 'countryFilterJunction';
-		const addressAlias = 'countryFilterAddress';
-		const countryAlias = 'countryFilter';
+		const aliasRef = `"${alias}".id`;
+		const base = [
+			`EXISTS (SELECT 1 FROM core.agent_address aa`,
+			`JOIN core.address a ON a.id = aa.address_id`,
+			`JOIN core.country c ON c.id = a.country_id`,
+			`WHERE aa.agent_id = ${aliasRef}`,
+		].join(' ');
 
-		// Join through the relation chain
-		qb.leftJoin(`${alias}.agentAddresses`, junctionAlias);
-		qb.leftJoin(`${junctionAlias}.address`, addressAlias);
-		qb.leftJoin(`${addressAlias}.country`, countryAlias);
-
-		// Apply each country filter condition (search by name or alpha2)
 		filters.forEach((condition, index) => {
 			const paramName = `countryFilter_${index}`;
-			// Support filtering by country name or alpha2 code
+
 			if (condition.operator === 'eq') {
-				// Exact match: check both name and alpha2
-				qb.andWhere(
-					`(${countryAlias}.name = :${paramName} OR ${countryAlias}.alpha2 = :${paramName})`,
-					{ [paramName]: condition.value },
-				);
+				qb.andWhere(`${base} AND (c.name = :${paramName} OR c.alpha_2 = :${paramName}))`, {
+					[paramName]: condition.value,
+				});
 			} else if (condition.operator === 'ilike' || condition.operator === 'contains') {
-				qb.andWhere(`${countryAlias}.name ILIKE :${paramName}`, {
+				qb.andWhere(`${base} AND c.name ILIKE :${paramName})`, {
 					[paramName]: `%${condition.value}%`,
 				});
+			} else if (condition.operator === 'ne') {
+				qb.andWhere(`${base} AND c.name != :${paramName})`, {
+					[paramName]: condition.value,
+				});
+			} else if (condition.operator === 'startsWith') {
+				qb.andWhere(`${base} AND c.name ILIKE :${paramName})`, {
+					[paramName]: `${condition.value}%`,
+				});
+			} else if (condition.operator === 'endsWith') {
+				qb.andWhere(`${base} AND c.name ILIKE :${paramName})`, {
+					[paramName]: `%${condition.value}`,
+				});
+			} else if (condition.operator === 'in') {
+				qb.andWhere(`${base} AND (c.name IN (:...${paramName}) OR c.alpha_2 IN (:...${paramName})))`, {
+					[paramName]: condition.value,
+				});
+			} else if (condition.operator === 'isNull') {
+				qb.andWhere(`NOT EXISTS (SELECT 1 FROM core.agent_address aa JOIN core.address a ON a.id = aa.address_id WHERE aa.agent_id = ${aliasRef} AND a.country_id IS NOT NULL)`);
+			} else if (condition.operator === 'isNotNull') {
+				qb.andWhere(`${base} AND c.id IS NOT NULL)`);
 			} else {
-				// Default to name field for other operators
-				this.applyRelationalFilterCondition(qb, `${countryAlias}.name`, condition, paramName);
+				qb.andWhere(`${base} AND c.name = :${paramName})`, {
+					[paramName]: condition.value,
+				});
 			}
 		});
 	}
@@ -1009,48 +1050,6 @@ export class AgentTypeOrmRepository
 				});
 			}
 		});
-	}
-
-	/**
-	 * Apply a single relational filter condition.
-	 */
-	private applyRelationalFilterCondition<T>(
-		qb: SelectQueryBuilder<T>,
-		fieldPath: string,
-		condition: { field: string; operator: string; value: any },
-		paramName: string,
-	): void {
-		const { operator, value } = condition;
-
-		switch (operator) {
-			case 'eq':
-				qb.andWhere(`${fieldPath} = :${paramName}`, { [paramName]: value });
-				break;
-			case 'ne':
-				qb.andWhere(`${fieldPath} != :${paramName}`, { [paramName]: value });
-				break;
-			case 'ilike':
-			case 'contains':
-				qb.andWhere(`${fieldPath} ILIKE :${paramName}`, { [paramName]: `%${value}%` });
-				break;
-			case 'startsWith':
-				qb.andWhere(`${fieldPath} ILIKE :${paramName}`, { [paramName]: `${value}%` });
-				break;
-			case 'endsWith':
-				qb.andWhere(`${fieldPath} ILIKE :${paramName}`, { [paramName]: `%${value}` });
-				break;
-			case 'in':
-				qb.andWhere(`${fieldPath} IN (:...${paramName})`, { [paramName]: value });
-				break;
-			case 'isNull':
-				qb.andWhere(`${fieldPath} IS NULL`);
-				break;
-			case 'isNotNull':
-				qb.andWhere(`${fieldPath} IS NOT NULL`);
-				break;
-			default:
-				qb.andWhere(`${fieldPath} = :${paramName}`, { [paramName]: value });
-		}
 	}
 
 	/**

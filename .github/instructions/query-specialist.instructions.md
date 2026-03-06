@@ -197,7 +197,7 @@ relations: {
   },
 }
 
-// 2. Repository loads it with filtered JOIN
+// 2. Repository loads it with filtered JOIN (non-paginated queries only)
 protected loadPrimaryContacts(qb, alias, types) {
   for (const type of types) {
     const relationAlias = `primary${type.charAt(0).toUpperCase() + type.slice(1)}`;
@@ -211,6 +211,11 @@ protected loadPrimaryContacts(qb, alias, types) {
   }
 }
 ```
+
+> **Performance note:** For `findPage()`, virtual relations (`primaryEmail`, `primaryPhone`,
+> `primaryAddress`) are loaded **post-query** via `loadPrimaryContactsByIds()` /
+> `loadPrimaryAddressesByIds()`. The `leftJoinAndMapOne` approach above is only used in
+> non-paginated queries (e.g., `findById`). This avoids inflating the COUNT query.
 
 ## Relational Sorting and Filtering (NEW)
 

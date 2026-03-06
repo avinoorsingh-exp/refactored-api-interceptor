@@ -101,7 +101,7 @@ export function loadEnv(options: EnvLoadOptions = {}) {
 
 /** Base schema shared by all services */
 export const BaseConfig = z.object({
-	NODE_ENV: z.enum(['local', 'dev', 'test', 'prod']).default('local'),
+	NODE_ENV: z.enum(['local', 'dev', 'test', 'accp', 'prod']).default('local'),
 	LOG_LEVEL: z.string().default('info'),
 	LOG_DIR: z.string().default('./logs'),
 	AWS_REGION: z.string().default('us-east-1'),

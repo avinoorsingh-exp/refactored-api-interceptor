@@ -603,13 +603,18 @@ DB_LOGGING=true pnpm --filter @exprealty/database migration:run
 
 ## Current Migrations
 
-| File | Description | Applied |
-|------|-------------|---------|
-| `1762356356157-InitialSchema.ts` | Initial database schema with all core tables | ✅ |
-| `1763043601425-AddAuditFieldsToCountry.ts` | Audit columns for Country entity | ✅ |
-| `1763138571296-AddAuditFieldsToRegionAndCompany.ts` | Audit columns for Region and Company | ✅ |
-| `1763138600000-AddUniqueConstraintToCompanyName.ts` | Unique constraint on company.name | ✅ |
-| `1763138610000-AddUniqueConstraintToRegionName.ts` | Unique constraint on region.name | ✅ |
+Migrations live in `packages/database/src/migrations/` and are auto-discovered by timestamp
+prefix. To see the full list:
+
+```bash
+ls packages/database/src/migrations/
+```
+
+To check which migrations have run against a database:
+
+```bash
+pnpm --filter @exprealty/database migration:show
+```
 
 ---
 

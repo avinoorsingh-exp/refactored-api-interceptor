@@ -312,6 +312,30 @@ per parent causes the COUNT to process millions of joined rows.
 | Required for ORDER BY | sort by primaryEmail | JOIN (lightweight leftJoin only) |
 | Required for WHERE | filter by email | Prefer EXISTS subquery |
 
+### EXISTS Subquery for Relational Filters
+
+When a `WHERE` filter targets a related table (e.g., email via `contact_method`, country via
+`agent_address → address → country`), use `EXISTS (SELECT 1 ...)` instead of `LEFT JOIN`.
+
+**Why:** `LEFT JOIN` inside `getManyAndCount()` inflates both the data query and the COUNT
+query. A 1:N JOIN on 267K parents can cause the COUNT to process millions of joined rows.
+`EXISTS` short-circuits on the first match and keeps the COUNT cheap.
+
+```typescript
+// Good — EXISTS subquery (agent.repository.ts applyEmailFilters)
+const base = `EXISTS (SELECT 1 FROM core.contact_method cm
+  WHERE cm.agent_id = "agent".id AND cm.channel = 'email'`;
+qb.andWhere(`${base} AND cm.value ILIKE :param)`, { param: `%${value}%` });
+
+// Bad — LEFT JOIN inflates COUNT
+qb.leftJoin(`${alias}.contactMethods`, 'cm', `cm.channel = 'email'`);
+qb.andWhere(`cm.value ILIKE :param`, { param: `%${value}%` });
+```
+
+**When to use:** Any filter on a 1:N or multi-hop relation that is not needed for SELECT or
+ORDER BY. Current implementations: `applyEmailFilters`, `applyCountryFilters`,
+`applyLicensedStatesFilters` in `AgentTypeOrmRepository`.
+
 ### Reference Implementation
 
 `AgentTypeOrmRepository` in `services/agent-service/src/modules/agents/agent.repository.ts`:
