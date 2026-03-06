@@ -384,12 +384,9 @@ pipeline
       }
     }
 
-    stage('Run Migrations - QA/Acceptance') {
+    stage('Run Migrations - Acceptance') {
       when {
-        anyOf {
-          branch 'qa'
-          branch 'accp'
-        }
+        branch 'accp'
       }
 
       steps {
@@ -474,12 +471,9 @@ pipeline
       }
     }
 
-    stage('Deploy - QA/Acceptance') {
+    stage('Deploy - Acceptance') {
       when {
-        anyOf {
-          branch 'qa'
-          branch 'accp'
-        }
+        branch 'accp'
       }
       steps {
         script {
