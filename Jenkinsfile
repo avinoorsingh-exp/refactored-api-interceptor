@@ -8,36 +8,11 @@ pipeline
     stage('Build preparations') {
       steps {
         script {
-          gitCommitHash = sh(returnStdout: true, script: 'git rev-parse HEAD').trim()
-          shortCommitHash = gitCommitHash.take(7)
-          env.VERSION = shortCommitHash
-          currentBuild.displayName = "#${BUILD_ID}-${env.VERSION}"
-          
-          def imageTag = ''
-          def sanitizedBranchName = env.BRANCH_NAME.replaceAll('/', '-')
-          if (env.BRANCH_NAME == 'dev') {
-              imageTag = "${env.PROJECT}:dev-${env.VERSION}"
-          } else if (env.BRANCH_NAME == 'test') {
-              imageTag = "${env.PROJECT}:test-${env.VERSION}"
-          } else if (env.BRANCH_NAME == 'accp') {
-              imageTag = "${env.PROJECT}:accp-${env.VERSION}"
-          } else if (env.BRANCH_NAME == 'qa') {
-              imageTag = "${env.PROJECT}:qa-${env.VERSION}"
-          } else if (env.BRANCH_NAME == 'main') {
-              imageTag = "${env.PROJECT}:prod-${env.VERSION}"
-          } else {
-              imageTag = "${env.PROJECT}:${sanitizedBranchName}-${env.VERSION}"
-          }
-          env.IMAGE = imageTag
-        }
-
-      }
-    }
-
-    stage('Docker build') {
-      steps {
-        script {
-          docker.build("${env.IMAGE}", "-f services/agent-service/Dockerfile .")
+          def buildInfo = ecsDeployHelpers.prepareBuild([
+            project: env.PROJECT,
+            ecr: env.ECR
+          ])
+          ecsDeployHelpers.buildImage(buildInfo, '-f services/agent-service/Dockerfile .')
         }
       }
     }
@@ -88,16 +63,26 @@ pipeline
       }
       steps {
         script {
-          loginHelpers.dockerLogin()
-          ECRURL = "http://${ECR}"
-          docker.withRegistry(ECRURL) {
-            docker.image(env.IMAGE).push()
+          def devSecOpsAccountId = '204048894727'
+          def awsCfgDevSecops = loginHelpers.createRoleProfileConfig([
+            accountId: devSecOpsAccountId,
+            profileName: 'exp-devsecops',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID,
+            overwriteConfig: true
+          ])
+          withEnv([
+            "AWS_CONFIG_FILE=${awsCfgDevSecops.configFile}",
+            "AWS_SHARED_CREDENTIALS_FILE=${awsCfgDevSecops.credentialsFile}",
+            "AWS_SDK_LOAD_CONFIG=1",
+            "AWS_PROFILE=exp-devsecops"
+          ]) {
+            loginHelpers.dockerLogin(env.ECR)
           }
-          TF_VAR_app_image = "${ECR}${env.IMAGE}"
-          env.TF_VAR_app_image = TF_VAR_app_image
-          writeFile file: 'image-tag.txt', text: TF_VAR_app_image
+          def buildInfo = ecsDeployHelpers.getBuildInfoFromEnv(project: env.PROJECT, ecr: env.ECR)
+          ecsDeployHelpers.pushImage(buildInfo)
+          env.TF_VAR_app_image = buildInfo.fullImagePath
         }
-
       }
     }
 
@@ -105,48 +90,40 @@ pipeline
       steps {
         script {
           def secretName = ''
-          def credentialsId = ''
           def targetAccount = env.TARGET_ACCOUNT_DEV
           def awsProfile = 'exp-dev'
 
           if (env.BRANCH_NAME == 'dev') {
             secretName = 'dev/agent-service-dev'
-            credentialsId = 'Jenkins-Dev'
           } else if (env.BRANCH_NAME == 'test') {
             secretName = 'dev/agent-service-test'
-            credentialsId = 'Jenkins-Dev'
           } else if (env.BRANCH_NAME == 'qa') {
             secretName = 'qa/agent-service-accp'
-            credentialsId = 'jenkins-qa-user'
             targetAccount = env.TARGET_ACCOUNT_QA
             awsProfile = 'exp-qa'
           } else if (env.BRANCH_NAME == 'accp') {
             secretName = 'qa/agent-service-accp'
-            credentialsId = 'jenkins-qa-user'
             targetAccount = env.TARGET_ACCOUNT_QA
             awsProfile = 'exp-qa'
           } else if (env.BRANCH_NAME == 'main') {
             secretName = 'prod/agent-service-prod'
-            credentialsId = '88caba18-4691-47c5-92a9-e66ee83da4e4'
             targetAccount = env.TARGET_ACCOUNT_PROD
             awsProfile = 'exp-production'
           }
 
-          // Create AWS config file for Secrets Manager access (use account/profile for this branch)
           loginHelpers.createRoleProfileConfig([
             accountId: targetAccount,
             profileName: awsProfile,
             roleName: env.ROLE_NAME,
             externalId: env.EXTERNAL_ID
           ])
-          
+
           sh """
             export AWS_PROFILE=${awsProfile}
             aws secretsmanager get-secret-value --secret-id "${secretName}" --region us-east-1 --query 'SecretString' --output text > db-secrets.json
             """
-          
-          // Cleanup config file
-          sh 'sudo rm -rf .aws'
+
+          sh 'rm -rf .aws'
         }
       }
     }
@@ -242,44 +219,41 @@ pipeline
       when {
         branch 'dev'
       }
-
-      steps
-      {
-        
+      steps {
         script {
-          // Step 1: Login to ECR for pulling terraform image
-          loginHelpers.dockerLogin()
-          
-          // Step 2: Checkout terraform repository
+          def devSecOpsAccountId = '204048894727'
           loginHelpers.checkoutTerraformRepo('exp-tf-dev', 'master')
-          
-          // Step 3: Create AWS config file
+          def awsCfgDevSecops = loginHelpers.createRoleProfileConfig([
+            accountId: devSecOpsAccountId,
+            profileName: 'exp-devsecops',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID,
+            overwriteConfig: true
+          ])
           loginHelpers.createRoleProfileConfig([
             accountId: env.TARGET_ACCOUNT_DEV,
             profileName: 'exp-dev',
             roleName: env.ROLE_NAME,
-            externalId: env.EXTERNAL_ID
+            externalId: env.EXTERNAL_ID,
+            overwriteConfig: false
           ])
-          
-          def dockerArgs = loginHelpers.getTerragruntDockerArgs([awsProfile: 'exp-dev'])
-            docker.image(loginHelpers.getTerraformImage())
-                .inside(dockerArgs) {
-                  sh """
-                  export AWS_PROFILE=exp-dev
-
-                                                      
-                  IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
-                  cd account/exp-realty-dev/us-east-1/agent-service/dev/agent-service-dev/ecs
-                  terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$IMAGE_TAG"
-                  terragrunt apply -auto-approve -input=false -var "image=\$IMAGE_TAG"
-                  """
-                }
-          
-          // Step 5: Cleanup config file
-          sh 'sudo rm -rf .aws'
+          withEnv([
+            "AWS_CONFIG_FILE=${awsCfgDevSecops.configFile}",
+            "AWS_SHARED_CREDENTIALS_FILE=${awsCfgDevSecops.credentialsFile}",
+            "AWS_SDK_LOAD_CONFIG=1",
+            "AWS_PROFILE=exp-devsecops"
+          ]) {
+            loginHelpers.dockerLogin(env.ECR)
+          }
+          def buildInfo = ecsDeployHelpers.getBuildInfoFromEnv(project: env.PROJECT, ecr: env.ECR)
+          ecsDeployHelpers.runTerragruntDeploy([
+            imagePath: buildInfo.fullImagePath,
+            tfPath: 'account/exp-realty-dev/us-east-1/agent-service/dev/agent-service-dev/ecs',
+            awsProfile: 'exp-dev'
+          ])
+          sh 'rm -rf .aws'
         }
-        }
+      }
     }
 
     stage('Run Migrations - Test') {
@@ -373,44 +347,41 @@ pipeline
       when {
         branch 'test'
       }
-
-      steps
-      {
-        
+      steps {
         script {
-          // Step 1: Login to ECR for pulling terraform image
-          loginHelpers.dockerLogin()
-          
-          // Step 2: Checkout terraform repository
+          def devSecOpsAccountId = '204048894727'
           loginHelpers.checkoutTerraformRepo('exp-tf-dev', 'master')
-          
-          // Step 3: Create AWS config file
+          def awsCfgDevSecops = loginHelpers.createRoleProfileConfig([
+            accountId: devSecOpsAccountId,
+            profileName: 'exp-devsecops',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID,
+            overwriteConfig: true
+          ])
           loginHelpers.createRoleProfileConfig([
             accountId: env.TARGET_ACCOUNT_DEV,
             profileName: 'exp-dev',
             roleName: env.ROLE_NAME,
-            externalId: env.EXTERNAL_ID
+            externalId: env.EXTERNAL_ID,
+            overwriteConfig: false
           ])
-          
-          def dockerArgs = loginHelpers.getTerragruntDockerArgs([awsProfile: 'exp-dev'])
-            docker.image(loginHelpers.getTerraformImage())
-                .inside(dockerArgs) {
-                  sh """
-                  export AWS_PROFILE=exp-dev
-
-                                                      
-                  IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
-                  cd account/exp-realty-dev/us-east-1/agent-service/test/agent-service-test/ecs
-                  terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$IMAGE_TAG"
-                  terragrunt apply -auto-approve -input=false -var "image=\$IMAGE_TAG"
-                  """
-                }
-          
-          // Step 5: Cleanup config file
-          sh 'sudo rm -rf .aws'
+          withEnv([
+            "AWS_CONFIG_FILE=${awsCfgDevSecops.configFile}",
+            "AWS_SHARED_CREDENTIALS_FILE=${awsCfgDevSecops.credentialsFile}",
+            "AWS_SDK_LOAD_CONFIG=1",
+            "AWS_PROFILE=exp-devsecops"
+          ]) {
+            loginHelpers.dockerLogin(env.ECR)
+          }
+          def buildInfo = ecsDeployHelpers.getBuildInfoFromEnv(project: env.PROJECT, ecr: env.ECR)
+          ecsDeployHelpers.runTerragruntDeploy([
+            imagePath: buildInfo.fullImagePath,
+            tfPath: 'account/exp-realty-dev/us-east-1/agent-service/test/agent-service-test/ecs',
+            awsProfile: 'exp-dev'
+          ])
+          sh 'rm -rf .aws'
         }
-        }
+      }
     }
 
     stage('Run Migrations - QA/Acceptance') {
@@ -510,42 +481,39 @@ pipeline
           branch 'accp'
         }
       }
-
-      steps
-      {
-        
+      steps {
         script {
-          // Step 1: Login to ECR for pulling terraform image
-          loginHelpers.dockerLogin()
-          
-          // Step 2: Checkout terraform repository
+          def devSecOpsAccountId = '204048894727'
           loginHelpers.checkoutTerraformRepo('exp-tf-qa', 'master')
-          
-          // Step 3: Create AWS config file
+          def awsCfgDevSecops = loginHelpers.createRoleProfileConfig([
+            accountId: devSecOpsAccountId,
+            profileName: 'exp-devsecops',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID,
+            overwriteConfig: true
+          ])
           loginHelpers.createRoleProfileConfig([
             accountId: env.TARGET_ACCOUNT_QA,
             profileName: 'exp-qa',
             roleName: env.ROLE_NAME,
-            externalId: env.EXTERNAL_ID
+            externalId: env.EXTERNAL_ID,
+            overwriteConfig: false
           ])
-          
-          def dockerArgs = loginHelpers.getTerragruntDockerArgs([awsProfile: 'exp-qa'])
-            docker.image(loginHelpers.getTerraformImage())
-                .inside(dockerArgs) {
-                sh """
-                  export AWS_PROFILE=exp-qa
-
-                                                
-                IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
-                cd /data/account/exp-realty-qa/us-east-1/agent-service/accp/agent-service-accp/ecs
-                terragrunt init -reconfigure
-                terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$IMAGE_TAG"
-                terragrunt apply -auto-approve -input=false -var "image=\$IMAGE_TAG"
-                """
-              }
-          
-          // Step 5: Cleanup config file
-          sh 'sudo rm -rf .aws'
+          withEnv([
+            "AWS_CONFIG_FILE=${awsCfgDevSecops.configFile}",
+            "AWS_SHARED_CREDENTIALS_FILE=${awsCfgDevSecops.credentialsFile}",
+            "AWS_SDK_LOAD_CONFIG=1",
+            "AWS_PROFILE=exp-devsecops"
+          ]) {
+            loginHelpers.dockerLogin(env.ECR)
+          }
+          def buildInfo = ecsDeployHelpers.getBuildInfoFromEnv(project: env.PROJECT, ecr: env.ECR)
+          ecsDeployHelpers.runTerragruntDeploy([
+            imagePath: buildInfo.fullImagePath,
+            tfPath: 'account/exp-realty-qa/us-east-1/agent-service/accp/agent-service-accp/ecs',
+            awsProfile: 'exp-qa'
+          ])
+          sh 'rm -rf .aws'
         }
       }
     }
@@ -641,60 +609,52 @@ pipeline
       when {
         branch 'main'
       }
-
-      steps
-      {
-        
+      steps {
         script {
-          // Step 1: Login to ECR for pulling terraform image
-          loginHelpers.dockerLogin()
-          
-          // Step 2: Checkout terraform repository
+          def devSecOpsAccountId = '204048894727'
           loginHelpers.checkoutTerraformRepo('exp-tf-prod', 'master')
-          
-          // Step 3: Create AWS config file
+          def awsCfgDevSecops = loginHelpers.createRoleProfileConfig([
+            accountId: devSecOpsAccountId,
+            profileName: 'exp-devsecops',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID,
+            overwriteConfig: true
+          ])
           loginHelpers.createRoleProfileConfig([
             accountId: env.TARGET_ACCOUNT_PROD,
             profileName: 'exp-production',
             roleName: env.ROLE_NAME,
-            externalId: env.EXTERNAL_ID
+            externalId: env.EXTERNAL_ID,
+            overwriteConfig: false
           ])
-          
-          def dockerArgs = loginHelpers.getTerragruntDockerArgs([awsProfile: 'exp-production'])
-            docker.image(loginHelpers.getTerraformImage())
-                .inside(dockerArgs) {
-                sh """
-                  export AWS_PROFILE=exp-production
-
-                                                
-                IMAGE_TAG=\$(cat /data/image-tag.txt | tr -d '[:space:]')
-                cd /data/account/exp-realty-prod/us-east-1/agent-service/prod/agent-service/ecs
-                terragrunt init -reconfigure
-                terragrunt plan --terragrunt-log-level trace -input=false -var "image=\$IMAGE_TAG"
-                terragrunt apply -auto-approve -input=false -var "image=\$IMAGE_TAG"
-                """
-              }
-          
-          // Step 5: Cleanup config file
-          sh 'sudo rm -rf .aws'
+          withEnv([
+            "AWS_CONFIG_FILE=${awsCfgDevSecops.configFile}",
+            "AWS_SHARED_CREDENTIALS_FILE=${awsCfgDevSecops.credentialsFile}",
+            "AWS_SDK_LOAD_CONFIG=1",
+            "AWS_PROFILE=exp-devsecops"
+          ]) {
+            loginHelpers.dockerLogin(env.ECR)
+          }
+          def buildInfo = ecsDeployHelpers.getBuildInfoFromEnv(project: env.PROJECT, ecr: env.ECR)
+          ecsDeployHelpers.runTerragruntDeploy([
+            imagePath: buildInfo.fullImagePath,
+            tfPath: 'account/exp-realty-prod/us-east-1/agent-service/prod/agent-service/ecs',
+            awsProfile: 'exp-production'
+          ])
+          sh 'rm -rf .aws'
         }
       }
     }
   }
   environment {
-    // Target account IDs
     TARGET_ACCOUNT_DEV = '125434132943'
     TARGET_ACCOUNT_QA = '427827735592'
     TARGET_ACCOUNT_PROD = '704132245682'
     ROLE_NAME = 'jenkins-cross-account-role'
     EXTERNAL_ID = 'jenkins-cross-account-access'
-    
     AWS_DEFAULT_REGION = 'us-east-1'
-    BITBUCKET_USER = 'exp-jenkins'
 
     PROJECT = 'exp/agent-service'
-    ECRURL = ''
-    TF_VAR_app_image = '99'
     ECR = '204048894727.dkr.ecr.us-east-1.amazonaws.com/'
     TF_LOG = 'ERROR'
     // Job pass/fail email addresses
@@ -707,8 +667,16 @@ pipeline
   }
   post {
     always {
+      script {
+        try {
+          def buildInfo = ecsDeployHelpers.getBuildInfoFromEnv(project: env.PROJECT, ecr: env.ECR)
+          sh "docker rmi ${buildInfo.fullImagePath} | true"
+        } catch (Exception e) {
+          // ignore when prepareBuild was not run (e.g. skipped stage)
+        }
+        sh 'rm -rf .aws'
+      }
       cleanWs()
-      sh "docker rmi $TF_VAR_app_image | true"
     }
     success {
       script {

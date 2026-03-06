@@ -2,20 +2,27 @@ import {
 	Entity,
 	Column,
 	PrimaryGeneratedColumn,
-	CreateDateColumn,
-	UpdateDateColumn,
 	ManyToOne,
 	JoinColumn,
+	Index,
 } from 'typeorm'
 import { AgentEntity } from './agent.entity.js'
+import { AuditableEntity } from './auditable.entity.js'
 
 /**
  * TypeORM entity for ContactMethod table.
  * Stores phone, email, and other contact methods for agents.
+ * 
+ * Uniqueness constraints:
+ * - Name must be unique per agent (not globally)
+ * - Only one primary contact method per channel per agent (enforced via partial unique index)
+ * 
  * @public
  */
 @Entity({ name: 'contact_method', schema: 'core' })
-export class ContactMethodEntity {
+@Index('idx_contact_method_agent_name', ['agentId', 'name'], { unique: true })
+@Index('idx_contact_method_agent_channel', ['agentId', 'channel'])
+export class ContactMethodEntity extends AuditableEntity {
 	/**
 	 * Primary key (BigInt as string for large ID values).
 	 * @public
@@ -25,6 +32,7 @@ export class ContactMethodEntity {
 
 	/**
 	 * Contact method name/label.
+	 * Unique per agent (not globally).
 	 * @public
 	 */
 	@Column({ type: 'text' })
@@ -71,20 +79,6 @@ export class ContactMethodEntity {
 	 */
 	@Column({ name: 'agent_id', type: 'uuid' })
 	agentId!: string
-
-	/**
-	 * Creation timestamp.
-	 * @public
-	 */
-	@CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
-	createdAt!: Date
-
-	/**
-	 * Last update timestamp.
-	 * @public
-	 */
-	@UpdateDateColumn({ name: 'updated_at', type: 'timestamp with time zone' })
-	updatedAt!: Date
 
 	/**
 	 * Many-to-One relationship with Agent.

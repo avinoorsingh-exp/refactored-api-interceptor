@@ -2,9 +2,12 @@ import {
 	Entity,
 	Column,
 	PrimaryGeneratedColumn,
-	CreateDateColumn,
-	UpdateDateColumn,
+	ManyToOne,
+	JoinColumn,
 } from 'typeorm'
+import { AuditableEntity } from './auditable.entity.js'
+import { CountryEntity } from './country.entity.js'
+import type { StateEntity } from './state.entity.js'
 
 /**
  * TypeORM entity for Address table.
@@ -13,26 +16,41 @@ import {
  * @public
  */
 @Entity({ name: 'address', schema: 'core' })
-export class AddressEntity {
+export class AddressEntity extends AuditableEntity {
 	/**
-	 * Primary key (UUID).
+	 * Primary key (BigInt auto-increment).
+	 * Stored as string in TypeScript for JSON serialization compatibility.
 	 * @public
 	 */
-	@PrimaryGeneratedColumn('uuid')
+	@PrimaryGeneratedColumn('increment', { type: 'bigint' })
 	id!: string
+
+	/**
+	 * Address type (personal, company).
+	 * @public
+	 */
+	@Column({ type: 'text', nullable: true })
+	type?: string
+
+	/**
+	 * Address role (contact, bill_to, pay_to, ship_to, return_to).
+	 * @public
+	 */
+	@Column({ type: 'text', nullable: true })
+	role?: string
 
 	/**
 	 * Address line 1 (street address).
 	 * @public
 	 */
-	@Column({ name: 'line1', type: 'text' })
+	@Column({ name: 'line_1', type: 'text' })
 	line1!: string
 
 	/**
 	 * Address line 2 (apt, suite, etc.) - optional.
 	 * @public
 	 */
-	@Column({ name: 'line2', type: 'text', nullable: true })
+	@Column({ name: 'line_2', type: 'text', nullable: true })
 	line2?: string
 
 	/**
@@ -46,8 +64,8 @@ export class AddressEntity {
 	 * Unit/apartment number - optional.
 	 * @public
 	 */
-	@Column({ type: 'text' })
-	unit!: string
+	@Column({ type: 'text', nullable: true })
+	unit?: string
 
 	/**
 	 * Postal/ZIP code.
@@ -57,23 +75,50 @@ export class AddressEntity {
 	postalCode!: string
 
 	/**
-	 * ISO-3166 alpha-2 country code.
+	 * County name - optional.
 	 * @public
 	 */
-	@Column({ type: 'char', length: 2 })
-	country!: string
+	@Column({ type: 'text', nullable: true })
+	county?: string
 
 	/**
-	 * Timestamp when record was created (UTC).
+	 * Address label for user display - optional.
 	 * @public
 	 */
-	@CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
-	createdAt!: Date
+	@Column({ type: 'text', nullable: true })
+	label?: string
 
 	/**
-	 * Timestamp when record was last updated (UTC).
+	 * Foreign key to Country entity.
+	 * Required - all addresses must have a country.
 	 * @public
 	 */
-	@UpdateDateColumn({ name: 'updated_at', type: 'timestamp with time zone' })
-	updatedAt!: Date
+	@Column({ name: 'country_id', type: 'integer' })
+	countryId!: number
+
+	/**
+	 * State/province code (e.g., "CA", "TX").
+	 * Optional - international addresses may not have a state.
+	 * Used with countryId for virtual state relation.
+	 * @public
+	 */
+	@Column({ name: 'state_code', type: 'varchar', length: 2, nullable: true })
+	stateCode?: string
+
+	/**
+	 * Many-to-One relationship with Country.
+	 * @public
+	 */
+	@ManyToOne(() => CountryEntity)
+	@JoinColumn({ name: 'country_id' })
+	country!: CountryEntity
+
+	/**
+	 * Virtual relationship with State.
+	 * Populated via composite JOIN on countryId + stateCode.
+	 * Not mapped to database column - loaded by repository.
+	 * @see AddressRepository.loadStateRelation()
+	 * @public
+	 */
+	state?: StateEntity
 }

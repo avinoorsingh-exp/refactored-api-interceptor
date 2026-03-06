@@ -1,0 +1,1097 @@
+{
+  "info": {
+    "_postman_id": "systems-api-collection",
+    "name": "Systems API Tests",
+    "description": "Postman collection for Systems API endpoints under /v1/countries/:countryId/systems with test cases for CRUD operations, query features, and validation.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "apiVersion",
+      "value": "v1",
+      "type": "string"
+    },
+    {
+      "key": "countryId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "systemId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "createdDescription",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "currencyId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "POST - Create System",
+      "item": [
+        {
+          "name": "AC1 - Create System (Success)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Generate unique description to avoid conflicts",
+                  "const timestamp = Date.now();",
+                  "const description = `Test System ${timestamp}`;",
+                  "pm.collectionVariables.set('createdDescription', description);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response has Location header', function () {",
+                  "    pm.response.to.have.header('Location');",
+                  "    const location = pm.response.headers.get('Location');",
+                  "    pm.expect(location).to.match(/\\/v1\\/countries\\/\\d+\\/systems\\/\\d+$/);",
+                  "});",
+                  "",
+                  "pm.test('Response body contains full System representation', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('countryId');",
+                  "    pm.expect(jsonData).to.have.property('currencyId');",
+                  "    pm.expect(jsonData).to.have.property('description');",
+                  "    pm.expect(jsonData).to.have.property('created');",
+                  "    pm.expect(jsonData).to.have.property('lastModified');",
+                  "    pm.expect(jsonData).to.have.property('modifiedBy');",
+                  "    ",
+                  "    // Verify values match input",
+                  "    pm.expect(jsonData.countryId).to.eql(parseInt(pm.collectionVariables.get('countryId')));",
+                  "    pm.expect(jsonData.currencyId).to.eql(parseInt(pm.collectionVariables.get('currencyId')));",
+                  "    pm.expect(jsonData.description).to.eql(pm.collectionVariables.get('createdDescription'));",
+                  "    ",
+                  "    // Store the created system ID for subsequent tests",
+                  "    pm.collectionVariables.set('systemId', jsonData.id);",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currencyId\": {{currencyId}},\n  \"description\": \"{{createdDescription}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/{{countryId}}/systems",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "{{countryId}}", "systems"]
+            },
+            "description": "AC1 – Create: Creates a new System and returns 201 Created with the full resource and Location header."
+          },
+          "response": []
+        },
+        {
+          "name": "AC2 - Duplicate Description for Same Country (409 Conflict)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "",
+                  "pm.test('Response indicates duplicate', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currencyId\": {{currencyId}},\n  \"description\": \"{{createdDescription}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/{{countryId}}/systems",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "{{countryId}}", "systems"]
+            },
+            "description": "AC2 – Duplicate protection: Attempting to create a System with the same description in the same country returns 409 Conflict."
+          },
+          "response": []
+        },
+        {
+          "name": "AC3 - Validation Error - Missing Description (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Response has machine-readable error body', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currencyId\": {{currencyId}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/{{countryId}}/systems",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "{{countryId}}", "systems"]
+            },
+            "description": "AC3 – Validation: Attempting to create a System without a description returns 400 Bad Request."
+          },
+          "response": []
+        },
+        {
+          "name": "AC4 - Validation Error - Missing currencyId (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Response has machine-readable error body', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Missing Currency System\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/{{countryId}}/systems",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "{{countryId}}", "systems"]
+            },
+            "description": "AC4 – Validation: Attempting to create a System without a currencyId returns 400 Bad Request."
+          },
+          "response": []
+        },
+        {
+          "name": "AC5 - Invalid Country (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Response indicates country not found', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currencyId\": {{currencyId}},\n  \"description\": \"System in Nonexistent Country\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/999999/systems",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "999999", "systems"]
+            },
+            "description": "AC5 – Invalid country: Attempting to create a System under a non-existent country returns 404."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "GET - Get System by ID",
+      "item": [
+        {
+          "name": "AC1 - Get System by ID (Success)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response body contains full System representation', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('countryId');",
+                  "    pm.expect(jsonData).to.have.property('currencyId');",
+                  "    pm.expect(jsonData).to.have.property('description');",
+                  "    pm.expect(jsonData).to.have.property('created');",
+                  "    pm.expect(jsonData).to.have.property('lastModified');",
+                  "    pm.expect(jsonData).to.have.property('modifiedBy');",
+                  "    pm.expect(jsonData.id).to.eql(pm.collectionVariables.get('systemId'));",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/{{countryId}}/systems/{{systemId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "{{countryId}}", "systems", "{{systemId}}"]
+            },
+            "description": "AC1 – Get by ID: Returns a single System by ID with full representation."
+          },
+          "response": []
+        },
+        {
+          "name": "AC2 - System Not Found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Response indicates system not found', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/{{countryId}}/systems/999999",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "{{countryId}}", "systems", "999999"]
+            },
+            "description": "AC2 – Not found: Requesting a non-existent System returns 404."
+          },
+          "response": []
+        },
+        {
+          "name": "AC3 - Invalid Country (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/999999/systems/{{systemId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "999999", "systems", "{{systemId}}"]
+            },
+            "description": "AC3 – Invalid country: Requesting a System under a non-existent country returns 404."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "GET - List Systems",
+      "item": [
+        {
+          "name": "AC1 - List Systems for Country (Success)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response is an array', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an('array');",
+                  "    pm.expect(jsonData.length).to.be.greaterThan(0);",
+                  "});",
+                  "",
+                  "pm.test('Response has pagination headers', function () {",
+                  "    pm.response.to.have.header('X-Total-Count');",
+                  "});",
+                  "",
+                  "pm.test('Each item has expected properties', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    jsonData.forEach(function(item) {",
+                  "        pm.expect(item).to.have.property('id');",
+                  "        pm.expect(item).to.have.property('countryId');",
+                  "        pm.expect(item).to.have.property('currencyId');",
+                  "        pm.expect(item).to.have.property('description');",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test('Default sort is by id ASC', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    if (jsonData.length >= 2) {",
+                  "        const ids = jsonData.map(s => parseInt(s.id));",
+                  "        for (let i = 1; i < ids.length; i++) {",
+                  "            pm.expect(ids[i]).to.be.at.least(ids[i - 1]);",
+                  "        }",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/{{countryId}}/systems",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "{{countryId}}", "systems"]
+            },
+            "description": "AC1 – List: Returns a paginated list of systems for the specified country. Default sort is by id ASC."
+          },
+          "response": []
+        },
+        {
+          "name": "AC2 - Pagination (limit & offset)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response respects limit parameter', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.length).to.be.at.most(2);",
+                  "});",
+                  "",
+                  "pm.test('Response has pagination headers', function () {",
+                  "    pm.response.to.have.header('X-Total-Count');",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/{{countryId}}/systems?limit=2&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "{{countryId}}", "systems"],
+              "query": [
+                { "key": "limit", "value": "2" },
+                { "key": "offset", "value": "0" }
+              ]
+            },
+            "description": "AC2 – Pagination: Verifies limit and offset parameters are respected."
+          },
+          "response": []
+        },
+        {
+          "name": "AC3 - Sort by description DESC",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Results are sorted by description descending', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    if (jsonData.length >= 2) {",
+                  "        for (let i = 1; i < jsonData.length; i++) {",
+                  "            pm.expect(jsonData[i - 1].description.localeCompare(jsonData[i].description)).to.be.at.least(0);",
+                  "        }",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/{{countryId}}/systems?sort=description:desc",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "{{countryId}}", "systems"],
+              "query": [
+                { "key": "sort", "value": "description:desc" }
+              ]
+            },
+            "description": "AC3 – Sorting: Verifies sorting by description descending works correctly."
+          },
+          "response": []
+        },
+        {
+          "name": "AC4 - Filter by currencyId",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('All results have the filtered currencyId', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    const expectedCurrencyId = parseInt(pm.collectionVariables.get('currencyId'));",
+                  "    jsonData.forEach(function(item) {",
+                  "        pm.expect(item.currencyId).to.eql(expectedCurrencyId);",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/{{countryId}}/systems?filter=currencyId:eq:{{currencyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "{{countryId}}", "systems"],
+              "query": [
+                { "key": "filter", "value": "currencyId:eq:{{currencyId}}" }
+              ]
+            },
+            "description": "AC4 – Filtering: Verifies filtering by currencyId returns only matching systems."
+          },
+          "response": []
+        },
+        {
+          "name": "AC5 - Search by description",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Results match search term', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    jsonData.forEach(function(item) {",
+                  "        pm.expect(item.description.toLowerCase()).to.include('test');",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/{{countryId}}/systems?search=test",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "{{countryId}}", "systems"],
+              "query": [
+                { "key": "search", "value": "test" }
+              ]
+            },
+            "description": "AC5 – Search: Verifies searching by description matches partial text."
+          },
+          "response": []
+        },
+        {
+          "name": "AC6 - Invalid Country (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/999999/systems",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "999999", "systems"]
+            },
+            "description": "AC6 – Invalid country: Listing systems under a non-existent country returns 404."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "PUT - Update System",
+      "item": [
+        {
+          "name": "AC1 - Update System Description (Success)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const timestamp = Date.now();",
+                  "const updatedDescription = `Updated System ${timestamp}`;",
+                  "pm.collectionVariables.set('createdDescription', updatedDescription);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response body reflects updated description', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData.id).to.eql(pm.collectionVariables.get('systemId'));",
+                  "    pm.expect(jsonData.description).to.eql(pm.collectionVariables.get('createdDescription'));",
+                  "});",
+                  "",
+                  "pm.test('Response has all expected properties', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('countryId');",
+                  "    pm.expect(jsonData).to.have.property('currencyId');",
+                  "    pm.expect(jsonData).to.have.property('description');",
+                  "    pm.expect(jsonData).to.have.property('created');",
+                  "    pm.expect(jsonData).to.have.property('lastModified');",
+                  "    pm.expect(jsonData).to.have.property('modifiedBy');",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"{{createdDescription}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/{{countryId}}/systems/{{systemId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "{{countryId}}", "systems", "{{systemId}}"]
+            },
+            "description": "AC1 – Update: Updates a System's description and returns the full updated resource."
+          },
+          "response": []
+        },
+        {
+          "name": "AC2 - Update System currencyId (Success)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response body reflects updated currencyId', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('currencyId');",
+                  "    pm.expect(jsonData.currencyId).to.eql(parseInt(pm.collectionVariables.get('currencyId')));",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currencyId\": {{currencyId}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/{{countryId}}/systems/{{systemId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "{{countryId}}", "systems", "{{systemId}}"]
+            },
+            "description": "AC2 – Update: Updates a System's currencyId and returns the full updated resource."
+          },
+          "response": []
+        },
+        {
+          "name": "AC3 - System Not Found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Response indicates system not found', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Nonexistent System\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/{{countryId}}/systems/999999",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "{{countryId}}", "systems", "999999"]
+            },
+            "description": "AC3 – Not found: Updating a non-existent System returns 404."
+          },
+          "response": []
+        },
+        {
+          "name": "AC4 - Invalid Country (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Update Under Invalid Country\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/999999/systems/{{systemId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "999999", "systems", "{{systemId}}"]
+            },
+            "description": "AC4 – Invalid country: Updating a System under a non-existent country returns 404."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "GET - System Currency",
+      "item": [
+        {
+          "name": "AC1 - Get System Currency (Success)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200 OK', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response body contains Currency representation', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('code');",
+                  "    pm.expect(jsonData).to.have.property('name');",
+                  "    pm.expect(jsonData).to.have.property('symbol');",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/{{countryId}}/systems/{{systemId}}/currencies",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "{{countryId}}", "systems", "{{systemId}}", "currencies"]
+            },
+            "description": "AC1 – Get currency: Returns the currency associated with the specified system."
+          },
+          "response": []
+        },
+        {
+          "name": "AC2 - System Not Found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Response indicates system not found', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/{{countryId}}/systems/999999/currencies",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "{{countryId}}", "systems", "999999", "currencies"]
+            },
+            "description": "AC2 – Not found: Requesting currency for a non-existent system returns 404."
+          },
+          "response": []
+        },
+        {
+          "name": "AC3 - Invalid Country (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Response has correlation ID header', function () {",
+                  "    pm.response.to.have.header('X-Correlation-ID');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/countries/999999/systems/{{systemId}}/currencies",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "countries", "999999", "systems", "{{systemId}}", "currencies"]
+            },
+            "description": "AC3 – Invalid country: Requesting currency under a non-existent country returns 404."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

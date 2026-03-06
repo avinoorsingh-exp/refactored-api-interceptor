@@ -1,8 +1,12 @@
 import { Entity, Column, PrimaryColumn, ManyToOne, JoinColumn } from 'typeorm'
-import { PayPlanEntity } from './pay-plan.entity.js'
+import type { PayPlanEntity } from './pay-plan.entity.js'
 
 /**
  * TypeORM entity for PayPlanVariant table.
+ * 
+ * Uses STRING REFERENCES for @ManyToOne to avoid cascading entity registration.
+ * See PaymentSettingsEntity for detailed explanation.
+ * 
  * @public
  */
 @Entity({ name: 'pay_plan_variant', schema: 'core' })
@@ -16,7 +20,7 @@ export class PayPlanVariantEntity {
 	@Column({ type: 'decimal' })
 	value!: number
 
-	@ManyToOne(() => PayPlanEntity)
+	@ManyToOne('PayPlanEntity')
 	@JoinColumn({ name: 'pay_plan_id' })
 	payPlan?: PayPlanEntity
 }

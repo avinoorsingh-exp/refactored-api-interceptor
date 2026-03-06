@@ -11,6 +11,22 @@ module.exports = {
     '!src/**/*.e2e-spec.ts',
     '!src/main.ts',
   ],
+  coveragePathIgnorePatterns: [
+    '/node_modules/',
+    '/dist/',
+    '\\.dto\\.ts$',              // Exclude simple DTOs
+    '\\.interface\\.ts$',         // Exclude interfaces
+    '\\.types\\.ts$',             // Exclude type definitions
+    '\\.constants\\.ts$',         // Exclude constants
+    '/migrations/',              // Exclude DB migrations
+    'main\\.ts$',                // Exclude bootstrap file
+    'app\\.module\\.ts$',        // Exclude module files
+    'config\\.module\\.ts$',     // Exclude module files
+    'configuration\\.ts$',       // Exclude config schema
+    'agent-service\\.client\\.ts$', // Exclude interface file
+  ],
+  coverageReporters: ['text', 'text-summary', 'lcov', 'html', 'json-summary', 'cobertura'],
+  coverageDirectory: '<rootDir>/coverage',
   // Use the same transform configuration as e2e tests for MSW support
   transform: {
     '^.+node_modules\\/(?:\\.pnpm\\/.*?\\/node_modules\\/)?until-async\\/.*\\.js$': 'babel-jest',

@@ -7,6 +7,7 @@ import type { ICountriesRepository } from './ports/countries.repository.port.js'
 import type { Country, CreateCountryInput } from '@exprealty/shared-domain';
 import type { Request, Response } from 'express';
 import { AsyncContextStorage, CorrelationIdHelper } from '@exprealty/cache';
+import { LoggerService } from '../../core/logger.service.js';
 
 describe('CountriesController', () => {
   let controller: CountriesController;
@@ -58,6 +59,16 @@ describe('CountriesController', () => {
         {
           provide: 'ICountriesRepository',
           useValue: repository,
+        },
+        {
+          provide: LoggerService,
+          useValue: {
+            setContext: jest.fn(),
+            info: jest.fn(),
+            debug: jest.fn(),
+            warn: jest.fn(),
+            error: jest.fn(),
+          },
         },
       ],
     }).compile();
@@ -420,6 +431,170 @@ describe('CountriesController', () => {
       await controller.upsert({ code: 'CA' }, upsertDto, res, req);
 
       expect(repository.upsert).toHaveBeenCalledWith(upsertDto);
+    });
+  });
+
+  describe('Error Handling', () => {
+    /**
+     * Test error handling for findAll when service throws unexpected error
+     * Validates: Requirements 1.7
+     */
+    it('should propagate unexpected errors from service in findAll', async () => {
+      const error = new Error('Database connection failed');
+      repository.findPage.mockRejectedValue(error);
+
+      const req = mockRequest();
+
+      await expect(controller.findAll({}, req)).rejects.toThrow(error);
+    });
+
+    /**
+     * Test error handling for findByCode when service throws unexpected error
+     * Validates: Requirements 1.7
+     */
+    it('should propagate unexpected errors from service in findByCode', async () => {
+      const error = new Error('Database connection failed');
+      repository.findByCode.mockRejectedValue(error);
+
+      const req = mockRequest();
+
+      await expect(controller.findByCode({ code: 'US' }, req)).rejects.toThrow(error);
+    });
+
+    /**
+     * Test error handling for create when service throws unexpected error
+     * Validates: Requirements 1.7
+     */
+    it('should propagate unexpected errors from service in create', async () => {
+      const error = new Error('Database connection failed');
+      repository.create.mockRejectedValue(error);
+
+      const req = mockRequest();
+      const res = mockResponse();
+      const createDto: CreateCountryInput = {
+        name: 'Test Country',
+        alpha2: 'TC',
+        alpha3: 'TST',
+        number: 999,
+        dialingCode: 1,
+      };
+
+      await expect(controller.create(createDto, res, req)).rejects.toThrow(error);
+    });
+
+    /**
+     * Test error handling for upsert when service throws unexpected error
+     * Validates: Requirements 1.7
+     */
+    it('should propagate unexpected errors from service in upsert', async () => {
+      const error = new Error('Database connection failed');
+      repository.upsert.mockRejectedValue(error);
+
+      const req = mockRequest();
+      const res = mockResponse();
+      const upsertDto: CreateCountryInput = {
+        name: 'Test Country',
+        alpha2: 'TC',
+        alpha3: 'TST',
+        number: 999,
+        dialingCode: 1,
+      };
+
+      await expect(controller.upsert({ code: 'TC' }, upsertDto, res, req)).rejects.toThrow(error);
+    });
+  });
+
+  describe('Response Headers', () => {
+    /**
+     * Test Location header is set correctly on create
+     * Validates: Requirements 1.8
+     */
+    it('should set Location header with correct path on create', async () => {
+      const newCountry: Country = {
+        ...mockCountry,
+        id: 2,
+        alpha2: 'GB',
+        alpha3: 'GBR',
+        name: 'United Kingdom',
+      };
+      repository.create.mockResolvedValue(newCountry);
+
+      const req = mockRequest();
+      const res = mockResponse();
+      const createDto: CreateCountryInput = {
+        name: 'United Kingdom',
+        alpha2: 'GB',
+        alpha3: 'GBR',
+        number: 826,
+        dialingCode: 44,
+      };
+
+      await controller.create(createDto, res, req);
+
+      expect(res.setHeader).toHaveBeenCalledWith('Location', '/v1/countries/GB');
+    });
+
+    /**
+     * Test Location header is set on upsert when creating new country
+     * Validates: Requirements 1.8
+     */
+    it('should set Location header on upsert when creating new country', async () => {
+      const newCountry: Country = {
+        ...mockCountry,
+        id: 3,
+        alpha2: 'FR',
+        alpha3: 'FRA',
+        name: 'France',
+      };
+      repository.upsert.mockResolvedValue({
+        country: newCountry,
+        created: true,
+      });
+
+      const req = mockRequest();
+      const res = mockResponse();
+      const upsertDto: CreateCountryInput = {
+        name: 'France',
+        alpha2: 'FR',
+        alpha3: 'FRA',
+        number: 250,
+        dialingCode: 33,
+      };
+
+      await controller.upsert({ code: 'FR' }, upsertDto, res, req);
+
+      expect(res.setHeader).toHaveBeenCalledWith('Location', '/v1/countries/FR');
+      expect(res.status).toHaveBeenCalledWith(201);
+    });
+
+    /**
+     * Test no Location header on upsert when updating existing country
+     * Validates: Requirements 1.8
+     */
+    it('should not set Location header on upsert when updating existing country', async () => {
+      const existingCountry: Country = {
+        ...mockCountry,
+        name: 'United States Updated',
+      };
+      repository.upsert.mockResolvedValue({
+        country: existingCountry,
+        created: false,
+      });
+
+      const req = mockRequest();
+      const res = mockResponse();
+      const upsertDto: CreateCountryInput = {
+        name: 'United States Updated',
+        alpha2: 'US',
+        alpha3: 'USA',
+        number: 840,
+        dialingCode: 1,
+      };
+
+      await controller.upsert({ code: 'US' }, upsertDto, res, req);
+
+      expect(res.setHeader).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
     });
   });
 

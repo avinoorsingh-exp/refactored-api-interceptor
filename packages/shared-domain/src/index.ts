@@ -13,12 +13,16 @@ export * from './common/logging.js'
 export * from './common/paging.js'
 export * from './common/problem-details.js' // <-- NEW
 export * from './common/query/index.js'
+export * from './common/api-monitoring.js'
+
+// --- PII utilities (no crypto dependencies)
+export { isMaskedPlaceholder, extractLastFour } from './utils/pii.js'
 
 // --- Validation
 export { validationErrorMap } from './validation/error-map.js'
 
 // --- Audit
-export { AuditableSchema, type Auditable } from './schemas/audit.js'
+export { AuditableSchema, type Auditable, FullAuditableSchema, type FullAuditable } from './schemas/audit.js'
 
 // ============================================================================
 // VALUE OBJECTS
@@ -132,7 +136,8 @@ export {
  * @public
  */
 export {
-	CountryCode,
+	AddressType,
+	AddressRoleType,
 	AddressBaseSchema,
 	AddressExpandedSchema,
 	type AddressBase,
@@ -142,6 +147,8 @@ export {
 	type CreateAddressInput as CreateAddressInputType,
 	UpdateAddressInput,
 	type UpdateAddressInput as UpdateAddressInputType,
+	AddressIdSchema,
+	type AddressId,
 } from './schemas/address.js'
 
 // ============================================================================
@@ -150,10 +157,10 @@ export {
 
 /**
  * Agent-Address association schemas and types.
+ * Uses composite key (agentId, addressId) with isPrimary flag.
  * @public
  */
 export {
-	AddressRole,
 	AgentAddressSchema,
 	type AgentAddress,
 	CreateAgentAddressInput,
@@ -185,6 +192,31 @@ export {
 } from './schemas/company.js'
 
 // ============================================================================
+// ENTITIES - OFFICE
+// ============================================================================
+
+/**
+ * Office entity schemas and types.
+ * @public
+ */
+export {
+	OFFICE_LIFECYCLE_VALUES,
+	OfficeLifecycleStatus,
+	OfficeBaseSchema,
+	OfficeExpandedSchema,
+	OfficeSchema,
+	type OfficeBase,
+	type OfficeExpanded,
+	type Office,
+	CreateOfficeInputSchema,
+	type CreateOfficeInput,
+	UpdateOfficeInputSchema,
+	type UpdateOfficeInput,
+	OfficeIdParamSchema,
+	type OfficeIdParam,
+} from './schemas/office.js'
+
+// ============================================================================
 // ENTITIES - AGENT COMPANY
 // ============================================================================
 
@@ -202,7 +234,27 @@ export {
 	type CreateAgentCompanyInput as CreateAgentCompanyInputType,
 	UpdateAgentCompanyInput,
 	type UpdateAgentCompanyInput as UpdateAgentCompanyInputType,
+	AgentCompanyIdParamSchema,
+	type AgentCompanyIdParam,
 } from './schemas/agent-company.js'
+
+/**
+ * Agent Company Association entity schemas and types (junction table).
+ * @public
+ */
+export {
+	AgentCompanyAssociationBaseSchema,
+	AgentCompanyAssociationExpandedSchema,
+	type AgentCompanyAssociationBase,
+	type AgentCompanyAssociationExpanded,
+	type AgentCompanyAssociation,
+	CreateAgentCompanyAssociationSchema,
+	type CreateAgentCompanyAssociationInput,
+	UpdateAgentCompanyAssociationSchema,
+	type UpdateAgentCompanyAssociationInput,
+	AgentCompanyAssociationIdParamSchema,
+	type AgentCompanyAssociationIdParam,
+} from './schemas/agent-company-association.js'
 
 // ============================================================================
 // ENTITIES - EXTERNAL REFERENCE
@@ -287,6 +339,7 @@ export {
  * @public
  */
 export {
+	AGENT_LIFECYCLE_VALUES,
 	AgentTitle,
 	AgentSuffix,
 	AgentLifecycleStatus,
@@ -298,6 +351,8 @@ export {
 	type UpdateAgentInput as UpdateAgentInputType,
 	AgentExpandedSchema,
 	type AgentExpanded,
+	AgentIdParamSchema,
+	type AgentIdParam,
 } from './schemas/agent.js'
 
 // ============================================================================
@@ -330,6 +385,8 @@ export {
 export {
 	ContactMethodChannelSchema,
 	ContactMethodSubTypeSchema,
+	EmailSubTypeSchema,
+	PhoneSubTypeSchema,
 	ContactMethodBaseSchema,
 	ContactMethodExpandedSchema,
 	type ContactMethod,
@@ -338,6 +395,8 @@ export {
 	type CreateContactMethodInputType,
 	UpdateContactMethodInput,
 	type UpdateContactMethodInputType,
+	ContactMethodIdParamSchema,
+	type ContactMethodIdParam,
 } from './schemas/contact-method.js'
 
 // ============================================================================
@@ -519,6 +578,8 @@ export {
 	type CreateLineOfBusinessInput,
 	UpdateLineOfBusinessInputSchema,
 	type UpdateLineOfBusinessInput,
+	LineOfBusinessIdParamSchema,
+	type LineOfBusinessIdParam,
 } from './schemas/line-of-business.js'
 
 // ============================================================================
@@ -541,6 +602,8 @@ export {
 	type CreateLicenseInput,
 	UpdateLicenseInputSchema,
 	type UpdateLicenseInput,
+	LicenseIdParamSchema,
+	type LicenseIdParam,
 } from './schemas/license.js'
 
 // ============================================================================
@@ -660,17 +723,22 @@ export {
  * @public
  */
 export {
+	MLS_LIFECYCLE_VALUES,
 	MLSLifecycleStatusSchema,
 	type MLSLifecycleStatus,
+	MLSOrgTypeSchema,
+	type MLSOrgType,
 	MLSBaseSchema,
 	MLSExpandedSchema,
-	type MLS,
+	type MLSType,
 	type MLSBase,
 	type MLSExpanded,
 	CreateMLSInputSchema,
 	type CreateMLSInput,
 	UpdateMLSInputSchema,
 	type UpdateMLSInput,
+	MLSIdParamSchema,
+	type MLSIdParam,
 } from './schemas/mls.js'
 
 // ============================================================================
@@ -695,6 +763,58 @@ export {
 	CountryCodeParamSchema,
 	type CountryCodeParam,
 } from './schemas/country.js'
+
+// ============================================================================
+// ENTITIES - CURRENCY
+// ============================================================================
+
+/**
+ * Currency entity schemas and types.
+ * Conforms to ISO 4217 standard.
+ * @public
+ */
+export {
+	CurrencyBaseSchema,
+	CurrencyExpandedSchema,
+	type Currency,
+	type CurrencyBase,
+	type CurrencyExpanded,
+	type CurrencyApiResponse,
+	CreateCurrencyInputSchema,
+	type CreateCurrencyInput,
+	UpdateCurrencyInputSchema,
+	type UpdateCurrencyInput,
+	CurrencyIdParamSchema,
+	type CurrencyIdParam,
+} from './schemas/currency.js'
+
+// ============================================================================
+// ENTITIES - SYSTEM
+// ============================================================================
+
+/**
+ * System entity schemas and types.
+ * Represents system configurations within countries.
+ * @public
+ */
+export {
+	SystemBaseSchema,
+	SystemExpandedSchema,
+	type System,
+	type SystemBase,
+	type SystemExpanded,
+	type SystemApiResponse,
+	CreateSystemInputSchema,
+	type CreateSystemInput,
+	UpdateSystemInputSchema,
+	type UpdateSystemInput,
+	SystemIdParamSchema,
+	type SystemIdParam,
+	CountryIdParamSchema,
+	type CountryIdParam,
+	CountrySystemParamSchema,
+	type CountrySystemParam,
+} from './schemas/system.js'
 
 // ============================================================================
 // ENTITIES - REGION
@@ -736,6 +856,8 @@ export {
 	type CreateStateInput,
 	UpdateStateInputSchema,
 	type UpdateStateInput,
+	StateIdParamSchema,
+	type StateIdParam,
 } from './schemas/state.js'
 
 // ============================================================================
@@ -775,6 +897,28 @@ export {
 	CreateStateProgramInputSchema,
 	type CreateStateProgramInput,
 } from './schemas/state-program.js'
+
+// ============================================================================
+// ENTITIES - PAY PLAN
+// ============================================================================
+
+/**
+ * PayPlan entity schemas and types.
+ * @public
+ */
+export {
+	PayPlanBaseSchema,
+	PayPlanExpandedSchema,
+	type PayPlan,
+	type PayPlanBase,
+	type PayPlanExpanded,
+	CreatePayPlanInputSchema,
+	type CreatePayPlanInput,
+	UpdatePayPlanInputSchema,
+	type UpdatePayPlanInput,
+	PayPlanIdParamSchema,
+	type PayPlanIdParam,
+} from './schemas/pay-plan.js'
 
 // ============================================================================
 // ENTITIES - ORGANIZATION CONTACT
@@ -845,15 +989,25 @@ export {
  * @public
  */
 export {
+	TaxIdTypeSchema,
+	type TaxIdType,
+	TAX_ID_TYPE_VALUES,
 	TaxBaseSchema,
 	TaxExpandedSchema,
 	type Tax,
 	type TaxBase,
 	type TaxExpanded,
-	CreateTaxInputSchema,
-	type CreateTaxInput,
-	UpdateTaxInputSchema,
-	type UpdateTaxInput,
+	AgentTaxBaseSchema,
+	AgentTaxExpandedSchema,
+	type AgentTax,
+	type AgentTaxBase,
+	type AgentTaxExpanded,
+	CreateAgentTaxInputSchema,
+	type CreateAgentTaxInput,
+	UpdateAgentTaxInputSchema,
+	type UpdateAgentTaxInput,
+	AgentTaxParamsSchema,
+	type AgentTaxParams,
 } from './schemas/tax.js'
 
 // ============================================================================

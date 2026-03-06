@@ -8,7 +8,7 @@ import { z } from 'zod'
 export const OfficeAddressBaseSchema = z
 	.object({
 		officeId: z.string(),
-		addressId: z.string().uuid(),
+		addressId: z.string(),
 	})
 	.describe('Base OfficeAddress')
 

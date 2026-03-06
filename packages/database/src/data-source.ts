@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm'
 import * as fs from 'fs'
 import { AddressEntity } from './entities/core/address.entity.js'
 import { AgentCompanyEntity } from './entities/core/agent-company.entity.js'
+import { AgentCompanyAssociationEntity } from './entities/core/agent-company-association.entity.js'
 import { AgentEntity } from './entities/core/agent.entity.js'
 import { AgentAddressEntity } from './entities/core/agent-address.entity.js'
 import { CompanyEntity } from './entities/core/company.entity.js'
@@ -38,19 +39,31 @@ import { RelationshipEntity } from './entities/core/relationship.entity.js'
 import { SponsorConfigurationEntity } from './entities/core/sponsor-configuration.entity.js'
 import { MLSEntity } from './entities/core/mls.entity.js'
 import { CountryEntity } from './entities/core/country.entity.js'
+import { CurrencyEntity } from './entities/core/currency.entity.js'
+import { SystemEntity } from './entities/core/system.entity.js'
 import { RegionEntity } from './entities/core/region.entity.js'
 import { StateEntity } from './entities/core/state.entity.js'
 import { ProgramEntity } from './entities/core/program.entity.js'
-import { StateProgramEntity } from './entities/core/state-program.entity.js'
+import { CountryProgramEntity } from './entities/core/country-program.entity.js'
 import { OrganizationContactEntity } from './entities/core/organization-contact.entity.js'
 import { W9Entity } from './entities/core/w9.entity.js'
 import { W9AddressEntity } from './entities/core/w9-address.entity.js'
 import { TaxEntity } from './entities/core/tax.entity.js'
+import { AgentTaxEntity } from './entities/core/agent-tax.entity.js'
+import { AgentNoteEntity } from './entities/core/agent-note.entity.js'
 import { OfficeAddressEntity } from './entities/core/office-address.entity.js'
 import { ArtifactEntity } from './entities/core/artifact.entity.js'
 import { CustomFlagEntity } from './entities/core/custom-flag.entity.js'
 import { FeesEntity } from './entities/core/fees.entity.js'
 import { ApprovalEntity } from './entities/core/approval.entity.js'
+import { KafkaMessageProcessingEntity } from './entities/core/kafka-message-processing.entity.js'
+import { KafkaServiceEntity } from './entities/core/kafka-service.entity.js'
+import { AdminJobEntity } from './entities/core/admin-job.entity.js'
+import { AdminJobExecutionEntity } from './entities/core/admin-job-execution.entity.js'
+import { FeatureFlagEntity } from './entities/core/feature-flag.entity.js'
+import { ApiActorEntity } from './entities/core/api-actor.entity.js'
+import { ApiRequestLogEntity } from './entities/core/api-request-log.entity.js'
+import { ApiRouteStatsEntity } from './entities/core/api-route-stats.entity.js'
 
 /**
  * Get SSL configuration for RDS connections
@@ -145,6 +158,7 @@ export const AppDataSource = new DataSource({
 	entities: [
 		AddressEntity,
 		AgentCompanyEntity,
+		AgentCompanyAssociationEntity,
 		AgentEntity,
 		AgentAddressEntity,
 		CompanyEntity,
@@ -180,22 +194,37 @@ export const AppDataSource = new DataSource({
 		SponsorConfigurationEntity,
 		MLSEntity,
 		CountryEntity,
+		CurrencyEntity,
+		SystemEntity,
 		RegionEntity,
 		StateEntity,
 		ProgramEntity,
-		StateProgramEntity,
+		CountryProgramEntity,
 		OrganizationContactEntity,
 		W9Entity,
 		W9AddressEntity,
 		TaxEntity,
+		AgentTaxEntity,
+		AgentNoteEntity,
 		OfficeAddressEntity,
 		ArtifactEntity,
 		CustomFlagEntity,
 		FeesEntity,
 		ApprovalEntity,
+		KafkaMessageProcessingEntity,
+		KafkaServiceEntity,
+		AdminJobEntity,
+		AdminJobExecutionEntity,
+		FeatureFlagEntity,
+		ApiActorEntity,
+		ApiRequestLogEntity,
+		ApiRouteStatsEntity,
 	],
 
 	// Migrations
+	// TypeORM will automatically use the correct path based on whether we're running from source or compiled code
+	// In development: uses './src/migrations/*.ts' (via tsx/ts-node)
+	// In production: uses './dist/migrations/*.js' (compiled migrations)
 	migrations: ['./src/migrations/*.ts'],
 
 	// Migration settings

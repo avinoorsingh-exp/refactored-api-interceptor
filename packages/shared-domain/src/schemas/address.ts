@@ -1,37 +1,60 @@
 import { z } from 'zod'
-import {
-	InstantUTC,
-	ADDRESS,
-	PostalCodeBranded,
-	CityBranded,
-} from '../value-objects/index.js'
+import { InstantUTC, ADDRESS } from '../value-objects/index.js'
+import { trimmedStringMinMax, trimmedStringMax, bigIntString } from './base-schemas.js'
 
 /**
- * ISO 3166-1 alpha-2 country codes.
- *
+ * Address type enum (personal, company).
  * @public
  */
-export const CountryCode = z
-	.string({ message: 'errors.address.country.required' })
-	.length(ADDRESS.countryAlpha2Len, { message: 'errors.address.country.alpha2' })
-	.toUpperCase()
-	.describe('ISO-3166 alpha-2 country code')
+export const AddressType = z.enum(['personal', 'company'], {
+	message: 'errors.address.type.invalid',
+})
 
 /**
- * @internal
+ * Address role enum (contact, bill_to, pay_to, ship_to, return_to).
+ * @public
  */
-const Unit = z
-	.string({ message: 'errors.address.unit.required' })
-	.min(ADDRESS.unit.min, { message: 'errors.address.unit.min' })
-	.max(ADDRESS.unit.max, { message: 'errors.address.unit.max' })
+export const AddressRoleType = z.enum(['contact', 'bill_to', 'pay_to', 'ship_to', 'return_to'], {
+	message: 'errors.address.role.invalid',
+})
 
 /**
+ * Trimmed city name validator.
+ * Allows international characters (no restrictive regex).
  * @internal
  */
-const Line = z
-	.string({ message: 'errors.address.line.required' })
-	.min(ADDRESS.line.min, { message: 'errors.address.line.min' })
-	.max(ADDRESS.line.max, { message: 'errors.address.line.max' })
+const City = trimmedStringMinMax(ADDRESS.city.min, ADDRESS.city.max, 'errors.address.city.invalid')
+
+/**
+ * Trimmed postal code validator.
+ * No regex - supports international formats.
+ * @internal
+ */
+const PostalCode = trimmedStringMinMax(ADDRESS.postal.min, ADDRESS.postal.max, 'errors.address.postalCode.invalid')
+
+/**
+ * Trimmed unit validator.
+ * @internal
+ */
+const Unit = trimmedStringMax(ADDRESS.unit.max, 'errors.address.unit.invalid')
+
+/**
+ * Trimmed address line validator.
+ * @internal
+ */
+const Line = trimmedStringMinMax(ADDRESS.line.min, ADDRESS.line.max, 'errors.address.line.invalid')
+
+/**
+ * Trimmed county validator.
+ * @internal
+ */
+const County = trimmedStringMax(ADDRESS.city.max, 'errors.address.county.invalid')
+
+/**
+ * Trimmed label validator.
+ * @internal
+ */
+const Label = trimmedStringMax(ADDRESS.line.max, 'errors.address.label.invalid')
 
 /**
  * Base schema for Address entity.
@@ -42,14 +65,21 @@ const Line = z
  */
 export const AddressBaseSchema = z
 	.object({
-		id: z.string().uuid({ message: 'errors.address.id.invalid' }),
+		id: bigIntString('errors.address.id.invalid'),
+		type: AddressType.nullable().optional(),
+		role: AddressRoleType.nullable().optional(),
 		line1: Line,
-		city: CityBranded,
-		unit: Unit,
-		postalCode: PostalCodeBranded,
-		country: CountryCode,
-		createdAt: InstantUTC,
-		updatedAt: InstantUTC,
+		line2: Line.nullable().optional(),
+		city: City,
+		unit: Unit.nullable().optional(),
+		postalCode: PostalCode,
+		county: County.nullable().optional(),
+		label: Label.nullable().optional(),
+		countryId: z.number().int().positive({ message: 'errors.address.countryId.invalid' }),
+		stateCode: z.string().length(2, { message: 'errors.address.stateCode.invalid' }).nullable().optional(),
+		created: InstantUTC,
+		lastModified: InstantUTC,
+		modifiedBy: z.string().optional(),
 	})
 	.describe('Base Address for list views')
 
@@ -61,8 +91,9 @@ export const AddressBaseSchema = z
  * @public
  */
 export const AddressExpandedSchema = AddressBaseSchema.extend({
-	line2: Line.nullable(),
 	// Relationships loaded in expanded view
+	country: z.lazy(() => z.any()).optional(), // Country entity (direct relationship)
+	state: z.lazy(() => z.any()).optional(), // State entity (virtual via countryId + stateCode)
 	agentAddresses: z.lazy(() => z.array(z.any())).optional(), // AgentAddressBaseSchema[]
 	activeLocations: z.lazy(() => z.array(z.any())).optional(), // ActiveLocationBaseSchema[]
 }).describe('Expanded Address with relationships')
@@ -97,16 +128,21 @@ export const AddressSchema = AddressExpandedSchema
 
 /**
  * Zod schema for creating a new address.
- * Accepts untrimmed strings and pipes them through validation.
+ * Uses trimmed validators from base-schemas.
  * @public
  */
 export const CreateAddressInput = z.object({
-	line1: z.string().trim().pipe(Line),
-	line2: z.string().trim().pipe(Line).optional().nullable(),
-	city: z.string().trim().pipe(CityBranded),
-	unit: z.string().trim().pipe(Unit),
-	postalCode: z.string().trim().pipe(PostalCodeBranded),
-	country: z.string().trim().pipe(CountryCode),
+	type: AddressType.optional(),
+	role: AddressRoleType.optional(),
+	line1: Line,
+	line2: Line.optional().nullable(),
+	city: City,
+	unit: Unit.optional().nullable(),
+	postalCode: PostalCode,
+	county: County.optional().nullable(),
+	label: Label.optional().nullable(),
+	countryId: z.number().int().positive({ message: 'errors.address.countryId.invalid' }),
+	stateCode: z.string().length(2, { message: 'errors.address.stateCode.invalid' }).nullable().optional(),
 })
 
 /**
@@ -127,3 +163,20 @@ export const UpdateAddressInput = CreateAddressInput.partial()
  * @public
  */
 export type UpdateAddressInput = z.infer<typeof UpdateAddressInput>
+
+// ---------------------------------------------------------------------------
+// ID PARAM SCHEMAS (for route validation)
+// ---------------------------------------------------------------------------
+
+/**
+ * Address ID parameter schema for route validation.
+ * Validates that address ID is a valid bigint string (digits only).
+ * @public
+ */
+export const AddressIdSchema = bigIntString('errors.address.id.invalid')
+
+/**
+ * Address ID parameter type.
+ * @public
+ */
+export type AddressId = z.infer<typeof AddressIdSchema>

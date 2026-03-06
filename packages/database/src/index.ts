@@ -14,9 +14,24 @@
 /**
  * Base auditable entity providing audit trail fields.
  * All domain entities should extend this class.
+ * Audit fields are filterable/sortable but NOT searchable by default.
  * @public
  */
 export { AuditableEntity } from './entities/core/auditable.entity.js'
+
+/**
+ * Extended auditable entity with searchable audit fields.
+ * Use this when entities need created/lastModified/modifiedBy in text search.
+ * @public
+ */
+export { SearchableAuditableEntity } from './entities/core/searchable-auditable.entity.js'
+
+/**
+ * Extended auditable entity with createdBy field.
+ * Use for new entities (post phase-1) that need full audit trail.
+ * @public
+ */
+export { FullAuditableEntity } from './entities/core/full-auditable.entity.js'
 
 // ============================================================================
 // Entities
@@ -33,6 +48,12 @@ export { AddressEntity } from './entities/core/address.entity.js'
  * @public
  */
 export { AgentCompanyEntity } from './entities/core/agent-company.entity.js'
+
+/**
+ * TypeORM entity for AgentCompanyAssociation junction table.
+ * @public
+ */
+export { AgentCompanyAssociationEntity } from './entities/core/agent-company-association.entity.js'
 
 /**
  * TypeORM entity for Agent table.
@@ -233,6 +254,20 @@ export { MLSEntity } from './entities/core/mls.entity.js'
 export { CountryEntity } from './entities/core/country.entity.js'
 
 /**
+ * TypeORM entity for Currency table.
+ * Stores ISO 4217 currency reference data.
+ * @public
+ */
+export { CurrencyEntity } from './entities/core/currency.entity.js'
+
+/**
+ * TypeORM entity for System table.
+ * Represents a system configuration within a country.
+ * @public
+ */
+export { SystemEntity } from './entities/core/system.entity.js'
+
+/**
  * TypeORM entity for Region table.
  * @public
  */
@@ -251,10 +286,10 @@ export { StateEntity } from './entities/core/state.entity.js'
 export { ProgramEntity } from './entities/core/program.entity.js'
 
 /**
- * TypeORM entity for StateProgram join table.
+ * TypeORM entity for CountryProgram join table.
  * @public
  */
-export { StateProgramEntity } from './entities/core/state-program.entity.js'
+export { CountryProgramEntity } from './entities/core/country-program.entity.js'
 
 /**
  * TypeORM entity for OrganizationContact table.
@@ -279,6 +314,19 @@ export { W9AddressEntity } from './entities/core/w9-address.entity.js'
  * @public
  */
 export { TaxEntity } from './entities/core/tax.entity.js'
+export type { TaxIdType } from './entities/core/tax.entity.js'
+
+/**
+ * TypeORM entity for AgentTax junction table.
+ * @public
+ */
+export { AgentTaxEntity } from './entities/core/agent-tax.entity.js'
+
+/**
+ * TypeORM entity for AgentNote junction table.
+ * @public
+ */
+export { AgentNoteEntity } from './entities/core/agent-note.entity.js'
 
 /**
  * TypeORM entity for OfficeAddress join table.
@@ -310,6 +358,63 @@ export { FeesEntity } from './entities/core/fees.entity.js'
  */
 export { ApprovalEntity } from './entities/core/approval.entity.js'
 
+/**
+ * TypeORM entity for KafkaMessageProcessing table.
+ * Tracks Kafka message processing status, retries, errors, and idempotency.
+ * @public
+ */
+export { KafkaMessageProcessingEntity, KafkaMessageStatus } from './entities/core/kafka-message-processing.entity.js'
+
+/**
+ * TypeORM entity for KafkaService table.
+ * Stores Kafka service definitions (consumers and producers).
+ * Runtime state is NOT stored here - only service configuration.
+ * @public
+ */
+export { KafkaServiceEntity, KafkaServiceType } from './entities/core/kafka-service.entity.js'
+
+/**
+ * TypeORM entity for AdminJob table.
+ * Stores scheduled job metadata and configuration.
+ * @public
+ */
+export { AdminJobEntity } from './entities/core/admin-job.entity.js'
+
+/**
+ * TypeORM entity for AdminJobExecution table.
+ * Stores execution history for scheduled jobs.
+ * @public
+ */
+export { AdminJobExecutionEntity, AdminJobExecutionStatus } from './entities/core/admin-job-execution.entity.js'
+
+/**
+ * TypeORM entity for FeatureFlag table.
+ * Stores boolean feature flags (PHASE_2, PHASE_3) editable from Admin UI.
+ * @public
+ */
+export { FeatureFlagEntity, type FeatureFlagKeyEntity } from './entities/core/feature-flag.entity.js'
+
+/**
+ * TypeORM entity for ApiActor table.
+ * Tracks external actors (users, API keys, service accounts) that make API requests.
+ * @public
+ */
+export { ApiActorEntity } from './entities/core/api-actor.entity.js'
+
+/**
+ * TypeORM entity for ApiRequestLog table.
+ * High-volume, append-only log of all API requests.
+ * @public
+ */
+export { ApiRequestLogEntity } from './entities/core/api-request-log.entity.js'
+
+/**
+ * TypeORM entity for ApiRouteStats table.
+ * Pre-aggregated statistics by route, method, and time bucket.
+ * @public
+ */
+export { ApiRouteStatsEntity } from './entities/core/api-route-stats.entity.js'
+
 // ============================================================================
 // Query Decorators
 // ============================================================================
@@ -324,9 +429,36 @@ export {
 	Filterable,
 	Sortable,
 	getSearchableFields,
+	getSearchableFieldsConfig,
 	getFilterableFields,
+	getFilterableFieldsConfig,
 	getSortableFields,
+	ALL_FILTER_OPERATORS,
+	isUuid
 } from './decorators/searchable-decorators.js'
+
+export type { 
+	SearchableOptions,
+	FilterableOptions,
+	FilterableFieldConfig,
+	FilterValidationOptions,
+	FilterOperator,
+} from './decorators/searchable-decorators.js'
+
+// ============================================================================
+// Search Strategy Types
+// ============================================================================
+
+/**
+ * Types and interfaces for search strategies.
+ * Used by agent-service to implement type-specific search logic.
+ * @public
+ */
+export {
+	SearchableFieldType,
+	SearchableFieldConfig,
+	ISearchStrategy,
+} from './query/types/search-strategy.types.js'
 
 // ============================================================================
 // Data Source

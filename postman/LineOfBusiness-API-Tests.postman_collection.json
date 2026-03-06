@@ -1,0 +1,295 @@
+{
+  "info": {
+    "_postman_id": "line-of-business-api-collection",
+    "name": "Line of Business API",
+    "description": "Postman collection for Line of Business POST endpoint.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "apiVersion",
+      "value": "v1",
+      "type": "string"
+    },
+    {
+      "key": "lineOfBusinessId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "createdName",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "POST - Create Line of Business",
+      "item": [
+        {
+          "name": "AC1 - Create Line of Business (Success)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Generate unique name to avoid conflicts",
+                  "const timestamp = Date.now();",
+                  "const name = `test-lob-${timestamp}`;",
+                  "pm.collectionVariables.set('createdName', name);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response has Location header', function () {",
+                  "    pm.response.to.have.header('Location');",
+                  "    const location = pm.response.headers.get('Location');",
+                  "    pm.expect(location).to.match(/\\/v1\\/line-of-businesses\\/\\d+$/);",
+                  "});",
+                  "",
+                  "pm.test('Response body contains full representation', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('name');",
+                  "    pm.expect(jsonData).to.have.property('created');",
+                  "    pm.expect(jsonData).to.have.property('lastModified');",
+                  "    pm.expect(jsonData).to.have.property('modifiedBy');",
+                  "    pm.expect(jsonData.name).to.eql(pm.collectionVariables.get('createdName'));",
+                  "    ",
+                  "    // Store ID for subsequent tests",
+                  "    pm.collectionVariables.set('lineOfBusinessId', jsonData.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{createdName}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/line-of-businesses",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "line-of-businesses"]
+            }
+          }
+        },
+        {
+          "name": "AC2 - Trimming whitespace from name",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const timestamp = Date.now();",
+                  "const name = `trimmed-lob-${timestamp}`;",
+                  "pm.collectionVariables.set('trimTestName', name);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Name is trimmed of whitespace', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    const expected = pm.collectionVariables.get('trimTestName');",
+                  "    pm.expect(jsonData.name).to.eql(expected);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"  {{trimTestName}}  \"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/line-of-businesses",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "line-of-businesses"]
+            }
+          }
+        },
+        {
+          "name": "AC3 - Duplicate name returns 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "",
+                  "pm.test('Error response has correct structure', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "    pm.expect(jsonData.message).to.include('already exists');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{createdName}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/line-of-businesses",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "line-of-businesses"]
+            }
+          }
+        },
+        {
+          "name": "AC4 - Missing name returns 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/line-of-businesses",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "line-of-businesses"]
+            }
+          }
+        },
+        {
+          "name": "AC5 - Empty string name returns 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/line-of-businesses",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "line-of-businesses"]
+            }
+          }
+        },
+        {
+          "name": "AC6 - Whitespace-only name returns 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"   \"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/line-of-businesses",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "line-of-businesses"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

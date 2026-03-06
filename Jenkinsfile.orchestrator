@@ -65,36 +65,12 @@ pipeline
       }
       steps {
         script {
-          gitCommitHash = sh(returnStdout: true, script: 'git rev-parse HEAD').trim()
-          shortCommitHash = gitCommitHash.take(7)
-          // calculate a sample version tag
-          VERSION = shortCommitHash
-          // set the build display name
-          currentBuild.displayName = "#${BUILD_ID}-orchestrator-${VERSION}"
-          def sanitizedBranchName = env.BRANCH_NAME.replaceAll('/', '-')
-          if (env.BRANCH_NAME == 'dev') {
-              IMAGE = "$PROJECT:dev-$VERSION" 
-          } else if (env.BRANCH_NAME == 'test') {
-              IMAGE = "$PROJECT:test-$VERSION" 
-          } else if (env.BRANCH_NAME == 'qa') {
-              IMAGE = "$PROJECT:qa-$VERSION"
-          } else if (env.BRANCH_NAME == 'main') {
-              IMAGE = "$PROJECT:prod-$VERSION"
-          } else {
-              IMAGE = "$PROJECT:${sanitizedBranchName}-$VERSION"
-          }
-        }
-
-      }
-    }
-
-    stage('Docker build') {
-      when {
-        expression { env.SKIP_BUILD != 'true' }
-      }
-      steps {
-        script {
-          docker.build("$IMAGE", "-f services/orchestrator/Dockerfile .")
+          def buildInfo = ecsDeployHelpers.prepareBuild([
+            project: env.PROJECT,
+            ecr: env.ECR
+          ])
+          currentBuild.displayName = "#${BUILD_ID}-orchestrator-${buildInfo.version}"
+          ecsDeployHelpers.buildImage(buildInfo, '-f services/orchestrator/Dockerfile .')
         }
       }
     }
@@ -114,26 +90,49 @@ pipeline
           
           try {
             echo "🔍 DEBUG: Calling centralized coverage job"
-            build job: 'Transaction Calculator/centralized-coverage/main',
-              wait: false,
+            def ccJob = 'AgentService/agent-service-coverage/main'
+            // Flip to `true` later if we decide to gate this pipeline on coverage/test results.
+            def coverageWait = false
+            def ccRun = build job: ccJob,
+              wait: coverageWait,
               propagate: false,
                   parameters: [
                       string(name: 'SERVICE_NAME', value: 'orchestrator'),
+                      string(name: 'PROJECT_KEY', value: env.COVERAGE_PROJECT_KEY),
+                      string(name: 'REPO_KEY', value: env.COVERAGE_REPO_KEY),
+                      string(name: 'DEFAULT_BRANCH', value: env.COVERAGE_DEFAULT_BRANCH),
                       string(name: 'BRANCH_NAME', value: env.BRANCH_NAME),
                       string(name: 'REPO_URL', value: env.GIT_URL),
-                      string(name: 'COVERAGE_DIR', value: 'coverage'),
+                      string(name: 'COVERAGE_DIR', value: 'services/orchestrator/coverage'),
                       booleanParam(name: 'RUN_E2E', value: true),
                       booleanParam(name: 'FAIL_ON_TEST_FAILURE', value: false),
-                      string(name: 'MIN_COVERAGE_PERCENTAGE', value: '0'),
+                      string(name: 'MIN_LINE_COVERAGE', value: '0'),
+                      string(name: 'MIN_BRANCH_COVERAGE', value: '0'),
+                      string(name: 'MIN_METHOD_COVERAGE', value: '0'),
+                      string(name: 'MIN_STMT_COVERAGE', value: '0'),
                       booleanParam(name: 'FAIL_ON_COVERAGE_THRESHOLD', value: false)
                   ]
+            def base = (env.JENKINS_URL ?: '').toString().trim()
+            def ccJobUrl = base ? "${base}job/AgentService/job/agent-service-coverage/job/main/" : ccJob
+            env.COVERAGE_STATUS = (coverageWait ? (ccRun?.result ?: 'UNKNOWN') : 'TRIGGERED').toString()
+            env.COVERAGE_URL = (coverageWait ? (ccRun?.absoluteUrl ?: ccJobUrl) : ccJobUrl).toString()
+            if (coverageWait) {
+              if (ccRun?.result && ccRun.result != 'SUCCESS') {
+                def ccUrl = ccRun?.absoluteUrl ?: ccJobUrl
+                error("AgentService coverage job failed (${ccRun.result}). See: ${ccUrl}")
+              }
+            } else {
+              echo "ℹ️  INFO: AgentService coverage job triggered (async, non-blocking): ${ccJobUrl}"
+            }
             echo "✅ DEBUG: Successfully called centralized coverage job"
           } catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException e) {
             // FlowInterruptedException is expected when wait: false and downstream job returns UNSTABLE
             // This is not a real error - the job was triggered successfully
-            echo "ℹ️  INFO: Centralized coverage job triggered (may return UNSTABLE, which is expected and non-blocking)"
+            echo "ℹ️  INFO: AgentService coverage job trigger interrupted (non-blocking): ${e.getMessage()}"
+            env.COVERAGE_STATUS = 'TRIGGER_INTERRUPTED'
           } catch (Exception e) {
             echo "❌ DEBUG: Error calling centralized coverage job: ${e.getClass().getSimpleName()}: ${e.getMessage()}"
+            env.COVERAGE_STATUS = 'ERROR'
           }
         }
       }
@@ -141,66 +140,85 @@ pipeline
 
     stage('Docker push') {
       when {
-        anyOf {
-          branch 'development'
-          branch 'dev'
-          branch 'qa'
-          branch 'test'
-          branch 'accp'
-          branch 'main'
+        allOf {
+          expression { env.SKIP_BUILD != 'true' }
+          anyOf {
+            branch 'development'
+            branch 'dev'
+            branch 'qa'
+            branch 'test'
+            branch 'accp'
+            branch 'main'
+          }
         }
       }
       steps {
         script {
-          sh("aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${ECR}")
-          ECRURL = "http://${ECR}"
-          echo ECRURL
-          // Push the Docker image to ECR
-          docker.withRegistry(ECRURL)
-          {
-            docker.image(IMAGE).push()
+          def devSecOpsAccountId = '204048894727'
+          def awsCfgDevSecops = loginHelpers.createRoleProfileConfig([
+            accountId: devSecOpsAccountId,
+            profileName: 'exp-devsecops',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID,
+            overwriteConfig: true
+          ])
+          withEnv([
+            "AWS_CONFIG_FILE=${awsCfgDevSecops.configFile}",
+            "AWS_SHARED_CREDENTIALS_FILE=${awsCfgDevSecops.credentialsFile}",
+            "AWS_SDK_LOAD_CONFIG=1",
+            "AWS_PROFILE=exp-devsecops"
+          ]) {
+            loginHelpers.dockerLogin(env.ECR)
           }
-          echo TF_VAR_app_image
-          TF_VAR_app_image = "${ECR}${IMAGE}"
-          echo TF_VAR_app_image
+          def buildInfo = ecsDeployHelpers.getBuildInfoFromEnv(project: env.PROJECT, ecr: env.ECR)
+          ecsDeployHelpers.pushImage(buildInfo)
+          env.TF_VAR_app_image = buildInfo.fullImagePath
         }
-
       }
     }
 
     stage('Deploy - Development') {
       when {
-        branch 'dev'
-      }
-
-      steps
-      {
-        git(url: 'https://bitbucket.org/exp-realty/exp-tf-dev.git', branch: 'master', credentialsId: 'exp-jenkins')
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-              credentialsId: 'Jenkins-Dev'
-            ]]) {
-            script
-            {
-              docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
-                .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
-                {
-                  sh """
-                  aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-dev
-                  aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-dev
-                  aws configure set region us-east-1 --profile exp-dev
-
-                  cd account/exp-realty-dev/us-east-1/agent-service/dev/agent-service-orchestrator-dev/ecs
-                  terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
-                  terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
-                  """
-                }
-            }
-          }
+        allOf {
+          branch 'dev'
+          expression { env.SKIP_BUILD != 'true' }
         }
+      }
+      steps {
+        script {
+          def devSecOpsAccountId = '204048894727'
+          loginHelpers.checkoutTerraformRepo('exp-tf-dev', 'master')
+          def awsCfgDevSecops = loginHelpers.createRoleProfileConfig([
+            accountId: devSecOpsAccountId,
+            profileName: 'exp-devsecops',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID,
+            overwriteConfig: true
+          ])
+          loginHelpers.createRoleProfileConfig([
+            accountId: env.TARGET_ACCOUNT_DEV,
+            profileName: 'exp-dev',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID,
+            overwriteConfig: false
+          ])
+          withEnv([
+            "AWS_CONFIG_FILE=${awsCfgDevSecops.configFile}",
+            "AWS_SHARED_CREDENTIALS_FILE=${awsCfgDevSecops.credentialsFile}",
+            "AWS_SDK_LOAD_CONFIG=1",
+            "AWS_PROFILE=exp-devsecops"
+          ]) {
+            loginHelpers.dockerLogin(env.ECR)
+          }
+          def buildInfo = ecsDeployHelpers.getBuildInfoFromEnv(project: env.PROJECT, ecr: env.ECR)
+          ecsDeployHelpers.runTerragruntDeploy([
+            imagePath: buildInfo.fullImagePath,
+            tfPath: 'account/exp-realty-dev/us-east-1/agent-service/dev/agent-service-orchestrator-dev/ecs',
+            awsProfile: 'exp-dev'
+          ])
+          sh 'rm -rf .aws'
+        }
+      }
     }
     stage('Deploy - Test') {
       when {
@@ -209,70 +227,88 @@ pipeline
           expression { env.SKIP_BUILD != 'true' }
         }
       }
-
-      steps
-      {
-        git(url: 'https://bitbucket.org/exp-realty/exp-tf-dev.git', branch: 'master', credentialsId: 'exp-jenkins')
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-              credentialsId: 'Jenkins-Dev'
-            ]]) {
-            script
-            {
-              docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
-                .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
-                {
-                  sh """
-                  aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-dev
-                  aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-dev
-                  aws configure set region us-east-1 --profile exp-dev
-
-                  cd account/exp-realty-dev/us-east-1/agent-service/test/agent-service-orchestrator-test/ecs
-                  terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
-                  terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
-                  """
-                }
-            }
+      steps {
+        script {
+          def devSecOpsAccountId = '204048894727'
+          loginHelpers.checkoutTerraformRepo('exp-tf-dev', 'master')
+          def awsCfgDevSecops = loginHelpers.createRoleProfileConfig([
+            accountId: devSecOpsAccountId,
+            profileName: 'exp-devsecops',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID,
+            overwriteConfig: true
+          ])
+          loginHelpers.createRoleProfileConfig([
+            accountId: env.TARGET_ACCOUNT_DEV,
+            profileName: 'exp-dev',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID,
+            overwriteConfig: false
+          ])
+          withEnv([
+            "AWS_CONFIG_FILE=${awsCfgDevSecops.configFile}",
+            "AWS_SHARED_CREDENTIALS_FILE=${awsCfgDevSecops.credentialsFile}",
+            "AWS_SDK_LOAD_CONFIG=1",
+            "AWS_PROFILE=exp-devsecops"
+          ]) {
+            loginHelpers.dockerLogin(env.ECR)
           }
+          def buildInfo = ecsDeployHelpers.getBuildInfoFromEnv(project: env.PROJECT, ecr: env.ECR)
+          ecsDeployHelpers.runTerragruntDeploy([
+            imagePath: buildInfo.fullImagePath,
+            tfPath: 'account/exp-realty-dev/us-east-1/agent-service/test/agent-service-orchestrator-test/ecs',
+            awsProfile: 'exp-dev'
+          ])
+          sh 'rm -rf .aws'
         }
+      }
     }
     stage('Deploy - QA/Acceptance') {
       when {
-        branch 'qa'
-      }
-
-      steps
-      {
-        git(url: 'https://bitbucket.org/exp-realty/exp-tf-qa.git', branch: 'master', credentialsId: 'exp-jenkins')
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-              credentialsId: 'jenkins-qa-user'
-            ]]) {
-            script
-            {
-              docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
-                .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
-                {
-                  sh """
-                  aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-qa
-                  aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-qa
-                  aws configure set region us-east-1 --profile exp-qa
-
-                  cd /data/account/exp-realty-qa/us-east-1/agent-service/accp/agent-service-orchestrator-accp/ecs
-                  terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
-                  terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
-                  """
-                }
-              }
-            }
+        allOf {
+          expression { env.SKIP_BUILD != 'true' }
+          anyOf {
+            branch 'qa'
+            branch 'accp'
+          }
         }
       }
+      steps {
+        script {
+          def devSecOpsAccountId = '204048894727'
+          loginHelpers.checkoutTerraformRepo('exp-tf-qa', 'master')
+          def awsCfgDevSecops = loginHelpers.createRoleProfileConfig([
+            accountId: devSecOpsAccountId,
+            profileName: 'exp-devsecops',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID,
+            overwriteConfig: true
+          ])
+          loginHelpers.createRoleProfileConfig([
+            accountId: env.TARGET_ACCOUNT_QA,
+            profileName: 'exp-qa',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID,
+            overwriteConfig: false
+          ])
+          withEnv([
+            "AWS_CONFIG_FILE=${awsCfgDevSecops.configFile}",
+            "AWS_SHARED_CREDENTIALS_FILE=${awsCfgDevSecops.credentialsFile}",
+            "AWS_SDK_LOAD_CONFIG=1",
+            "AWS_PROFILE=exp-devsecops"
+          ]) {
+            loginHelpers.dockerLogin(env.ECR)
+          }
+          def buildInfo = ecsDeployHelpers.getBuildInfoFromEnv(project: env.PROJECT, ecr: env.ECR)
+          ecsDeployHelpers.runTerragruntDeploy([
+            imagePath: buildInfo.fullImagePath,
+            tfPath: 'account/exp-realty-qa/us-east-1/agent-service/accp/agent-service-orchestrator-accp/ecs',
+            awsProfile: 'exp-qa'
+          ])
+          sh 'rm -rf .aws'
+        }
+      }
+    }
     stage('Deploy - Prod') {
       when {
         allOf {
@@ -280,55 +316,83 @@ pipeline
           expression { env.SKIP_BUILD != 'true' }
         }
       }
-
-      steps
-      {
-        git(url: 'https://bitbucket.org/exp-realty/exp-tf-prod.git', branch: 'master', credentialsId: 'exp-jenkins')
-            withCredentials([[
-              $class: 'AmazonWebServicesCredentialsBinding',
-              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY',
-              credentialsId: '88caba18-4691-47c5-92a9-e66ee83da4e4'
-            ]]) {
-            script
-            {
-              docker.image('204048894727.dkr.ecr.us-east-1.amazonaws.com/exp/jenkins-terraform')
-                .inside("-u 0 -v $WORKSPACE:/data -v /var/lib/jenkins/.ssh:/data/.ssh -e BITBUCKET_USER=exp-jenkins -e AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} -e AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}")
-                {
-                  sh """
-                  aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID --profile exp-production
-                  aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY --profile exp-production
-                  aws configure set region us-east-1 --profile exp-production
-
-                  cd /data/account/exp-realty-prod/us-east-1/agent-service/orchestrator/ecs
-                  terragrunt init -reconfigure
-                  terragrunt plan --terragrunt-log-level trace -input=false -var 'image=${TF_VAR_app_image}'
-                  terragrunt apply -auto-approve -input=false -var 'image=${TF_VAR_app_image}'
-                  """
-                }
+      steps {
+        script {
+          def devSecOpsAccountId = '204048894727'
+          loginHelpers.checkoutTerraformRepo('exp-tf-prod', 'master')
+          def awsCfgDevSecops = loginHelpers.createRoleProfileConfig([
+            accountId: devSecOpsAccountId,
+            profileName: 'exp-devsecops',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID,
+            overwriteConfig: true
+          ])
+          loginHelpers.createRoleProfileConfig([
+            accountId: env.TARGET_ACCOUNT_PROD,
+            profileName: 'exp-production',
+            roleName: env.ROLE_NAME,
+            externalId: env.EXTERNAL_ID,
+            overwriteConfig: false
+          ])
+          withEnv([
+            "AWS_CONFIG_FILE=${awsCfgDevSecops.configFile}",
+            "AWS_SHARED_CREDENTIALS_FILE=${awsCfgDevSecops.credentialsFile}",
+            "AWS_SDK_LOAD_CONFIG=1",
+            "AWS_PROFILE=exp-devsecops"
+          ]) {
+            loginHelpers.dockerLogin(env.ECR)
           }
+          def buildInfo = ecsDeployHelpers.getBuildInfoFromEnv(project: env.PROJECT, ecr: env.ECR)
+          ecsDeployHelpers.runTerragruntDeploy([
+            imagePath: buildInfo.fullImagePath,
+            tfPath: 'account/exp-realty-prod/us-east-1/agent-service/orchestrator/ecs',
+            awsProfile: 'exp-production'
+          ])
+          sh 'rm -rf .aws'
+        }
       }
     }
   }
-  }
   environment {
-    VERSION = 'latest'
+    TARGET_ACCOUNT_DEV = '125434132943'
+    TARGET_ACCOUNT_QA = '427827735592'
+    TARGET_ACCOUNT_PROD = '704132245682'
+    ROLE_NAME = 'jenkins-cross-account-role'
+    EXTERNAL_ID = 'jenkins-cross-account-access'
+    AWS_DEFAULT_REGION = 'us-east-1'
+
     PROJECT = 'exp/agent-service-orchestrator'
-    IMAGE = 'exp/agent-service-orchestrator:latest'
-    ECRURL = ''
-    TF_VAR_app_image = '99'
     ECR = '204048894727.dkr.ecr.us-east-1.amazonaws.com/'
     TF_LOG = 'ERROR'
-    SKIP_BUILD = 'false'  // Default to false (build by default)
+
+    // Coverage dashboard grouping + centralized job params
+    COVERAGE_PROJECT_KEY = 'AgentService'
+    COVERAGE_REPO_KEY = 'agent-service-orchestrator'
+    COVERAGE_DEFAULT_BRANCH = 'main'
+
     // Job pass/fail email addresses
     RECIPIENT_LIST='''
-    david.hull@exprealty.net
+    devops@exprealty.net,
+    michael.gatewood@exprealty.net,
+    kyle.miller@exprealty.net,
+    messbah.uddin@exprealty.net
     '''
   }
   post {
     always {
+      script {
+        def s = (env.COVERAGE_STATUS ?: 'NOT_RUN').toString()
+        def u = (env.COVERAGE_URL ?: '').toString()
+        echo "🧾 Coverage summary: ${s}${u ? " - ${u}" : ""}"
+        try {
+          def buildInfo = ecsDeployHelpers.getBuildInfoFromEnv(project: env.PROJECT, ecr: env.ECR)
+          sh "docker rmi ${buildInfo.fullImagePath} | true"
+        } catch (Exception e) {
+          // ignore when prepareBuild was not run
+        }
+        sh 'rm -rf .aws'
+      }
       cleanWs()
-      sh "docker rmi $TF_VAR_app_image | true"
     }
     success {
       script {
@@ -345,4 +409,3 @@ pipeline
     buildDiscarder(logRotator(numToKeepStr: '3'))
   }
 }
-

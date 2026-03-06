@@ -1,11 +1,9 @@
 import {
 	Entity,
 	Column,
-	PrimaryGeneratedColumn,
+	PrimaryColumn,
 	ManyToOne,
 	JoinColumn,
-	CreateDateColumn,
-	UpdateDateColumn,
 } from 'typeorm'
 import { AgentEntity } from './agent.entity.js'
 import { AddressEntity } from './address.entity.js'
@@ -13,39 +11,25 @@ import { AddressEntity } from './address.entity.js'
 /**
  * TypeORM entity for AgentAddress join table.
  * Many-to-many relationship between Agent and Address.
- * Manages connection between agents and their addresses.
- * Supports address history tracking.
+ * Composite primary key: (agent_id, address_id).
  * @public
  */
 @Entity({ name: 'agent_address', schema: 'core' })
 export class AgentAddressEntity {
 	/**
-	 * Primary key (UUID).
+	 * Foreign key to Agent (part of composite PK).
 	 * @public
 	 */
-	@PrimaryGeneratedColumn('uuid')
-	id!: string
-
-	/**
-	 * Foreign key to Agent.
-	 * @public
-	 */
-	@Column({ name: 'agent_id', type: 'uuid' })
+	@PrimaryColumn({ name: 'agent_id', type: 'uuid' })
 	agentId!: string
 
 	/**
-	 * Foreign key to Address.
+	 * Foreign key to Address (part of composite PK).
+	 * Stored as string in TypeScript for JSON serialization compatibility.
 	 * @public
 	 */
-	@Column({ name: 'address_id', type: 'uuid' })
+	@PrimaryColumn({ name: 'address_id', type: 'bigint' })
 	addressId!: string
-
-	/**
-	 * Role/type of address (home, office, mailing, billing, other).
-	 * @public
-	 */
-	@Column({ type: 'varchar', length: 20, nullable: true })
-	role?: 'home' | 'office' | 'mailing' | 'billing' | 'other'
 
 	/**
 	 * Whether this is the primary address for the agent.
@@ -55,18 +39,11 @@ export class AgentAddressEntity {
 	isPrimary!: boolean
 
 	/**
-	 * Date from which this address is valid (YYYY-MM-DD) - optional.
+	 * Legacy database ID for data migration.
 	 * @public
 	 */
-	@Column({ name: 'valid_from', type: 'date', nullable: true })
-	validFrom?: string
-
-	/**
-	 * Date until which this address is valid (YYYY-MM-DD) - optional.
-	 * @public
-	 */
-	@Column({ name: 'valid_to', type: 'date', nullable: true })
-	validTo?: string
+	@Column({ name: 'mxid', type: 'bigint', nullable: true })
+	mxid?: string
 
 	/**
 	 * Many-to-One relationship with Agent.
@@ -83,18 +60,4 @@ export class AgentAddressEntity {
 	@ManyToOne(() => AddressEntity)
 	@JoinColumn({ name: 'address_id' })
 	address?: AddressEntity
-
-	/**
-	 * Timestamp when record was created (UTC).
-	 * @public
-	 */
-	@CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
-	createdAt!: Date
-
-	/**
-	 * Timestamp when record was last updated (UTC).
-	 * @public
-	 */
-	@UpdateDateColumn({ name: 'updated_at', type: 'timestamp with time zone' })
-	updatedAt!: Date
 }

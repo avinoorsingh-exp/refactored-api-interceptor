@@ -30,6 +30,8 @@ import { CountryResponseDto } from './dto/country-response.dto.js'
 /**
  * Controller for Country resource endpoints.
  * Handles HTTP requests for country operations.
+ * 
+ * Note: Metadata endpoint is handled by MetadataController at GET /v1/countries/metadata
  */
 @ApiTags('countries')
 @Controller('/v1/countries')

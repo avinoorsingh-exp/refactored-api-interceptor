@@ -1,10 +1,9 @@
 import { z } from 'zod'
-import { InstantUTC } from '../value-objects/index.js'
+import { FullAuditableSchema } from './audit.js'
 
 /**
  * Base schema for ExternalReference entity.
  * Used for storing external system identifiers and mappings.
- * Contains core fields without relationships.
  *
  * @public
  */
@@ -25,20 +24,17 @@ export const ExternalReferenceBaseSchema = z
 			.min(1)
 			.max(255)
 			.describe('Reference value/ID in external system'),
-		createdAt: InstantUTC.describe('Creation timestamp'),
-		updatedAt: InstantUTC.describe('Last update timestamp'),
 	})
+	.merge(FullAuditableSchema)
 	.describe('Base ExternalReference for external system mappings')
 
 /**
  * Expanded schema for ExternalReference entity.
- * Includes all fields and relationships for detail views.
- * Use this when you need the complete object graph.
+ * Includes relationships for detail views.
  *
  * @public
  */
 export const ExternalReferenceExpandedSchema = ExternalReferenceBaseSchema.extend({
-	// Relationships loaded in expanded view (lazy to avoid circular dependencies)
 	agents: z
 		.lazy(() => z.array(z.any()))
 		.optional()
@@ -53,44 +49,24 @@ export const ExternalReferenceExpandedSchema = ExternalReferenceBaseSchema.exten
 		.describe('Companies associated with this external reference (many-to-many)'),
 }).describe('Expanded ExternalReference with relationships')
 
-/**
- * Type for base external reference data.
- *
- * @public
- */
 export type ExternalReferenceBase = z.infer<typeof ExternalReferenceBaseSchema>
-
-/**
- * Type for expanded external reference data with relationships.
- *
- * @public
- */
 export type ExternalReferenceExpanded = z.infer<typeof ExternalReferenceExpandedSchema>
-
-/**
- * Default type for external reference (use expanded).
- *
- * @public
- */
 export type ExternalReference = ExternalReferenceExpanded
 
-/**
- * Legacy schema for backward compatibility.
- * @deprecated Use ExternalReferenceExpandedSchema instead
- * @public
- */
+/** @deprecated Use ExternalReferenceExpandedSchema instead */
 export const ExternalReferenceSchema = ExternalReferenceExpandedSchema
 
 /**
  * Zod schema for creating a new external reference.
- * Omits system-generated fields (id, timestamps).
+ * Omits system-generated fields (id, timestamps, modifiedBy).
  *
  * @public
  */
 export const CreateExternalReferenceInput = ExternalReferenceBaseSchema.omit({
 	id: true,
-	createdAt: true,
-	updatedAt: true,
+	created: true,
+	lastModified: true,
+	modifiedBy: true,
 })
 	.extend({
 		systemCode: z.string().trim().min(1).max(100),
@@ -99,11 +75,6 @@ export const CreateExternalReferenceInput = ExternalReferenceBaseSchema.omit({
 	})
 	.describe('Payload to create an external reference')
 
-/**
- * TypeScript type for external reference creation payload.
- *
- * @public
- */
 export type CreateExternalReferenceInput = z.infer<typeof CreateExternalReferenceInput>
 
 /**
@@ -117,9 +88,4 @@ export const UpdateExternalReferenceInput =
 		'Payload to update an external reference (partial)',
 	)
 
-/**
- * TypeScript type for external reference update payload.
- *
- * @public
- */
 export type UpdateExternalReferenceInput = z.infer<typeof UpdateExternalReferenceInput>

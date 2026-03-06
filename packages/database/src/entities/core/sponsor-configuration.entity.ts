@@ -7,7 +7,11 @@ import { AgentEntity } from './agent.entity.js'
  */
 @Entity({ name: 'sponsor_configuration', schema: 'core' })
 export class SponsorConfigurationEntity {
-	@PrimaryColumn({ name: 'agent_id', type: 'bigint' })
+	/**
+	 * Primary key / Foreign key to Agent (UUID).
+	 * @public
+	 */
+	@PrimaryColumn({ name: 'agent_id', type: 'uuid' })
 	agentId!: string
 
 	@Column({ type: 'uuid' })
@@ -22,6 +26,10 @@ export class SponsorConfigurationEntity {
 	@Column({ name: 'last_modified', type: 'timestamp with time zone' })
 	lastModified!: Date
 
+	/**
+	 * Many-to-One relationship with Agent.
+	 * @public
+	 */
 	@ManyToOne(() => AgentEntity)
 	@JoinColumn({ name: 'agent_id' })
 	agent?: AgentEntity

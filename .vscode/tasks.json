@@ -1,0 +1,43 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Start Agent Service (Debug)",
+			"type": "shell",
+			"command": "pnpm --filter @exprealty/agent-service start:debug",
+			"isBackground": true,
+			"problemMatcher": {
+				"pattern": {
+					"regexp": "^$"
+				},
+				"background": {
+					"activeOnStart": true,
+					"beginsPattern": "Starting compilation",
+					"endsPattern": "Debugger listening on"
+				}
+			},
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Start Orchestrator (Debug)",
+			"type": "shell",
+			"command": "pnpm --filter @exprealty/orchestrator start:debug",
+			"isBackground": true,
+			"problemMatcher": {
+				"pattern": {
+					"regexp": "^$"
+				},
+				"background": {
+					"activeOnStart": true,
+					"beginsPattern": "Starting compilation",
+					"endsPattern": "Debugger listening on"
+				}
+			},
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		}
+	]
+}

@@ -1,0 +1,800 @@
+{
+  "info": {
+    "_postman_id": "agent-taxes-api-tests",
+    "name": "AgentTaxes API - CRUD Tests",
+    "description": "Tests for Agent Tax endpoints at /v1/agents/:id/taxes.\n\nFeatures tested:\n- Agent Tax CRUD (list, get by ID, create, update)\n- Tax ID last4 + HMAC token storage (write-only plaintext, masked on read)\n- Masked placeholder rejection (400)\n- Primary tax constraint (only one primary per agent)\n- Validation and error handling",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "agentId",
+      "value": "",
+      "type": "string",
+      "description": "Valid agent UUID - set by setup"
+    },
+    {
+      "key": "taxId",
+      "value": "",
+      "type": "string",
+      "description": "Created agent-tax UUID - set by create test"
+    },
+    {
+      "key": "taxId2",
+      "value": "",
+      "type": "string",
+      "description": "Second agent-tax UUID for primary tests"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Setup",
+      "item": [
+        {
+          "name": "Get First Agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Set agentId variable', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var items = jsonData.data || jsonData.items;",
+                  "    pm.expect(items).to.be.an('array');",
+                  "    pm.expect(items.length).to.be.greaterThan(0);",
+                  "    var agentId = items[0].id;",
+                  "    pm.collectionVariables.set('agentId', agentId);",
+                  "    console.log('Using agent ID:', agentId);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents?offset=0&limit=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents"],
+              "query": [
+                {"key": "offset", "value": "0"},
+                {"key": "limit", "value": "1"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Create Agent Tax",
+      "item": [
+        {
+          "name": "Create Tax (SSN) - Success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response has Location header', function () {",
+                  "    pm.response.to.have.header('Location');",
+                  "    var location = pm.response.headers.get('Location');",
+                  "    pm.expect(location).to.include('/v1/agents/');",
+                  "    pm.expect(location).to.include('/taxes/');",
+                  "});",
+                  "",
+                  "pm.test('Response contains agent-tax association', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData.id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);",
+                  "    pm.expect(jsonData).to.have.property('agentId');",
+                  "    pm.expect(jsonData.agentId).to.equal(pm.collectionVariables.get('agentId'));",
+                  "    pm.expect(jsonData).to.have.property('taxId');",
+                  "    pm.expect(jsonData).to.have.property('isPrimary', false);",
+                  "    pm.collectionVariables.set('taxId', jsonData.taxId);",
+                  "});",
+                  "",
+                  "pm.test('Nested tax has masked value — *****last4, never plaintext', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.tax) {",
+                  "        pm.expect(jsonData.tax.value).to.match(/^\\*{5}\\d{4}$/);",
+                  "        pm.expect(jsonData.tax.value).to.equal('*****6789');",
+                  "        pm.expect(jsonData.tax.taxIdType).to.equal('SSN');",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test('Nested tax has HMAC token', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.tax && jsonData.tax.valueToken) {",
+                  "        pm.expect(jsonData.tax.valueToken).to.match(/^[0-9a-f]{64}$/);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"taxIdType\": \"SSN\",\n  \"value\": \"123-45-6789\",\n  \"isPrimary\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/taxes",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "taxes"]
+            }
+          }
+        },
+        {
+          "name": "Create Tax (EIN) - Success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response has EIN tax data', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('taxId');",
+                  "    pm.collectionVariables.set('taxId2', jsonData.taxId);",
+                  "});",
+                  "",
+                  "pm.test('EIN value is masked', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.tax) {",
+                  "        pm.expect(jsonData.tax.value).to.match(/^\\*{5}\\d{4}$/);",
+                  "        pm.expect(jsonData.tax.value).to.equal('*****4321');",
+                  "        pm.expect(jsonData.tax.taxIdType).to.equal('EIN');",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"taxIdType\": \"EIN\",\n  \"value\": \"98-7654321\",\n  \"isPrimary\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/taxes",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "taxes"]
+            }
+          }
+        },
+        {
+          "name": "Create Tax with Masked Placeholder (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error rejects masked placeholder as input', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var message = JSON.stringify(jsonData).toLowerCase();",
+                  "    pm.expect(message).to.include('masked');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"taxIdType\": \"SSN\",\n  \"value\": \"*****6789\",\n  \"isPrimary\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/taxes",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "taxes"]
+            }
+          }
+        },
+        {
+          "name": "Create Tax - Duplicate Type (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "",
+                  "pm.test('Error mentions duplicate tax type', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('type');",
+                  "    var message = JSON.stringify(jsonData).toLowerCase();",
+                  "    pm.expect(message).to.include('ssn');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"taxIdType\": \"SSN\",\n  \"value\": \"999-88-7777\",\n  \"isPrimary\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/taxes",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "taxes"]
+            }
+          }
+        },
+        {
+          "name": "Create Tax - Missing Required Fields (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Response has validation errors', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('type');",
+                  "    pm.expect(jsonData.status).to.equal(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"taxIdType\": \"SSN\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/taxes",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "taxes"]
+            }
+          }
+        },
+        {
+          "name": "Create Tax - Agent Not Found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Error indicates agent not found', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('type');",
+                  "    pm.expect(jsonData.status).to.equal(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"taxIdType\": \"SSN\",\n  \"value\": \"111-22-3333\",\n  \"isPrimary\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/00000000-0000-0000-0000-000000000000/taxes",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "00000000-0000-0000-0000-000000000000", "taxes"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Get Agent Taxes",
+      "item": [
+        {
+          "name": "List Agent Taxes - Default",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has paginated structure', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('items');",
+                  "    pm.expect(jsonData).to.have.property('total');",
+                  "    pm.expect(jsonData.items).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test('Items contain created taxes', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.items.length).to.be.greaterThan(0);",
+                  "});",
+                  "",
+                  "pm.test('Tax values are masked — never plaintext', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    jsonData.items.forEach(function(item) {",
+                  "        if (item.tax && item.tax.value) {",
+                  "            pm.expect(item.tax.value).to.match(/^\\*{5}\\d{4}$/);",
+                  "        }",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/taxes",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "taxes"]
+            }
+          }
+        },
+        {
+          "name": "List Agent Taxes - With Pagination",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response respects limit', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.items.length).to.be.at.most(5);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/taxes?offset=0&limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "taxes"],
+              "query": [
+                {"key": "offset", "value": "0"},
+                {"key": "limit", "value": "5"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Tax by ID - Success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has correct tax association', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('agentId');",
+                  "    pm.expect(jsonData.agentId).to.equal(pm.collectionVariables.get('agentId'));",
+                  "    pm.expect(jsonData).to.have.property('taxId');",
+                  "    pm.expect(jsonData.taxId).to.equal(pm.collectionVariables.get('taxId'));",
+                  "});",
+                  "",
+                  "pm.test('Tax value is masked', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.tax) {",
+                  "        pm.expect(jsonData.tax.value).to.match(/^\\*{5}\\d{4}$/);",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test('Tax has audit timestamps', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.tax) {",
+                  "        pm.expect(jsonData.tax).to.have.property('created');",
+                  "        pm.expect(jsonData.tax).to.have.property('lastModified');",
+                  "        pm.expect(jsonData.tax).to.have.property('modifiedBy');",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/taxes/{{taxId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "taxes", "{{taxId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get Tax - Not Found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Error response has correct structure', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('type');",
+                  "    pm.expect(jsonData).to.have.property('status');",
+                  "    pm.expect(jsonData.status).to.equal(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/taxes/00000000-0000-0000-0000-000000000000",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "taxes", "00000000-0000-0000-0000-000000000000"]
+            }
+          }
+        },
+        {
+          "name": "Get Tax - Invalid UUID (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error has validation details', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('type');",
+                  "    pm.expect(jsonData.status).to.equal(400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/taxes/not-a-uuid",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "taxes", "not-a-uuid"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Update Agent Tax",
+      "item": [
+        {
+          "name": "Update Tax Value - Success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Tax value updated — masked with new last 4 digits', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.tax) {",
+                  "        pm.expect(jsonData.tax.value).to.equal('*****1111');",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test('TaxIdToken updated', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.tax && jsonData.tax.valueToken) {",
+                  "        pm.expect(jsonData.tax.valueToken).to.match(/^[0-9a-f]{64}$/);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": \"555-66-1111\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/taxes/{{taxId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "taxes", "{{taxId}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Tax isPrimary - Success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('isPrimary updated to true', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.isPrimary).to.equal(true);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isPrimary\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/taxes/{{taxId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "taxes", "{{taxId}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Tax with Masked Placeholder (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error rejects masked placeholder on update', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var message = JSON.stringify(jsonData).toLowerCase();",
+                  "    pm.expect(message).to.include('masked');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": \"*****1111\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/taxes/{{taxId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "taxes", "{{taxId}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Second Tax to Primary - Conflict (409)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 409 Conflict', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "",
+                  "pm.test('Error mentions primary conflict', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var message = JSON.stringify(jsonData).toLowerCase();",
+                  "    pm.expect(message).to.include('primary');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isPrimary\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/taxes/{{taxId2}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "taxes", "{{taxId2}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Tax - Not Found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404 Not Found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Error response has correct structure', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('type');",
+                  "    pm.expect(jsonData).to.have.property('status');",
+                  "    pm.expect(jsonData.status).to.equal(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": \"111-22-3333\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/taxes/00000000-0000-0000-0000-000000000000",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "taxes", "00000000-0000-0000-0000-000000000000"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Verify Final State",
+      "item": [
+        {
+          "name": "List All Taxes (verify masking)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('All tax values are masked — no plaintext leakage', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    jsonData.items.forEach(function(item) {",
+                  "        if (item.tax && item.tax.value) {",
+                  "            pm.expect(item.tax.value).to.match(/^\\*{5}\\d{4}$/);",
+                  "            pm.expect(item.tax.value).to.not.include('-');",
+                  "        }",
+                  "    });",
+                  "});",
+                  "",
+                  "pm.test('Exactly one primary tax', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var primaryCount = jsonData.items.filter(function(item) {",
+                  "        return item.isPrimary === true;",
+                  "    }).length;",
+                  "    pm.expect(primaryCount).to.equal(1);",
+                  "});",
+                  "",
+                  "pm.test('Updated tax has new last4', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var taxId = pm.collectionVariables.get('taxId');",
+                  "    var updatedTax = jsonData.items.find(function(item) {",
+                  "        return item.taxId === taxId;",
+                  "    });",
+                  "    if (updatedTax && updatedTax.tax) {",
+                  "        pm.expect(updatedTax.tax.value).to.equal('*****1111');",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/agents/{{agentId}}/taxes",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "agents", "{{agentId}}", "taxes"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -55,6 +55,19 @@ export class AgentServiceController {
     const headers = req.headers
 
     try {
+      // TEMPORARY DEBUG: Log all headers to see what API Gateway is sending
+      const allHeaders: Record<string, string | string[] | undefined> = {};
+      Object.keys(headers).forEach((key) => {
+        allHeaders[key.toLowerCase()] = headers[key];
+      });
+      this.logger.info('API Gateway request headers (for debugging)', {
+        method,
+        path,
+        headers: allHeaders,
+        hasAuthorization: !!headers['authorization'],
+        authorizationPrefix: headers['authorization'] ? (Array.isArray(headers['authorization']) ? headers['authorization'][0] : headers['authorization']).substring(0, 30) : 'none',
+      });
+
       this.logger.info('Agent service request', {
         method,
         path,
@@ -71,19 +84,34 @@ export class AgentServiceController {
       //
       const client = this.agentFactory.get()
 
-      // Proxy the request
+      // Proxy the request - Forward headers to preserve API Gateway context, but NOT body framing headers.
+      // We send req.body (parsed by Express) re-serialized by Axios; the byte length can differ from the
+      // client's original body (key order, normalization). If we forward the client's content-length,
+      // the downstream expects that many bytes and waits for them → request aborted when connection closes.
+      const forwardedHeaders: Record<string, string> = {};
+      const skipRequestFraming = ['content-length', 'transfer-encoding'];
+
+      Object.keys(headers).forEach((key) => {
+        const lower = key.toLowerCase();
+        if (skipRequestFraming.includes(lower)) {
+          return;
+        }
+        const value = headers[key];
+        if (value) {
+          forwardedHeaders[lower] = Array.isArray(value) ? value[0] : value;
+        }
+      });
+
+      // Ensure proxy headers are set
+      forwardedHeaders['x-forwarded-host'] = forwardedHeaders['x-forwarded-host'] || (Array.isArray(headers.host) ? headers.host[0] : headers.host) || '';
+      forwardedHeaders['x-forwarded-proto'] = forwardedHeaders['x-forwarded-proto'] || req.protocol;
+
       const response = await client.proxy({
         method: method as any,
         path,
         body,
         query,
-        headers: {
-          // Forward important headers
-          ...(headers['content-type'] && { 'content-type': headers['content-type'] }),
-          ...(headers['accept'] && { 'accept': headers['accept'] }),
-          ...(headers['user-agent'] && { 'user-agent': headers['user-agent'] }),
-          ...(headers['authorization'] && { 'authorization': headers['authorization'] }),  // Forward auth if present
-        },
+        headers: forwardedHeaders,
       })
 
       const duration = Date.now() - startTime
@@ -95,40 +123,120 @@ export class AgentServiceController {
         duration_ms: duration,
       })
 
-      // Set response status
-      res.status(response.status)
-      
-      // Forward response headers
+      // CRITICAL: Normalize response headers before forwarding
+      // Since axios buffers the entire response (responseType: 'json'),
+      // we are NOT streaming. Therefore:
+      // - Remove Transfer-Encoding (we're not chunking)
+      // - Remove Content-Length (Express will set it correctly based on serialized JSON)
+      // This ensures only ONE framing mechanism is used
+      const normalizedHeaders: Record<string, string> = {}
       if (response.headers) {
         Object.entries(response.headers).forEach(([key, value]) => {
-          if (value !== undefined) {
-            res.setHeader(key, value as string)
+          if (value === undefined) {
+            return
           }
+          
+          const lowerKey = key.toLowerCase()
+          
+          // Skip framing headers - Express will set them correctly
+          if (lowerKey === 'transfer-encoding' || lowerKey === 'content-length') {
+            this.logger.debug('[RESPONSE_FRAMING] Skipping framing header from upstream', {
+              method,
+              path,
+              header: key,
+              value: String(value),
+              reason: 'Express will set framing headers based on response body',
+            })
+            return
+          }
+          
+          // Forward all other headers
+          normalizedHeaders[key] = String(value)
         })
       }
 
+      // Diagnostic logging: Log headers before setting them
+      this.logger.info('[RESPONSE_FRAMING] Normalized response headers', {
+        method,
+        path,
+        status: response.status,
+        upstreamHeaders: response.headers ? Object.keys(response.headers) : [],
+        normalizedHeaders: Object.keys(normalizedHeaders),
+        hasTransferEncoding: response.headers?.['transfer-encoding'] || response.headers?.['Transfer-Encoding'],
+        hasContentLength: response.headers?.['content-length'] || response.headers?.['Content-Length'],
+        responseDataSize: response.data ? JSON.stringify(response.data).length : 0,
+      })
+
+      // Set response status
+      res.status(response.status)
+      
+      // Forward normalized headers (excluding framing headers)
+      Object.entries(normalizedHeaders).forEach(([key, value]) => {
+        res.setHeader(key, value)
+      })
+
+      // Diagnostic logging: Log headers at write time
+      const headersBeforeWrite = {
+        transferEncoding: res.getHeader('transfer-encoding'),
+        contentLength: res.getHeader('content-length'),
+        headersSent: res.headersSent,
+        finished: (res as any).finished,
+      }
+      
+      this.logger.info('[RESPONSE_FRAMING] Headers before res.json()', {
+        method,
+        path,
+        ...headersBeforeWrite,
+      })
+
       // Send response body
+      // Express will automatically set Content-Length based on serialized JSON size
       res.json(response.data)
+
+      // Diagnostic logging: Log headers after write
+      // Note: headersSent will be true after res.json() if headers were committed
+      const headersAfterWrite = {
+        headersSent: res.headersSent,
+        finished: (res as any).finished,
+      }
+      
+      this.logger.info('[RESPONSE_FRAMING] Headers after res.json()', {
+        method,
+        path,
+        ...headersAfterWrite,
+      })
 
     } catch (error) {
       const duration = Date.now() - startTime
+      const axiosErr = isAxiosError(error) ? error : null
+      const upstreamProblem = axiosErr ? (axiosErr as { upstreamProblem?: { status: number; type?: string; [k: string]: unknown } }).upstreamProblem : undefined
+      const resolvedStatus = upstreamProblem?.status ?? axiosErr?.response?.status ?? HttpStatus.BAD_GATEWAY
 
+      const requestId = (headers['x-request-id'] as string) || (Array.isArray(headers['x-request-id']) ? headers['x-request-id'][0] : undefined)
+      const correlationId = (headers['x-correlation-id'] as string) || (Array.isArray(headers['x-correlation-id']) ? headers['x-correlation-id'][0] : undefined)
       this.logger.error('Agent service request failed', {
         method,
         path,
         duration_ms: duration,
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
+        error_code: axiosErr?.code,
+        resolved_status: resolvedStatus,
+        is_upstream_timeout: axiosErr?.code === 'ECONNABORTED' || resolvedStatus === 504,
+        upstream_problem_type: upstreamProblem?.type,
+        upstream_returned_response: !!axiosErr?.response,
+        request_id: requestId,
+        correlation_id: correlationId,
       })
 
-      // Handle Axios errors
-      if (isAxiosError(error)) {
-        const status = error.response?.status || HttpStatus.BAD_GATEWAY
-        const data = error.response?.data || {
+      // Handle Axios errors: use upstreamProblem when present (e.g. 504 for ECONNABORTED)
+      if (axiosErr) {
+        const status = resolvedStatus
+        const data = upstreamProblem ?? axiosErr.response?.data ?? {
           type: ProblemTypes.Upstream,
           title: ProblemTitles[ProblemTypes.Upstream],
           status,
-          detail: error.message || 'Failed to communicate with agent service',
+          detail: axiosErr.message || 'Failed to communicate with agent service',
           instance: path,
         }
 

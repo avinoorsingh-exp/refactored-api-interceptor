@@ -9,6 +9,10 @@ import {
 } from '@exprealty/shared-domain'
 import { LoggerService } from '../core/logger.service.js'
 import { DatabaseErrorHandler } from '../errors/database-error.handler.js'
+import { DomainException } from './exceptions/domain.exception.js'
+import { SearchValidationException } from './exceptions/search-validation.exception.js'
+import { FilterValidationException } from './exceptions/filter-validation.exception.js'
+import { QueryFieldValidationException } from './exceptions/query-field-validation.exception.js'
 
 /**
  * Global exception filter that transforms all errors into RFC 9457 Problem Details.
@@ -30,36 +34,26 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 		const traceId = request.headers['x-request-id'] as string | undefined
 		const instance = request.path
 
+		// DEBUG: Log the exception to identify validation source
+		if (instance.includes('/retry')) {
+			this.logger.error('Exception caught for retry endpoint', {
+				exceptionType: exception?.constructor?.name,
+				exceptionMessage: exception instanceof Error ? exception.message : String(exception),
+				exceptionStack: exception instanceof Error ? exception.stack : undefined,
+				isHttpException: exception instanceof HttpException,
+				httpStatus: exception instanceof HttpException ? exception.getStatus() : undefined,
+				httpResponse: exception instanceof HttpException ? exception.getResponse() : undefined,
+				path: instance,
+				method: request.method,
+			})
+		}
+
 		let problem: ProblemDetails
 
-		// 1. Handle NestJS HttpException (includes ConflictException, BadRequestException, NotFoundException, etc.)
-		if (exception instanceof HttpException) {
-			const status = exception.getStatus()
-			const exceptionResponse = exception.getResponse()
-
-			// Check if it's a validation error (BadRequestException from ZodValidationPipe)
-			if (status === 400 && typeof exceptionResponse === 'object') {
-				problem = this.handleValidationError(
-					exceptionResponse as Record<string, unknown>,
-					instance,
-					traceId,
-				)
-			} else {
-				// Generic HTTP exception
-				const message =
-					typeof exceptionResponse === 'string'
-						? exceptionResponse
-						: (exceptionResponse as { message?: string } | undefined)?.message ||
-							exception.message
-
-				// Extract custom i18n type if provided
-				const i18nType =
-					typeof exceptionResponse === 'object' && exceptionResponse !== null
-						? (exceptionResponse as { i18nType?: string }).i18nType
-						: undefined
-
-				problem = this.createProblemFromStatus(status, message, instance, traceId, i18nType)
-			}
+		// 1. Handle DomainException FIRST (before HttpException check since DomainException extends HttpException)
+		// This ensures SearchValidationException, FilterValidationException, etc. are handled with full i18n support
+		if (exception instanceof DomainException) {
+			problem = this.handleDomainException(exception, instance, traceId)
 		}
 		// 2. Handle TypeORM QueryFailedError (database constraint violations)
 		else if (exception instanceof QueryFailedError) {
@@ -107,7 +101,69 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 		else if (exception instanceof ZodError) {
 			problem = this.handleZodError(exception, instance, traceId)
 		}
-		// 4. Handle generic Error (unexpected errors)
+		// 4. Handle NestJS HttpException (includes ConflictException, BadRequestException, NotFoundException, etc.)
+		else if (exception instanceof HttpException) {
+			const status = exception.getStatus()
+			const exceptionResponse = exception.getResponse()
+
+			// DEBUG: Log all 400 errors to identify validation source
+			if (status === 400 && instance.includes('/retry')) {
+				console.error('[ProblemDetailsFilter] BadRequestException caught for retry endpoint', {
+					status,
+					exceptionResponse: JSON.stringify(exceptionResponse, null, 2),
+					exceptionResponseType: typeof exceptionResponse,
+					hasZodIssues: typeof exceptionResponse === 'object' && exceptionResponse !== null && '_zodIssues' in (exceptionResponse as Record<string, unknown>),
+					exceptionMessage: exception.message,
+					exceptionName: exception.constructor.name,
+					stack: exception.stack,
+					path: instance,
+					exceptionKeys: typeof exceptionResponse === 'object' && exceptionResponse !== null ? Object.keys(exceptionResponse as Record<string, unknown>) : [],
+				})
+				this.logger.error('BadRequestException caught for retry endpoint', {
+					status,
+					exceptionResponse,
+					exceptionResponseType: typeof exceptionResponse,
+					hasZodIssues: typeof exceptionResponse === 'object' && exceptionResponse !== null && '_zodIssues' in (exceptionResponse as Record<string, unknown>),
+					exceptionMessage: exception.message,
+					exceptionName: exception.constructor.name,
+					stack: exception.stack,
+					path: instance,
+				})
+			}
+
+			// Check if it's a validation error (BadRequestException from ZodValidationPipe)
+			// ONLY call handleValidationError if the exception response has actual validation error fields
+			// (_zodIssues or _errors), not just a generic message
+			const hasValidationErrors = typeof exceptionResponse === 'object' && exceptionResponse !== null && (
+				'_zodIssues' in (exceptionResponse as Record<string, unknown>) ||
+				'_errors' in (exceptionResponse as Record<string, unknown>)
+			)
+			
+			if (status === 400 && typeof exceptionResponse === 'object' && hasValidationErrors) {
+				problem = this.handleValidationError(
+					exceptionResponse as Record<string, unknown>,
+					instance,
+					traceId,
+				)
+			} else {
+				// Generic HTTP exception
+				const message =
+					typeof exceptionResponse === 'string'
+						? exceptionResponse
+						: (exceptionResponse as { message?: string } | undefined)?.message ||
+							exception.message
+
+				// Extract custom i18n type if provided
+				const i18nType =
+					typeof exceptionResponse === 'object' && exceptionResponse !== null
+						? (exceptionResponse as { i18nType?: string }).i18nType
+						: undefined
+
+				problem = this.createProblemFromStatus(status, message, instance, traceId, i18nType)
+			}
+		}
+		
+		// 5. Handle generic Error (unexpected errors)
 		else if (exception instanceof Error) {
 			problem = Problems.internal(
 				exception.message || 'An unexpected error occurred',
@@ -147,6 +203,18 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 		instance: string,
 		traceId?: string,
 	): ProblemDetails {
+		// DEBUG: Log the exception response to identify the source
+		if (instance.includes('/retry')) {
+			console.error('[handleValidationError] Exception response for retry endpoint:', JSON.stringify(exceptionResponse, null, 2))
+			console.error('[handleValidationError] Exception response keys:', Object.keys(exceptionResponse))
+			this.logger.error('handleValidationError called for retry endpoint', {
+				exceptionResponse,
+				exceptionResponseKeys: Object.keys(exceptionResponse),
+				instance,
+				traceId,
+			})
+		}
+
 		const invalidParams: InvalidParam[] = []
 		
 		// Extract custom i18n type if provided (e.g., 'agent.country.validation')
@@ -162,9 +230,14 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 		if (zodIssues && Array.isArray(zodIssues)) {
 			// Convert Zod issues to InvalidParam format
 			for (const issue of zodIssues) {
+				// Ensure message is always present - use fallback if missing
+				const errorMessage = issue.message || 
+					(issue.code ? `Validation failed for ${issue.code}` : 'Validation failed') ||
+					'Invalid value';
+				
 				invalidParams.push({
 					name: issue.path.length > 0 ? issue.path.join('.') : 'request',
-					reason: issue.message,
+					reason: errorMessage,
 					in: 'body',
 				})
 			}
@@ -218,6 +291,182 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 	}
 
 	/**
+	 * Handle domain exceptions (SearchValidationException, FilterValidationException, etc.)
+	 * Formats them as RFC 9457 Problem Details with i18n support.
+	 */
+	private handleDomainException(
+		exception: DomainException,
+		instance: string,
+		traceId?: string,
+	): ProblemDetails {
+		const status = exception.getStatus()
+		const context = exception.getContext()
+		const i18nType = exception.getI18nType()
+		const message = exception.message
+
+		// Log domain exceptions at WARN level (client errors)
+		this.logger.warn(`Domain exception: ${message}`, {
+			i18nType,
+			context,
+			instance,
+			traceId,
+		})
+
+		// Handle SearchValidationException specifically
+		if (exception instanceof SearchValidationException) {
+			return this.handleSearchValidationException(exception, instance, traceId)
+		}
+
+		// Handle FilterValidationException specifically
+		if (exception instanceof FilterValidationException) {
+			return this.handleFilterValidationException(exception, instance, traceId)
+		}
+
+		// Handle QueryFieldValidationException specifically
+		if (exception instanceof QueryFieldValidationException) {
+			return this.handleQueryFieldValidationException(exception, instance, traceId)
+		}
+
+		// Generic domain exception handling
+		const invalidParams: InvalidParam[] = []
+		if (context.field) {
+			invalidParams.push({
+				name: context.field,
+				reason: message,
+				in: 'query',
+			})
+		}
+
+		// Use i18n type if provided, otherwise use standard problem type
+		if (i18nType) {
+			return {
+				type: i18nType,
+				title: 'Domain Validation Error',
+				status,
+				detail: message,
+				instance,
+				traceId,
+				invalidParams: invalidParams.length > 0 ? invalidParams : undefined,
+				...context,
+			}
+		}
+
+		return Problems.validation(
+			message,
+			invalidParams.length > 0 ? invalidParams : undefined,
+			instance,
+			traceId,
+		)
+	}
+
+	/**
+	 * Handle SearchValidationException with full context.
+	 * Includes field, search term, validation constraints, and hints.
+	 */
+	private handleSearchValidationException(
+		exception: SearchValidationException,
+		instance: string,
+		traceId?: string,
+	): ProblemDetails {
+		const { field, searchTerm, validationError, validation, i18nType } = exception
+
+		// Build hint based on validation constraints
+		let hint = 'Check field validation rules in metadata endpoint'
+		if (validation) {
+			if (validation.min !== undefined && validation.max !== undefined) {
+				hint = `Value must be between ${validation.min} and ${validation.max}`
+			} else if (validation.min !== undefined) {
+				hint = `Value must be at least ${validation.min}`
+			} else if (validation.max !== undefined) {
+				hint = `Value must be at most ${validation.max}`
+			} else if (validation.enum) {
+				hint = `Value must be one of: ${validation.enum.join(', ')}`
+			}
+		}
+
+		return {
+			type: i18nType,
+			title: 'Search Validation Error',
+			status: 400,
+			detail: validationError,
+			instance,
+			traceId,
+			invalidParams: [{
+				name: field,
+				reason: validationError,
+				in: 'query',
+			}],
+			field,
+			searchTerm,
+			validation,
+			hint,
+		}
+	}
+
+	/**
+	 * Handle FilterValidationException with full context.
+	 * Includes field, operator, value, and hints.
+	 */
+	private handleFilterValidationException(
+		exception: FilterValidationException,
+		instance: string,
+		traceId?: string,
+	): ProblemDetails {
+		const { field, operator, value, validationError, i18nType } = exception
+
+		return {
+			type: i18nType,
+			title: 'Filter Validation Error',
+			status: 400,
+			detail: validationError,
+			instance,
+			traceId,
+			invalidParams: [{
+				name: field,
+				reason: validationError,
+				in: 'query',
+			}],
+			field,
+			operator,
+			value,
+			hint: 'Check allowed operators and field types in metadata endpoint',
+		}
+	}
+
+	/**
+	 * Handle QueryFieldValidationException with full context.
+	 * Includes operation type, invalid fields, and allowed fields.
+	 */
+	private handleQueryFieldValidationException(
+		exception: QueryFieldValidationException,
+		instance: string,
+		traceId?: string,
+	): ProblemDetails {
+		const { operationType, invalidFields, allowedFields, i18nType } = exception
+
+		// Build invalid params for each invalid field
+		const invalidParams: InvalidParam[] = invalidFields.map((field) => ({
+			name: field,
+			reason: `Field '${field}' is not allowed for ${operationType}`,
+			in: 'query',
+		}))
+
+		return {
+			type: i18nType,
+			title: `Invalid ${operationType.charAt(0).toUpperCase() + operationType.slice(1)} Field`,
+			status: 400,
+			detail: exception.message,
+			instance,
+			traceId,
+			invalidParams,
+			operationType,
+			invalidFields,
+			allowedFields,
+			hint: 'Check allowed fields in metadata endpoint',
+		}
+	}
+
+	/**
 	 * Handle ZodError directly (convert to InvalidParam array)
 	 */
 	private handleZodError(
@@ -225,11 +474,18 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 		instance: string,
 		traceId?: string,
 	): ProblemDetails {
-		const invalidParams: InvalidParam[] = error.issues.map((issue) => ({
-			name: issue.path.join('.') || 'request',
-			reason: issue.message,
-			in: 'body',
-		}))
+		const invalidParams: InvalidParam[] = error.issues.map((issue) => {
+			// Ensure message is always present - use fallback if missing
+			const errorMessage = issue.message || 
+				(issue.code ? `Validation failed for ${issue.code}` : 'Validation failed') ||
+				'Invalid value';
+			
+			return {
+				name: issue.path.join('.') || 'request',
+				reason: errorMessage,
+				in: 'body',
+			};
+		})
 
 		return Problems.validation(
 			'The request body failed schema validation',

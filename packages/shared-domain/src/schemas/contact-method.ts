@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { InstantUTC } from '../value-objects/index.js'
+import { AuditableSchema } from './audit.js'
+import { trimmedStringMinMax, emailString, phoneE164String } from './base-schemas.js'
 
 /**
  * Channel enum for contact methods.
@@ -8,7 +9,21 @@ import { InstantUTC } from '../value-objects/index.js'
 export const ContactMethodChannelSchema = z.enum(['email', 'phone'])
 
 /**
- * Sub-type enum for contact methods.
+ * Sub-type enum for email contact methods.
+ * Valid values: personal, work, home
+ * @public
+ */
+export const EmailSubTypeSchema = z.enum(['personal', 'work', 'home'])
+
+/**
+ * Sub-type enum for phone contact methods.
+ * Valid values: mobile, home, work, fax
+ * @public
+ */
+export const PhoneSubTypeSchema = z.enum(['mobile', 'home', 'work', 'fax'])
+
+/**
+ * Sub-type enum for contact methods (all valid values).
  * @public
  */
 export const ContactMethodSubTypeSchema = z.enum([
@@ -18,6 +33,15 @@ export const ContactMethodSubTypeSchema = z.enum([
 	'fax',
 	'personal',
 ])
+
+/**
+ * Valid subTypes by channel for business rule validation.
+ * @internal
+ */
+const VALID_SUBTYPES_BY_CHANNEL: Record<string, string[]> = {
+	email: ['personal', 'work', 'home'],
+	phone: ['mobile', 'home', 'work', 'fax'],
+}
 
 /**
  * Base schema for ContactMethod entity.
@@ -32,10 +56,11 @@ export const ContactMethodBaseSchema = z.object({
 	id: z.string().describe('Primary key (BigInt as string)'),
 
 	/**
-	 * Contact method name/label.
+	 * Contact method name/label (unique).
+	 * Trimmed to prevent whitespace-only or padded duplicates.
 	 * @public
 	 */
-	name: z.string().min(1).max(255),
+	name: trimmedStringMinMax(1, 255, 'errors.contactMethod.name.length'),
 
 	/**
 	 * Communication channel type.
@@ -72,19 +97,7 @@ export const ContactMethodBaseSchema = z.object({
 	 * @public
 	 */
 	agentId: z.string().uuid({ message: 'errors.contactMethod.agentId.invalid' }),
-
-	/**
-	 * Timestamp when the contact method was created.
-	 * @public
-	 */
-	createdAt: InstantUTC,
-
-	/**
-	 * Timestamp when the contact method was last updated.
-	 * @public
-	 */
-	updatedAt: InstantUTC,
-})
+}).merge(AuditableSchema)
 
 /**
  * Expanded schema for ContactMethod with nested relationships.
@@ -99,21 +112,130 @@ export const ContactMethodExpandedSchema = ContactMethodBaseSchema.extend({
 })
 
 /**
+ * Internal email validator for superRefine.
+ * @internal
+ */
+const emailValidator = emailString('errors.contactMethod.value.invalidEmail')
+
+/**
+ * Internal E.164 phone validator for superRefine.
+ * @internal
+ */
+const phoneValidator = phoneE164String('errors.contactMethod.value.invalidPhone')
+
+/**
  * Input schema for creating a new ContactMethod.
+ * Note: agentId is omitted as it comes from the URL path in nested routes.
+ *
+ * Business rules enforced via superRefine:
+ * - Email channel: value must be valid email format, subType must be personal/work/home
+ * - Phone channel: value must be E.164 format (+[country][number]), subType must be mobile/home/work/fax
  * @public
  */
 export const CreateContactMethodInput = ContactMethodBaseSchema.omit({
 	id: true,
-	createdAt: true,
-	updatedAt: true,
+	created: true,
+	lastModified: true,
+	modifiedBy: true,
+	agentId: true,
+}).extend({
+	name: trimmedStringMinMax(1, 255, 'errors.contactMethod.name.length'),
+	value: trimmedStringMinMax(1, 255, 'errors.contactMethod.value.length'),
+}).superRefine((data, ctx) => {
+	// Validate value format based on channel
+	if (data.channel === 'email') {
+		const result = emailValidator.safeParse(data.value)
+		if (!result.success) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: 'errors.contactMethod.value.invalidEmail',
+				path: ['value'],
+			})
+		}
+	} else if (data.channel === 'phone') {
+		const result = phoneValidator.safeParse(data.value)
+		if (!result.success) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: 'errors.contactMethod.value.invalidPhone',
+				path: ['value'],
+			})
+		}
+	}
+
+	// Validate subType is appropriate for the channel
+	if (data.subType) {
+		const validSubTypes = VALID_SUBTYPES_BY_CHANNEL[data.channel]
+		if (validSubTypes && !validSubTypes.includes(data.subType)) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: `errors.contactMethod.subType.invalidForChannel`,
+				path: ['subType'],
+			})
+		}
+	}
+})
+
+/**
+ * Base schema for update input (without superRefine validation).
+ * @internal
+ */
+const UpdateContactMethodInputBase = ContactMethodBaseSchema.omit({
+	id: true,
+	created: true,
+	lastModified: true,
+	modifiedBy: true,
+	agentId: true,
+}).extend({
+	name: trimmedStringMinMax(1, 255, 'errors.contactMethod.name.length').optional(),
+	value: trimmedStringMinMax(1, 255, 'errors.contactMethod.value.length').optional(),
+	channel: ContactMethodChannelSchema.optional(),
+	subType: ContactMethodSubTypeSchema.optional(),
+	isPrimary: z.boolean().optional(),
+	smsOptIn: z.boolean().optional(),
 })
 
 /**
  * Input schema for updating an existing ContactMethod.
+ * For partial updates, validation only occurs when both channel and value/subType are present.
+ * Full validation should be performed at the service layer after merging with existing data.
  * @public
  */
-export const UpdateContactMethodInput = ContactMethodBaseSchema.partial().required({
-	id: true,
+export const UpdateContactMethodInput = UpdateContactMethodInputBase.superRefine((data, ctx) => {
+	// Only validate value format if both channel and value are provided
+	if (data.channel && data.value) {
+		if (data.channel === 'email') {
+			const result = emailValidator.safeParse(data.value)
+			if (!result.success) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: 'errors.contactMethod.value.invalidEmail',
+					path: ['value'],
+				})
+			}
+		} else if (data.channel === 'phone') {
+			const result = phoneValidator.safeParse(data.value)
+			if (!result.success) {
+				ctx.addIssue({
+					code: z.ZodIssueCode.custom,
+					message: 'errors.contactMethod.value.invalidPhone',
+					path: ['value'],
+				})
+			}
+		}
+	}
+
+	// Only validate subType if both channel and subType are provided
+	if (data.channel && data.subType) {
+		const validSubTypes = VALID_SUBTYPES_BY_CHANNEL[data.channel]
+		if (validSubTypes && !validSubTypes.includes(data.subType)) {
+			ctx.addIssue({
+				code: z.ZodIssueCode.custom,
+				message: `errors.contactMethod.subType.invalidForChannel`,
+				path: ['subType'],
+			})
+		}
+	}
 })
 
 /**
@@ -139,3 +261,21 @@ export type CreateContactMethodInputType = z.infer<typeof CreateContactMethodInp
  * @public
  */
 export type UpdateContactMethodInputType = z.infer<typeof UpdateContactMethodInput>
+
+/**
+ * Schema for contact method ID path parameter.
+ * @public
+ */
+export const ContactMethodIdParamSchema = z.object({
+	/**
+	 * Contact method ID (BigInt as string from legacy system).
+	 * @public
+	 */
+	id: z.string().regex(/^\d+$/, { message: 'errors.contactMethod.id.invalid' }),
+})
+
+/**
+ * TypeScript type for contact method ID parameter.
+ * @public
+ */
+export type ContactMethodIdParam = z.infer<typeof ContactMethodIdParamSchema>

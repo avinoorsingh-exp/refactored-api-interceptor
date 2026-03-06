@@ -1,4 +1,3 @@
-// packages/@trupryce/shared-domain/src/query/schemas/index.ts
 
 // Export all schemas
 export {
@@ -26,6 +25,15 @@ export {
   NormalizedQueryParamsSchema,
 } from './query-params.schema.js';
 
+export {
+  CursorPaginationSchema,
+  CursorPaginationResponseSchema,
+} from './cursor-filter.schema.js';
+
+export type {
+  ProjectionConfig,  FieldSelection,
+} from './field-selection.schema.js';
+
 // Export all types
 export type {
   FilterOperator,
@@ -48,3 +56,9 @@ export type {
   QueryParams,
   NormalizedQueryParams,
 } from './query-params.schema.js';
+
+export type {
+  CursorPagination,
+  CursorPaginationResponse,
+  CursorPageResult,
+} from './cursor-filter.schema.js';

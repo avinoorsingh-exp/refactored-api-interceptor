@@ -54,15 +54,42 @@ export class SwaggerProxyController {
         body: req.body,
       })
 
-      // Copy response headers
+      // CRITICAL: Normalize response headers before forwarding
+      // Since axios buffers the entire response (responseType: 'json'),
+      // we are NOT streaming. Therefore:
+      // - Remove Transfer-Encoding (we're not chunking)
+      // - Remove Content-Length (Express will set it correctly based on serialized data)
+      // This ensures only ONE framing mechanism is used
+      const normalizedHeaders: Record<string, string> = {}
       if (response.headers) {
         Object.entries(response.headers).forEach(([key, value]) => {
-          res.setHeader(key, value)
+          if (value === undefined) {
+            return
+          }
+          
+          const lowerKey = key.toLowerCase()
+          
+          // Skip framing headers - Express will set them correctly
+          if (lowerKey === 'transfer-encoding' || lowerKey === 'content-length') {
+            return
+          }
+          
+          // Forward all other headers
+          normalizedHeaders[key] = String(value)
         })
       }
 
+      // Set response status
+      res.status(response.status)
+      
+      // Forward normalized headers (excluding framing headers)
+      Object.entries(normalizedHeaders).forEach(([key, value]) => {
+        res.setHeader(key, value)
+      })
+
       // Send response
-      res.status(response.status).send(response.data)
+      // Express will automatically set Content-Length based on serialized data size
+      res.send(response.data)
     } catch (error) {
       if (isAxiosError(error)) {
         this.logger.error('Swagger proxy error', {

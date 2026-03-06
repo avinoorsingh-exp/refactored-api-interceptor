@@ -1,8 +1,528 @@
 import { http, HttpResponse } from 'msw'
 import { setupServer } from 'msw/node'
-import { EcsHttpClient, ServiceCtx } from './ecs-http-client.js'
+import { EcsHttpClient, ServiceCtx, UpstreamHttpError } from './ecs-http-client.js'
 import { LoggerService } from '../core/logger.service.js'
 import { AsyncContextStorage, CorrelationIdHelper, CORRELATION_ID_HEADER } from '@exprealty/cache'
+import { AxiosError } from 'axios'
+import { ProblemTypes } from '@exprealty/shared-domain'
+
+describe('EcsHttpClient - Unit Tests', () => {
+  let client: EcsHttpClient
+  let mockLogger: jest.Mocked<LoggerService>
+  let mockMetrics: { recordHttpRequest: jest.Mock }
+  let capturedLogs: Array<{ level: string; message: string; meta?: Record<string, unknown> }>
+  let capturedHeaders: Record<string, string> = {}
+  const baseURL = 'http://test-service.local'
+  const ctx: ServiceCtx = { service: 'test-service' }
+
+  const server = setupServer()
+
+  beforeEach(() => {
+    capturedLogs = []
+    capturedHeaders = {}
+    mockMetrics = {
+      recordHttpRequest: jest.fn(),
+    }
+    mockLogger = {
+      info: jest.fn((message: string, meta?: Record<string, unknown>) => {
+        capturedLogs.push({ level: 'info', message, meta })
+      }),
+      error: jest.fn((message: string, meta?: Record<string, unknown>) => {
+        capturedLogs.push({ level: 'error', message, meta })
+      }),
+      warn: jest.fn(),
+      debug: jest.fn(),
+      getMetrics: jest.fn(() => mockMetrics),
+    } as unknown as jest.Mocked<LoggerService>
+
+    client = new EcsHttpClient(mockLogger, ctx, { baseURL })
+    server.listen({ onUnhandledRequest: 'error' })
+  })
+
+  afterEach(() => {
+    server.resetHandlers()
+    server.close()
+    jest.clearAllMocks()
+  })
+
+  function setupMockEndpoint(
+    path: string,
+    method: 'get' | 'post' | 'put' | 'patch' | 'delete' = 'get',
+    responseData: any = { success: true },
+    statusCode: number = 200
+  ): void {
+    server.use(
+      http[method](`${baseURL}${path}`, ({ request }) => {
+        capturedHeaders = {}
+        request.headers.forEach((value, key) => {
+          capturedHeaders[key] = value
+        })
+        // For 204 No Content, return empty body
+        if (statusCode === 204) {
+          return new HttpResponse(null, { status: 204 })
+        }
+        return HttpResponse.json(responseData, { status: statusCode })
+      })
+    )
+  }
+
+  describe('Constructor and Configuration', () => {
+    it('should create client with default timeout', () => {
+      const defaultClient = new EcsHttpClient(mockLogger, ctx, { baseURL })
+      expect(defaultClient.instance).toBeDefined()
+    })
+
+    it('should create client with custom timeout', () => {
+      const customClient = new EcsHttpClient(mockLogger, ctx, { baseURL, timeout: 5000 })
+      expect(customClient.instance).toBeDefined()
+    })
+
+    it('should create client with capability header', async () => {
+      const ctxWithCapability: ServiceCtx = { service: 'test-service', capability: 'agent.search' }
+      const capabilityClient = new EcsHttpClient(mockLogger, ctxWithCapability, { baseURL })
+      setupMockEndpoint('/test')
+
+      await capabilityClient.get('/test')
+
+      expect(capturedHeaders['x-capability']).toBe('agent.search')
+    })
+
+    it('should create client without capability header when not provided', async () => {
+      setupMockEndpoint('/test')
+      await client.get('/test')
+
+      expect(capturedHeaders['x-capability']).toBeUndefined()
+    })
+  })
+
+  describe('Success Scenarios', () => {
+    it('should handle successful GET request', async () => {
+      setupMockEndpoint('/test', 'get', { data: 'success' }, 200)
+      const result = await client.get('/test')
+
+      expect(result).toEqual({ data: 'success' })
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        'Internal service call succeeded',
+        expect.objectContaining({
+          service: 'test-service',
+          endpoint: '/test',
+          method: 'GET',
+          status: 200,
+        })
+      )
+    })
+
+    it('should handle successful DELETE request with 204 No Content', async () => {
+      setupMockEndpoint('/delete', 'delete', null, 204)
+      const result = await client.delete('/delete')
+
+      // 204 responses have empty body, so result is empty string
+      expect(result).toBe('')
+    })
+  })
+
+  describe('Error Handling - Service Unavailable (Line 84 branch)', () => {
+    it('should handle ENOTFOUND error and set type to ServiceUnavailable', async () => {
+      // Create AxiosError with ENOTFOUND code
+      const enotfoundError = new AxiosError('getaddrinfo ENOTFOUND')
+      enotfoundError.code = 'ENOTFOUND'
+      enotfoundError.config = {
+        url: '/test',
+        method: 'GET',
+        baseURL,
+      } as any
+
+      // Mock axios.create to return an instance that rejects with the error
+      const mockAxiosInstance = {
+        interceptors: {
+          request: { use: jest.fn() },
+          response: { use: jest.fn() },
+        },
+        request: jest.fn().mockRejectedValue(enotfoundError),
+      }
+      const axiosCreateSpy = jest.spyOn(require('axios'), 'create').mockReturnValue(mockAxiosInstance as any)
+
+      // Create a new client with the mocked axios instance
+      const testClient = new EcsHttpClient(mockLogger, ctx, { baseURL })
+      
+      // Get the error handler from the interceptor
+      const errorHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][1]
+
+      try {
+        // Call the error handler directly with the error
+        await errorHandler(enotfoundError)
+        fail('Expected error')
+      } catch (err) {
+        const axiosErr = err as AxiosError & { upstreamProblem?: any }
+        expect(axiosErr.upstreamProblem).toBeDefined()
+        expect(axiosErr.upstreamProblem.type).toBe(ProblemTypes.ServiceUnavailable)
+        expect(axiosErr.upstreamProblem.status).toBe(503)
+        expect(axiosErr.upstreamProblem.title).toBe('Service Unavailable')
+      }
+
+      axiosCreateSpy.mockRestore()
+    })
+
+    it('should handle ECONNREFUSED error and set type to ServiceUnavailable', async () => {
+      // Create AxiosError with ECONNREFUSED code
+      const refusedError = new AxiosError('connect ECONNREFUSED')
+      refusedError.code = 'ECONNREFUSED'
+      refusedError.config = {
+        url: '/test',
+        method: 'GET',
+        baseURL,
+      } as any
+
+      // Mock axios.create to return an instance that rejects with the error
+      const mockAxiosInstance = {
+        interceptors: {
+          request: { use: jest.fn() },
+          response: { use: jest.fn() },
+        },
+        request: jest.fn().mockRejectedValue(refusedError),
+      }
+      const axiosCreateSpy = jest.spyOn(require('axios'), 'create').mockReturnValue(mockAxiosInstance as any)
+
+      // Create a new client with the mocked axios instance
+      const testClient = new EcsHttpClient(mockLogger, ctx, { baseURL })
+      
+      // Get the error handler from the interceptor
+      const errorHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][1]
+
+      try {
+        // Call the error handler directly with the error
+        await errorHandler(refusedError)
+        fail('Expected error')
+      } catch (err) {
+        const axiosErr = err as AxiosError & { upstreamProblem?: any }
+        expect(axiosErr.upstreamProblem).toBeDefined()
+        expect(axiosErr.upstreamProblem.type).toBe(ProblemTypes.ServiceUnavailable)
+        expect(axiosErr.upstreamProblem.status).toBe(503)
+        expect(axiosErr.upstreamProblem.title).toBe('Service Unavailable')
+      }
+
+      axiosCreateSpy.mockRestore()
+    })
+
+    it('should handle EAI_AGAIN error and set type to ServiceUnavailable', async () => {
+      // Create AxiosError with EAI_AGAIN code
+      const againError = new AxiosError('getaddrinfo EAI_AGAIN')
+      againError.code = 'EAI_AGAIN'
+      againError.config = {
+        url: '/test',
+        method: 'GET',
+        baseURL,
+      } as any
+
+      // Mock axios.create to return an instance that rejects with the error
+      const mockAxiosInstance = {
+        interceptors: {
+          request: { use: jest.fn() },
+          response: { use: jest.fn() },
+        },
+        request: jest.fn().mockRejectedValue(againError),
+      }
+      const axiosCreateSpy = jest.spyOn(require('axios'), 'create').mockReturnValue(mockAxiosInstance as any)
+
+      // Create a new client with the mocked axios instance
+      const testClient = new EcsHttpClient(mockLogger, ctx, { baseURL })
+      
+      // Get the error handler from the interceptor
+      const errorHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][1]
+
+      try {
+        // Call the error handler directly with the error
+        await errorHandler(againError)
+        fail('Expected error')
+      } catch (err) {
+        const axiosErr = err as AxiosError & { upstreamProblem?: any }
+        expect(axiosErr.upstreamProblem).toBeDefined()
+        expect(axiosErr.upstreamProblem.type).toBe(ProblemTypes.ServiceUnavailable)
+        expect(axiosErr.upstreamProblem.status).toBe(503)
+        expect(axiosErr.upstreamProblem.title).toBe('Service Unavailable')
+      }
+
+      axiosCreateSpy.mockRestore()
+    })
+
+    it('should handle 503 Service Unavailable response (Line 101 branch)', async () => {
+      server.use(
+        http.get(`${baseURL}/service-unavailable`, () => {
+          return HttpResponse.json({ error: 'Service Unavailable' }, { status: 503 })
+        })
+      )
+
+      try {
+        await client.get('/service-unavailable')
+        fail('Expected error')
+      } catch (err) {
+        const axiosErr = err as AxiosError & { upstreamProblem?: any }
+        expect(axiosErr.upstreamProblem).toBeDefined()
+        expect(axiosErr.upstreamProblem.status).toBe(503)
+        expect(axiosErr.upstreamProblem.title).toBe('Service Unavailable')
+      }
+    })
+  })
+
+  describe('Error Handling - Problem Details Detail Extraction (Line 92 branch)', () => {
+    it('should extract detail from Problem Details when detail is a string', async () => {
+      const problemDetails = {
+        type: ProblemTypes.Validation,
+        status: 400,
+        title: 'Validation Error',
+        detail: 'Invalid input data', // String detail
+      }
+
+      server.use(
+        http.post(`${baseURL}/validation`, () => {
+          return HttpResponse.json(problemDetails, { status: 400 })
+        })
+      )
+
+      try {
+        await client.post('/validation', {})
+        fail('Expected error')
+      } catch (err) {
+        const axiosErr = err as AxiosError & { upstreamProblem?: any }
+        expect(axiosErr.upstreamProblem).toBeDefined()
+        expect(axiosErr.upstreamProblem.detail).toBe('Invalid input data')
+      }
+    })
+
+    it('should use error message when Problem Details detail is not a string', async () => {
+      const problemDetails = {
+        type: ProblemTypes.Validation,
+        status: 400,
+        title: 'Validation Error',
+        detail: { nested: 'object' }, // Not a string
+      }
+
+      server.use(
+        http.post(`${baseURL}/validation-nonstring`, () => {
+          return HttpResponse.json(problemDetails, { status: 400 })
+        })
+      )
+
+      try {
+        await client.post('/validation-nonstring', {})
+        fail('Expected error')
+      } catch (err) {
+        const axiosErr = err as AxiosError & { upstreamProblem?: any }
+        expect(axiosErr.upstreamProblem).toBeDefined()
+        // When detail is not a string, it uses the error message
+        expect(axiosErr.upstreamProblem.detail).toBeDefined()
+        expect(axiosErr.upstreamProblem.detail).not.toBe('Invalid input data')
+      }
+    })
+  })
+
+  describe('Error Handling - Gateway Timeout (Line 101 branch)', () => {
+    it('should handle 504 Gateway Timeout error', async () => {
+      server.use(
+        http.get(`${baseURL}/gateway-timeout`, () => {
+          return HttpResponse.json({ error: 'Gateway Timeout' }, { status: 504 })
+        })
+      )
+
+      try {
+        await client.get('/gateway-timeout')
+        fail('Expected error')
+      } catch (err) {
+        const axiosErr = err as AxiosError & { upstreamProblem?: any }
+        expect(axiosErr.upstreamProblem).toBeDefined()
+        expect(axiosErr.upstreamProblem.status).toBe(504)
+        expect(axiosErr.upstreamProblem.title).toBe('Gateway Timeout')
+      }
+    })
+  })
+
+  describe('Error Handling - Non-Axios Errors (Lines 218-234)', () => {
+    it('should handle Error instance (line 218 branch)', async () => {
+      // Mock axios.create to throw a non-Axios error
+      const originalCreate = require('axios').create
+      const mockAxiosInstance = {
+        interceptors: {
+          request: { use: jest.fn() },
+          response: { use: jest.fn() },
+        },
+        request: jest.fn().mockRejectedValue(new Error('Generic error occurred')),
+      }
+
+      jest.spyOn(require('axios'), 'create').mockReturnValue(mockAxiosInstance)
+
+      const testClient = new EcsHttpClient(mockLogger, ctx, { baseURL })
+      
+      // Manually trigger the error handler by calling the interceptor
+      const errorHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][1]
+      
+      try {
+        await errorHandler(new Error('Generic error occurred'))
+        fail('Expected UpstreamHttpError')
+      } catch (err) {
+        expect(err).toBeInstanceOf(UpstreamHttpError)
+        const upstreamErr = err as UpstreamHttpError
+        expect(upstreamErr.status).toBe(502)
+        expect(upstreamErr.problem.type).toBe(ProblemTypes.Upstream)
+        expect(upstreamErr.problem.title).toBe('Internal Service Error')
+        expect(upstreamErr.problem.detail).toBe('Generic error occurred')
+        expect(upstreamErr.cause).toBeInstanceOf(Error)
+      }
+
+      jest.restoreAllMocks()
+    })
+
+    it('should handle non-Error object (line 218 branch)', async () => {
+      const originalCreate = require('axios').create
+      const mockAxiosInstance = {
+        interceptors: {
+          request: { use: jest.fn() },
+          response: { use: jest.fn() },
+        },
+        request: jest.fn().mockRejectedValue({ message: 'Not an Error instance' }),
+      }
+
+      jest.spyOn(require('axios'), 'create').mockReturnValue(mockAxiosInstance)
+
+      const testClient = new EcsHttpClient(mockLogger, ctx, { baseURL })
+      const errorHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][1]
+      
+      try {
+        await errorHandler({ message: 'Not an Error instance' })
+        fail('Expected UpstreamHttpError')
+      } catch (err) {
+        expect(err).toBeInstanceOf(UpstreamHttpError)
+        const upstreamErr = err as UpstreamHttpError
+        expect(upstreamErr.problem.detail).toBe('[object Object]')
+      }
+
+      jest.restoreAllMocks()
+    })
+
+    it('should handle string error', async () => {
+      const originalCreate = require('axios').create
+      const mockAxiosInstance = {
+        interceptors: {
+          request: { use: jest.fn() },
+          response: { use: jest.fn() },
+        },
+        request: jest.fn().mockRejectedValue('String error'),
+      }
+
+      jest.spyOn(require('axios'), 'create').mockReturnValue(mockAxiosInstance)
+
+      const testClient = new EcsHttpClient(mockLogger, ctx, { baseURL })
+      const errorHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][1]
+      
+      try {
+        await errorHandler('String error')
+        fail('Expected UpstreamHttpError')
+      } catch (err) {
+        expect(err).toBeInstanceOf(UpstreamHttpError)
+        const upstreamErr = err as UpstreamHttpError
+        expect(upstreamErr.problem.detail).toBe('String error')
+      }
+
+      jest.restoreAllMocks()
+    })
+
+    it('should handle null error', async () => {
+      const originalCreate = require('axios').create
+      const mockAxiosInstance = {
+        interceptors: {
+          request: { use: jest.fn() },
+          response: { use: jest.fn() },
+        },
+        request: jest.fn().mockRejectedValue(null),
+      }
+
+      jest.spyOn(require('axios'), 'create').mockReturnValue(mockAxiosInstance)
+
+      const testClient = new EcsHttpClient(mockLogger, ctx, { baseURL })
+      const errorHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][1]
+      
+      try {
+        await errorHandler(null)
+        fail('Expected UpstreamHttpError')
+      } catch (err) {
+        expect(err).toBeInstanceOf(UpstreamHttpError)
+        const upstreamErr = err as UpstreamHttpError
+        expect(upstreamErr.problem.detail).toBe('null')
+      }
+
+      jest.restoreAllMocks()
+    })
+
+    it('should handle undefined error', async () => {
+      const originalCreate = require('axios').create
+      const mockAxiosInstance = {
+        interceptors: {
+          request: { use: jest.fn() },
+          response: { use: jest.fn() },
+        },
+        request: jest.fn().mockRejectedValue(undefined),
+      }
+
+      jest.spyOn(require('axios'), 'create').mockReturnValue(mockAxiosInstance)
+
+      const testClient = new EcsHttpClient(mockLogger, ctx, { baseURL })
+      const errorHandler = mockAxiosInstance.interceptors.response.use.mock.calls[0][1]
+      
+      try {
+        await errorHandler(undefined)
+        fail('Expected UpstreamHttpError')
+      } catch (err) {
+        expect(err).toBeInstanceOf(UpstreamHttpError)
+        const upstreamErr = err as UpstreamHttpError
+        expect(upstreamErr.problem.detail).toBe('undefined')
+      }
+
+      jest.restoreAllMocks()
+    })
+  })
+
+  describe('Error Handling - Additional Branches', () => {
+    it('should handle 502 Bad Gateway error', async () => {
+      server.use(
+        http.get(`${baseURL}/badgateway`, () => {
+          return HttpResponse.json({ error: 'Bad Gateway' }, { status: 502 })
+        })
+      )
+
+      try {
+        await client.get('/badgateway')
+        fail('Expected error')
+      } catch (err) {
+        const axiosErr = err as AxiosError & { upstreamProblem?: any }
+        expect(axiosErr.upstreamProblem).toBeDefined()
+        expect(axiosErr.upstreamProblem.type).toBe(ProblemTypes.BadGateway)
+        expect(axiosErr.upstreamProblem.status).toBe(502)
+        expect(axiosErr.upstreamProblem.title).toBe('Bad Gateway')
+      }
+    })
+
+    it('should handle timeout error (ECONNABORTED)', async () => {
+      const timeoutClient = new EcsHttpClient(mockLogger, ctx, { baseURL, timeout: 1 })
+
+      server.use(
+        http.get(`${baseURL}/timeout`, async () => {
+          await new Promise((resolve) => setTimeout(resolve, 100))
+          return HttpResponse.json({ data: 'timeout' })
+        })
+      )
+
+      try {
+        await timeoutClient.get('/timeout')
+        fail('Expected timeout error')
+      } catch (err) {
+        const axiosErr = err as AxiosError & { upstreamProblem?: any }
+        expect(axiosErr.upstreamProblem).toBeDefined()
+        expect(axiosErr.upstreamProblem.type).toBe(ProblemTypes.Timeout)
+        expect(axiosErr.upstreamProblem.status).toBe(504)
+        expect(axiosErr.upstreamProblem.title).toBe('Gateway Timeout')
+      }
+    })
+  })
+})
 
 /**
  * Integration tests for EcsHttpClient correlation ID propagation

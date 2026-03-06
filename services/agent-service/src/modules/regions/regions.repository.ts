@@ -48,12 +48,12 @@ export class RegionsTypeOrmRepository implements IRegionsRepository {
     // Build query with TypeORM query builder
     const qb = this.repo.createQueryBuilder('region');
 
-    // Apply filters, search, and sorting
-    this.queryService.applyAll(qb, normalized, 'region');
+    // Apply filters, search, and sorting with strategy-based search for numeric fields
+    this.queryService.applyAllWithStrategies(qb, normalized, RegionEntity, 'region');
 
     // Default sort by name ASC if no sort specified (AC-2)
     if (!normalized.sort || normalized.sort.conditions.length === 0) {
-      qb.orderBy('region.name', 'ASC');
+      qb.orderBy('region.id', 'ASC');
     }
 
     // Apply pagination

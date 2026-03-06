@@ -1,8 +1,12 @@
 import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn } from 'typeorm'
-import { PaymentSettingsEntity } from './payment-settings.entity.js'
+import type { PaymentSettingsEntity } from './payment-settings.entity.js'
 
 /**
  * TypeORM entity for PaymentSettingsVariant table.
+ * 
+ * Uses STRING REFERENCES for @ManyToOne to avoid cascading entity registration.
+ * See PaymentSettingsEntity for detailed explanation.
+ * 
  * @public
  */
 @Entity({ name: 'payment_settings_variant', schema: 'core' })
@@ -31,7 +35,7 @@ export class PaymentSettingsVariantEntity {
 	@Column({ name: 'last_modified', type: 'timestamp with time zone' })
 	lastModified!: Date
 
-	@ManyToOne(() => PaymentSettingsEntity)
+	@ManyToOne('PaymentSettingsEntity')
 	@JoinColumn({ name: 'payment_settings' })
 	paymentSettings?: PaymentSettingsEntity
 

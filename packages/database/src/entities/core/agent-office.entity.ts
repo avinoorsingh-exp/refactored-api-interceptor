@@ -18,7 +18,7 @@ export class AgentOfficeEntity {
 	@Column({ name: 'agent_id', type: 'uuid' })
 	agentId!: string
 
-	@Column({ name: 'office_id', type: 'uuid' })
+	@Column({ name: 'office_id', type: 'bigint' })
 	officeId!: string
 
 	@ManyToOne(() => AgentEntity)

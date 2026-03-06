@@ -11,7 +11,7 @@ export class OfficeAddressEntity {
 	@PrimaryColumn({ name: 'office_id', type: 'bigint' })
 	officeId!: string
 
-	@PrimaryColumn({ name: 'address_id', type: 'uuid' })
+	@PrimaryColumn({ name: 'address_id', type: 'bigint' })
 	addressId!: string
 
 	@ManyToOne(() => OfficeEntity)

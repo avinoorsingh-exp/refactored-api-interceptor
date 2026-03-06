@@ -5,7 +5,6 @@ import { RegionsController } from './regions.controller.js'
 import { RegionsService } from './regions.service.js'
 import { RegionsTypeOrmRepository } from './regions.repository.js'
 import { PaginationModule } from '../../common/pagination/pagination.module.js'
-import { QueryService } from '../../common/query/query.service.js'
 
 /**
  * Module for Region aggregate.
@@ -13,13 +12,14 @@ import { QueryService } from '../../common/query/query.service.js'
  * - RegionsService depends on IRegionsRepository PORT
  * - RegionsTypeOrmRepository is the ADAPTER (infrastructure)
  * - This module wires them together via dependency injection
+ * 
+ * Note: QueryService is provided by QueryModule (imported globally in AppModule)
  */
 @Module({
 	imports: [TypeOrmModule.forFeature([RegionEntity]), PaginationModule],
 	controllers: [RegionsController],
 	providers: [
 		RegionsService,
-		QueryService,
 		// Provide the repository adapter under the port token
 		{
 			provide: 'IRegionsRepository',

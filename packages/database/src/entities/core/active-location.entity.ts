@@ -10,7 +10,11 @@ export class ActiveLocationEntity {
 	@PrimaryColumn({ name: 'name', type: 'text' })
 	name!: string
 
-	@PrimaryColumn({ name: 'agent_id', type: 'bigint' })
+	/**
+	 * Foreign key to Agent (UUID).
+	 * @public
+	 */
+	@PrimaryColumn({ name: 'agent_id', type: 'uuid' })
 	agentId!: string
 
 	@Column({ name: 'postal_code', type: 'text' })
@@ -22,6 +26,10 @@ export class ActiveLocationEntity {
 	@Column({ name: 'is_primary', type: 'boolean' })
 	isPrimary!: boolean
 
+	/**
+	 * Many-to-One relationship with Agent.
+	 * @public
+	 */
 	@ManyToOne(() => AgentEntity)
 	@JoinColumn({ name: 'agent_id' })
 	agent?: AgentEntity

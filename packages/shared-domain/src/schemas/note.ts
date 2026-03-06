@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { InstantUTC } from '../value-objects/dates.js'
+import { FullAuditableSchema } from './audit.js'
 
 /**
  * Base schema for Note entity.
@@ -9,10 +9,9 @@ import { InstantUTC } from '../value-objects/dates.js'
 export const NoteBaseSchema = z
 	.object({
 		id: z.string().uuid(),
-		actor: z.string().min(1).max(255),
 		body: z.string(),
-		date: InstantUTC,
 	})
+	.merge(FullAuditableSchema)
 	.describe('Base Note')
 
 /**
@@ -44,7 +43,12 @@ export type Note = NoteExpanded
  *
  * @public
  */
-export const CreateNoteInputSchema = NoteBaseSchema.omit({ id: true })
+export const CreateNoteInputSchema = NoteBaseSchema.omit({
+	id: true,
+	created: true,
+	lastModified: true,
+	modifiedBy: true,
+})
 
 /**
  * @public
@@ -56,7 +60,12 @@ export type CreateNoteInput = z.infer<typeof CreateNoteInputSchema>
  *
  * @public
  */
-export const UpdateNoteInputSchema = NoteBaseSchema.omit({ id: true }).partial()
+export const UpdateNoteInputSchema = NoteBaseSchema.omit({
+	id: true,
+	created: true,
+	lastModified: true,
+	modifiedBy: true,
+}).partial()
 
 /**
  * @public

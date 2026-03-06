@@ -84,21 +84,35 @@ export function loadEnv(options: EnvLoadOptions = {}) {
 		maybeLoad(path.join(serviceDir, filename))
 	}
 
-	// 3) explicit extra file (e.g., ".env.agent")
+	// 3) explicit extra file (e.g., ".env.agentservice")
+	// Load .local version first (higher precedence for local debugging)
+	// e.g., .env.agentservice.local takes precedence over .env.agentservice
 	if (options.extraEnvFile) {
 		const explicitPath = path.isAbsolute(options.extraEnvFile)
 			? options.extraEnvFile
-			: path.join(repoRoot, options.extraEnvFile)
+			: path.join(serviceDir, options.extraEnvFile)
+
+		// Load .local version first (for local debugging - has higher precedence)
+		maybeLoad(`${explicitPath}.local`)
+		// Then load the standard file (for Docker/production defaults)
 		maybeLoad(explicitPath)
 	}
 }
 
 /** Base schema shared by all services */
 export const BaseConfig = z.object({
-	NODE_ENV: z.enum(['local', 'dev', 'test', 'prod']).default('local'),
+	NODE_ENV: z.enum(['local', 'dev', 'test', 'accp', 'prod']).default('local'),
 	LOG_LEVEL: z.string().default('info'),
 	LOG_DIR: z.string().default('./logs'),
 	AWS_REGION: z.string().default('us-east-1'),
+})
+
+/** Encryption config — services opt in by merging into their ConfigSchema */
+export const EncryptionEnvSchema = z.object({
+	KMS_KEY_ARN: z.string().min(1).optional(),
+	KMS_KEY_REGION: z.string().default('us-east-1'),
+	KMS_CACHE_TTL_SECONDS: z.coerce.number().positive().optional(),
+	KMS_CACHE_MAX_MESSAGES: z.coerce.number().positive().default(100),
 })
 
 /**

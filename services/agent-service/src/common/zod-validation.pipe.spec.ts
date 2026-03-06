@@ -3,6 +3,80 @@ import { z } from 'zod'
 import { ZodValidationPipe } from './zod-validation.pipe.js'
 
 describe('ZodValidationPipe', () => {
+	describe('valid input passthrough', () => {
+		it('should pass through valid primitive values unchanged', () => {
+			const schema = z.object({
+				name: z.string(),
+				count: z.number(),
+				active: z.boolean(),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+			const input = { name: 'Test', count: 42, active: true }
+
+			const result = pipe.transform(input)
+
+			expect(result).toEqual(input)
+		})
+
+		it('should pass through valid nested objects unchanged', () => {
+			const schema = z.object({
+				user: z.object({
+					name: z.string(),
+					email: z.string().email(),
+				}),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+			const input = { user: { name: 'John', email: 'john@example.com' } }
+
+			const result = pipe.transform(input)
+
+			expect(result).toEqual(input)
+		})
+
+		it('should pass through valid arrays unchanged', () => {
+			const schema = z.object({
+				tags: z.array(z.string()),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+			const input = { tags: ['a', 'b', 'c'] }
+
+			const result = pipe.transform(input)
+
+			expect(result).toEqual(input)
+		})
+
+		it('should pass through valid optional fields', () => {
+			const schema = z.object({
+				name: z.string(),
+				description: z.string().optional(),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+			const input = { name: 'Test' }
+
+			const result = pipe.transform(input)
+
+			expect(result).toEqual(input)
+		})
+
+		it('should apply default values for missing optional fields with defaults', () => {
+			const schema = z.object({
+				name: z.string(),
+				count: z.number().default(0),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+			const input = { name: 'Test' }
+
+			const result = pipe.transform(input)
+
+			expect(result).toEqual({ name: 'Test', count: 0 })
+		})
+	})
+
 	describe('error message transformation', () => {
 		it('should transform "Expected number, received string" to i18n code', () => {
 			const schema = z.object({
@@ -16,7 +90,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['dialingCode'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.type.expected_number')
@@ -35,7 +109,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['name'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.required')
@@ -54,7 +128,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['code'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.string.max_length')
@@ -73,7 +147,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['email'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.string.invalid_email')
@@ -92,7 +166,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['age'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.number.too_small')
@@ -111,7 +185,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['alpha2'])
 				expect(response._zodIssues[0].message).toBe('errors.validation.string.invalid_format')
@@ -130,7 +204,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				expect(response._i18nType).toBe('agent.country.validation')
 			}
 		})
@@ -146,6 +220,176 @@ describe('ZodValidationPipe', () => {
 			const result = pipe.transform({ name: 'Test', dialingCode: 1 })
 
 			expect(result).toEqual({ name: 'Test', dialingCode: 1 })
+		})
+
+		it('should transform URL validation to i18n code', () => {
+			const schema = z.object({
+				website: z.string().url(),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+
+			try {
+				pipe.transform({ website: 'not-a-url' })
+				fail('Should have thrown BadRequestException')
+			} catch (error: any) {
+				expect(error).toBeInstanceOf(BadRequestException)
+				const response = error.getResponse()
+				expect(response._zodIssues).toBeDefined()
+				expect(response._zodIssues[0].path).toEqual(['website'])
+				expect(response._zodIssues[0].message).toBe('errors.validation.string.invalid_url')
+			}
+		})
+
+		it('should transform UUID validation to i18n code', () => {
+			const schema = z.object({
+				id: z.string().uuid(),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+
+			try {
+				pipe.transform({ id: 'not-a-uuid' })
+				fail('Should have thrown BadRequestException')
+			} catch (error: any) {
+				expect(error).toBeInstanceOf(BadRequestException)
+				const response = error.getResponse()
+				expect(response._zodIssues).toBeDefined()
+				expect(response._zodIssues[0].path).toEqual(['id'])
+				expect(response._zodIssues[0].message).toBe('errors.validation.string.invalid_uuid')
+			}
+		})
+
+		it('should transform enum validation to i18n code', () => {
+			const schema = z.object({
+				status: z.enum(['active', 'inactive', 'pending']),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+
+			try {
+				pipe.transform({ status: 'invalid' })
+				fail('Should have thrown BadRequestException')
+			} catch (error: any) {
+				expect(error).toBeInstanceOf(BadRequestException)
+				const response = error.getResponse()
+				expect(response._zodIssues).toBeDefined()
+				expect(response._zodIssues[0].path).toEqual(['status'])
+				expect(response._zodIssues[0].message).toBe('errors.validation.invalid_enum')
+			}
+		})
+
+		it('should transform number too large validation to i18n code', () => {
+			const schema = z.object({
+				percentage: z.number().max(100),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+
+			try {
+				pipe.transform({ percentage: 150 })
+				fail('Should have thrown BadRequestException')
+			} catch (error: any) {
+				expect(error).toBeInstanceOf(BadRequestException)
+				const response = error.getResponse()
+				expect(response._zodIssues).toBeDefined()
+				expect(response._zodIssues[0].path).toEqual(['percentage'])
+				expect(response._zodIssues[0].message).toBe('errors.validation.number.too_large')
+			}
+		})
+
+		it('should transform boolean type mismatch to i18n code', () => {
+			const schema = z.object({
+				active: z.boolean(),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+
+			try {
+				pipe.transform({ active: 'yes' })
+				fail('Should have thrown BadRequestException')
+			} catch (error: any) {
+				expect(error).toBeInstanceOf(BadRequestException)
+				const response = error.getResponse()
+				expect(response._zodIssues).toBeDefined()
+				expect(response._zodIssues[0].path).toEqual(['active'])
+				expect(response._zodIssues[0].message).toBe('errors.validation.type.expected_boolean')
+			}
+		})
+
+		it('should transform date validation to i18n code', () => {
+			const schema = z.object({
+				createdAt: z.coerce.date(),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+
+			try {
+				pipe.transform({ createdAt: 'not-a-date' })
+				fail('Should have thrown BadRequestException')
+			} catch (error: any) {
+				expect(error).toBeInstanceOf(BadRequestException)
+				const response = error.getResponse()
+				expect(response._zodIssues).toBeDefined()
+				expect(response._zodIssues[0].path).toEqual(['createdAt'])
+				expect(response._zodIssues[0].message).toBe('errors.validation.invalid_date')
+			}
+		})
+
+		it('should transform string min length validation to i18n code', () => {
+			const schema = z.object({
+				name: z.string().min(3),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+
+			try {
+				pipe.transform({ name: 'ab' })
+				fail('Should have thrown BadRequestException')
+			} catch (error: any) {
+				expect(error).toBeInstanceOf(BadRequestException)
+				const response = error.getResponse()
+				expect(response._zodIssues).toBeDefined()
+				expect(response._zodIssues[0].path).toEqual(['name'])
+				expect(response._zodIssues[0].message).toBe('errors.validation.string.min_length')
+			}
+		})
+
+		it('should transform array type mismatch to i18n code', () => {
+			const schema = z.object({
+				items: z.array(z.string()),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+
+			try {
+				pipe.transform({ items: 'not-an-array' })
+				fail('Should have thrown BadRequestException')
+			} catch (error: any) {
+				expect(error).toBeInstanceOf(BadRequestException)
+				const response = error.getResponse()
+				expect(response._zodIssues).toBeDefined()
+				expect(response._zodIssues[0].path).toEqual(['items'])
+				expect(response._zodIssues[0].message).toBe('errors.validation.type.expected_array')
+			}
+		})
+
+		it('should not include _i18nType when not provided', () => {
+			const schema = z.object({
+				name: z.string(),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+
+			try {
+				pipe.transform({})
+				fail('Should have thrown BadRequestException')
+			} catch (error: any) {
+				expect(error).toBeInstanceOf(BadRequestException)
+				const response = error.getResponse()
+				expect(response._zodIssues).toBeDefined()
+				expect(response._i18nType).toBeUndefined()
+			}
 		})
 	})
 
@@ -167,7 +411,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues.length).toBe(3)
@@ -197,7 +441,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				
 				// Should have _zodIssues array
 				expect(response._zodIssues).toBeDefined()
@@ -230,7 +474,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				
 				expect(response._zodIssues).toBeDefined()
 				expect(Array.isArray(response._zodIssues)).toBe(true)
@@ -259,7 +503,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				
 				expect(response._zodIssues).toBeDefined()
 				expect(response._i18nType).toBe('agent.country.validation')
@@ -286,7 +530,7 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues.length).toBe(2)
@@ -316,10 +560,58 @@ describe('ZodValidationPipe', () => {
 				fail('Should have thrown BadRequestException')
 			} catch (error: any) {
 				expect(error).toBeInstanceOf(BadRequestException)
-				const response = error.getResponse() as any
+				const response = error.getResponse()
 				
 				expect(response._zodIssues).toBeDefined()
 				expect(response._zodIssues[0].path).toEqual(['tags'])
+			}
+		})
+
+		it('should ensure all Zod issues have message property with fallbacks', () => {
+			const schema = z.object({
+				name: z.string().min(1),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+
+			try {
+				pipe.transform({ name: '' })
+				fail('Should have thrown BadRequestException')
+			} catch (error: any) {
+				expect(error).toBeInstanceOf(BadRequestException)
+				const response = error.getResponse()
+				
+				expect(response._zodIssues).toBeDefined()
+				expect(response._zodIssues.length).toBeGreaterThan(0)
+				
+				// All issues should have a message property
+				response._zodIssues.forEach((issue: any) => {
+					expect(issue.message).toBeDefined()
+					expect(typeof issue.message).toBe('string')
+					expect(issue.message.length).toBeGreaterThan(0)
+				})
+			}
+		})
+
+		it('should use code-based message when original message is missing', () => {
+			// Create a schema that might produce issues without messages
+			const schema = z.object({
+				value: z.string(),
+			})
+
+			const pipe = new ZodValidationPipe(schema)
+
+			try {
+				pipe.transform({ value: 123 })
+				fail('Should have thrown BadRequestException')
+			} catch (error: any) {
+				expect(error).toBeInstanceOf(BadRequestException)
+				const response = error.getResponse()
+				
+				expect(response._zodIssues).toBeDefined()
+				const issue = response._zodIssues[0]
+				expect(issue.message).toBeDefined()
+				expect(issue.message).toBe('errors.validation.type.expected_string')
 			}
 		})
 	})

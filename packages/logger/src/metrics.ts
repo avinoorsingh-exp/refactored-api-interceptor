@@ -11,7 +11,7 @@ export type ExporterProtocol = 'http' | 'grpc'
 export interface MetricsOptions {
   service: string
   version?: string
-  env?: 'local' | 'dev' | 'test' | 'prod'
+  env?: 'local' | 'dev' | 'test' | 'accp' | 'prod'
   
   // Generic exporter configuration
   exporterEndpoint?: string          // e.g., 'http://localhost:4318' or 'grpc://localhost:4317'
@@ -44,6 +44,12 @@ export class MetricsService {
   // Idempotency Metrics
   public readonly idempotencyHitsTotal: Counter
   public readonly idempotencyMissesTotal: Counter
+  
+  // Kafka Message Processing Metrics
+  public readonly kafkaProcessedCount: Counter
+  public readonly kafkaErrorCount: Counter
+  public readonly kafkaRetryCount: Counter
+  public readonly kafkaDeadLetterCount: Counter
 
   constructor(options: MetricsOptions) {
     const {
@@ -74,6 +80,10 @@ export class MetricsService {
       this.providerCallCost = this.meter.createCounter('noop')
       this.idempotencyHitsTotal = this.meter.createCounter('noop')
       this.idempotencyMissesTotal = this.meter.createCounter('noop')
+      this.kafkaProcessedCount = this.meter.createCounter('noop')
+      this.kafkaErrorCount = this.meter.createCounter('noop')
+      this.kafkaRetryCount = this.meter.createCounter('noop')
+      this.kafkaDeadLetterCount = this.meter.createCounter('noop')
       return
     }
 
@@ -196,6 +206,27 @@ export class MetricsService {
     this.idempotencyMissesTotal = this.meter.createCounter('app.idempotency.misses', {
       description: 'Total idempotency cache misses',
       unit: '{miss}',
+    })
+
+    // Kafka Message Processing Metrics
+    this.kafkaProcessedCount = this.meter.createCounter('kafka.message.processed', {
+      description: 'Total Kafka messages processed successfully',
+      unit: '{message}',
+    })
+
+    this.kafkaErrorCount = this.meter.createCounter('kafka.message.errors', {
+      description: 'Total Kafka message processing errors',
+      unit: '{error}',
+    })
+
+    this.kafkaRetryCount = this.meter.createCounter('kafka.message.retries', {
+      description: 'Total Kafka message retry attempts',
+      unit: '{retry}',
+    })
+
+    this.kafkaDeadLetterCount = this.meter.createCounter('kafka.message.dead_lettered', {
+      description: 'Total Kafka messages dead lettered',
+      unit: '{message}',
     })
   }
 
@@ -324,6 +355,69 @@ export class MetricsService {
     this.httpRequestsInFlight.add(-1, {
       'http.request.method': attributes.method,
       'url.path': attributes.route,
+    })
+  }
+
+  /**
+   * Record Kafka message processing metrics
+   */
+  recordKafkaMessageProcessed(attributes: {
+    topic: string
+    consumerGroup: string
+    serviceName: string
+  }) {
+    if (!this.enabled) return
+
+    this.kafkaProcessedCount.add(1, {
+      'kafka.topic': attributes.topic,
+      'kafka.consumer_group': attributes.consumerGroup,
+      'service.name': attributes.serviceName,
+    })
+  }
+
+  recordKafkaMessageError(attributes: {
+    topic: string
+    consumerGroup: string
+    serviceName: string
+    errorType?: string
+  }) {
+    if (!this.enabled) return
+
+    this.kafkaErrorCount.add(1, {
+      'kafka.topic': attributes.topic,
+      'kafka.consumer_group': attributes.consumerGroup,
+      'service.name': attributes.serviceName,
+      'error.type': attributes.errorType || 'unknown',
+    })
+  }
+
+  recordKafkaMessageRetry(attributes: {
+    topic: string
+    consumerGroup: string
+    serviceName: string
+    attemptNumber: number
+  }) {
+    if (!this.enabled) return
+
+    this.kafkaRetryCount.add(1, {
+      'kafka.topic': attributes.topic,
+      'kafka.consumer_group': attributes.consumerGroup,
+      'service.name': attributes.serviceName,
+      'kafka.retry.attempt': attributes.attemptNumber.toString(),
+    })
+  }
+
+  recordKafkaMessageDeadLettered(attributes: {
+    topic: string
+    consumerGroup: string
+    serviceName: string
+  }) {
+    if (!this.enabled) return
+
+    this.kafkaDeadLetterCount.add(1, {
+      'kafka.topic': attributes.topic,
+      'kafka.consumer_group': attributes.consumerGroup,
+      'service.name': attributes.serviceName,
     })
   }
 }

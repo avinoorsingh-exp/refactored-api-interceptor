@@ -12,8 +12,10 @@ COPY tsconfig.json ./
 COPY packages/config ./packages/config
 COPY packages/logger ./packages/logger
 COPY packages/cache ./packages/cache
+COPY packages/encryption ./packages/encryption
 COPY packages/database ./packages/database
 COPY packages/shared-domain ./packages/shared-domain
+COPY packages/api-monitoring ./packages/api-monitoring
 COPY services/agent-service ./services/agent-service
 
 # Install dependencies (allow build scripts to run, but skip husky)
@@ -30,10 +32,16 @@ RUN pnpm build
 WORKDIR /app/packages/cache
 RUN pnpm build
 
+WORKDIR /app/packages/encryption
+RUN pnpm build
+
 WORKDIR /app/packages/shared-domain
 RUN pnpm build
 
 WORKDIR /app/packages/database
+RUN pnpm build
+
+WORKDIR /app/packages/api-monitoring
 RUN pnpm build
 
 # Build agent-service
@@ -61,8 +69,10 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/config/package.json ./packages/config/
 COPY packages/logger/package.json ./packages/logger/
 COPY packages/cache/package.json ./packages/cache/
+COPY packages/encryption/package.json ./packages/encryption/
 COPY packages/database/package.json ./packages/database/
 COPY packages/shared-domain/package.json ./packages/shared-domain/
+COPY packages/api-monitoring/package.json ./packages/api-monitoring/
 COPY services/agent-service/package.json ./services/agent-service/
 
 # Install only production dependencies
@@ -73,8 +83,10 @@ RUN pnpm install --frozen-lockfile --prod --ignore-scripts
 COPY --from=builder /app/packages/config/dist ./packages/config/dist
 COPY --from=builder /app/packages/logger/dist ./packages/logger/dist
 COPY --from=builder /app/packages/cache/dist ./packages/cache/dist
+COPY --from=builder /app/packages/encryption/dist ./packages/encryption/dist
 COPY --from=builder /app/packages/database/dist ./packages/database/dist
 COPY --from=builder /app/packages/shared-domain/dist ./packages/shared-domain/dist
+COPY --from=builder /app/packages/api-monitoring/dist ./packages/api-monitoring/dist
 COPY --from=builder /app/services/agent-service/dist ./services/agent-service/dist
 
 WORKDIR /app/services/agent-service
