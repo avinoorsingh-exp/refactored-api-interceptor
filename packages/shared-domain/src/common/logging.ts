@@ -1,7 +1,7 @@
 // @exprealty/shared-domain/logging.ts
 import { z } from 'zod'
 import { CapabilityEnum, ServiceIdSchema } from './capabilities.js'
-export const EnvEnum = z.enum(['local', 'dev', 'test', 'prod'])
+export const EnvEnum = z.enum(['local', 'dev', 'test', 'accp', 'prod'])
 export const HttpMethodEnum = z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
 
 /**

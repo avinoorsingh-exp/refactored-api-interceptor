@@ -364,6 +364,14 @@ Configuration lives in `main.ts` with env var overrides.
 the COUNT query. Use post-query loading by IDs instead. See
 `docs/architecture/repository-patterns.md` → "Pagination Performance — Post-Query Loading".
 
+### Relational Filtering Performance
+
+Relational filters (`email`, `country`, `licensedStates`) must use `EXISTS` subqueries, not
+`LEFT JOIN` chains. LEFT JOINs on filtering relations inflate the COUNT query in
+`getManyAndCount()` — the same problem as 1:N relation includes. `EXISTS` subqueries
+short-circuit on the first match, keeping the COUNT lean. See
+`docs/architecture/repository-patterns.md` → "EXISTS Subquery for Relational Filters".
+
 ---
 
 ## Role-Specific Instructions

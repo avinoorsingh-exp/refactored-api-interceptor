@@ -59,6 +59,8 @@ You own the data access adapter layer for every module.
   }
   ```
 - **NEVER** use `COUNT(*)` on tables with >100K rows without a `WHERE` clause
+- **ALWAYS** use `EXISTS` subqueries for relational filters in `findPage()` — `LEFT JOIN` chains on filter relations inflate the COUNT query. See `docs/architecture/repository-patterns.md` → "EXISTS Subquery for Relational Filters"
+- Database pool pre-warming is configured in `DatabaseModule` via `DatabaseWarmupService` — do not add duplicate warmup logic
 - Handle PostgreSQL errors in the repository and convert to HTTP exceptions before they reach the service
 - Repository port symbol must be a `Symbol`: `export const XXX_REPOSITORY = Symbol('XXX_REPOSITORY')`
 

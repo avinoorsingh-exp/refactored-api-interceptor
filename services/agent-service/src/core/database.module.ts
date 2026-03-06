@@ -1,13 +1,50 @@
 // services/agent-service/src/core/database.module.ts
-import { Module } from '@nestjs/common'
+import { Module, OnModuleInit, Injectable } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
+import { DataSource } from 'typeorm'
 import { ConfigService } from './config.service.js'
 import { LoggerService } from './logger.service.js'
 import { LoggerModule } from './logger.module.js'
 
+/** Number of connections to pre-warm on startup */
+const POOL_WARM_SIZE = 5
+
+/**
+ * Pre-warms the database connection pool on startup.
+ * Establishes POOL_WARM_SIZE connections in parallel so the first real
+ * request doesn't pay the TCP + TLS handshake cost.
+ */
+@Injectable()
+class DatabaseWarmupService implements OnModuleInit {
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly logger: LoggerService,
+  ) {}
+
+  async onModuleInit(): Promise<void> {
+    const start = Date.now()
+    try {
+      // Run POOL_WARM_SIZE concurrent trivial queries.
+      // Each one forces pg-pool to open a new connection (up to pool max).
+      await Promise.all(
+        Array.from({ length: POOL_WARM_SIZE }, () =>
+          this.dataSource.query('SELECT 1'),
+        ),
+      )
+      const elapsed = Date.now() - start
+      this.logger.info(`[DatabaseModule] Connection pool pre-warmed: ${POOL_WARM_SIZE} connections in ${elapsed}ms`)
+    } catch (error) {
+      // Non-fatal: pool will create connections on demand
+      this.logger.warn('[DatabaseModule] Pool pre-warm failed, connections will be created on demand', {
+        error: (error as Error).message,
+      })
+    }
+  }
+}
+
 /**
  * Database Module
- * 
+ *
  * Configures TypeORM connection for the agent service.
  * Uses ConfigService for environment-based configuration.
  */
@@ -18,15 +55,6 @@ import { LoggerModule } from './logger.module.js'
       inject: [ConfigService, LoggerService],
       useFactory: (config: ConfigService, logger: LoggerService) => {
         const cfg = config.getAll()
-        
-        // Debug: Log SSL configuration
-        console.log('[DatabaseModule] DB_SSL value:', cfg.DB_SSL, 'type:', typeof cfg.DB_SSL)
-
-        // Diagnostic: print SSL value early (use console to ensure it appears
-        // even if logger isn't fully ready). This helps verify the value we
-        // received from ConfigService / AWS Secrets Manager.
-         
-        console.log('[DB DIAG] cfg.DB_SSL ->', cfg.DB_SSL, 'typeof ->', typeof cfg.DB_SSL, 'process.env.DB_SSL ->', process.env.DB_SSL)
 
         logger.info('Initializing database connection', {
           host: cfg.DB_HOST,
@@ -46,23 +74,23 @@ import { LoggerModule } from './logger.module.js'
 
           // Entity discovery - autoLoadEntities loads entities from forFeature()
           autoLoadEntities: true,
-          
+
           // NEVER use synchronize - always use migrations for schema changes.
           // synchronize can cause data loss and conflicts with FK constraints.
           synchronize: false,
-          
+
           // Logging (conditional based on environment)
           logging: cfg.NODE_ENV === 'dev' ? ['error', 'warn', 'schema'] : ['error'],
-          
+
           // Connection pool settings
           extra: {
             max: 30,  // Maximum pool size (1 ECS task, RDS max_connections=181, ~10 reserved for admin)
-            min: 10,  // Minimum pool size - pre-warm connections for Kafka + API + cron
+            min: POOL_WARM_SIZE,   // Minimum idle connections to maintain
             idleTimeoutMillis: 30000,
             connectionTimeoutMillis: 5000,
-            allowExitOnIdle: true, // Allow process to exit if idle (important for ECS task shutdown) 
+            allowExitOnIdle: true, // Allow process to exit if idle (important for ECS task shutdown)
           },
-          
+
           // SSL configuration
           // Uses DB_SSL from config (loaded from AWS Secrets Manager or .env)
           // Explicitly check for true to avoid "false" string being coerced to true
@@ -73,13 +101,13 @@ import { LoggerModule } from './logger.module.js'
               checkServerIdentity: () => undefined,
               minVersion: 'TLSv1.2' as const,
             } : false;
-            console.log('[DatabaseModule] SSL config being used:', sslConfig);
             return sslConfig;
           })(),
         }
       },
     }),
   ],
+  providers: [DatabaseWarmupService],
   exports: [TypeOrmModule],
 })
 export class DatabaseModule {}
