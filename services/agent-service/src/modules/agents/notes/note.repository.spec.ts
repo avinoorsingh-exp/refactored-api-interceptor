@@ -273,7 +273,7 @@ describe('NoteTypeOrmRepository', () => {
 			expect(mockAgentNoteRepo.createQueryBuilder).toHaveBeenCalledWith('an');
 			expect(mockQb.innerJoinAndSelect).toHaveBeenCalledWith('an.note', 'note');
 			expect(mockQb.where).toHaveBeenCalledWith('an.agent_id = :agentId', { agentId: mockAgentId });
-			expect(mockQb.orderBy).toHaveBeenCalledWith('note.created', 'DESC');
+			expect(mockQb.orderBy).toHaveBeenCalledWith('note.last_modified', 'DESC');
 			expect(mockQb.skip).toHaveBeenCalledWith(0);
 			expect(mockQb.take).toHaveBeenCalledWith(25);
 			expect(result.items).toHaveLength(1);
