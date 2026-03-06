@@ -22,7 +22,7 @@ async function bootstrap() {
 		credentials: true,
 	})
 
-	// Register global exception filter for RFC 9457 Problem Details
+	// Register global exception filter for RFC 9457 Problem Details.
 	app.useGlobalFilters(new ProblemDetailsFilter(logger))
 
 	app.enableShutdownHooks()
