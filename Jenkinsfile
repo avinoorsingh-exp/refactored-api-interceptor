@@ -106,7 +106,9 @@ pipeline
         script {
           def secretName = ''
           def credentialsId = ''
-          
+          def targetAccount = env.TARGET_ACCOUNT_DEV
+          def awsProfile = 'exp-dev'
+
           if (env.BRANCH_NAME == 'dev') {
             secretName = 'dev/agent-service-dev'
             credentialsId = 'Jenkins-Dev'
@@ -116,24 +118,30 @@ pipeline
           } else if (env.BRANCH_NAME == 'qa') {
             secretName = 'qa/agent-service-accp'
             credentialsId = 'jenkins-qa-user'
+            targetAccount = env.TARGET_ACCOUNT_QA
+            awsProfile = 'exp-qa'
           } else if (env.BRANCH_NAME == 'accp') {
             secretName = 'qa/agent-service-accp'
             credentialsId = 'jenkins-qa-user'
+            targetAccount = env.TARGET_ACCOUNT_QA
+            awsProfile = 'exp-qa'
           } else if (env.BRANCH_NAME == 'main') {
             secretName = 'prod/agent-service-prod'
             credentialsId = '88caba18-4691-47c5-92a9-e66ee83da4e4'
+            targetAccount = env.TARGET_ACCOUNT_PROD
+            awsProfile = 'exp-production'
           }
 
-          // Create AWS config file for Secrets Manager access
+          // Create AWS config file for Secrets Manager access (use account/profile for this branch)
           loginHelpers.createRoleProfileConfig([
-            accountId: env.TARGET_ACCOUNT_DEV,
-            profileName: 'exp-dev',
+            accountId: targetAccount,
+            profileName: awsProfile,
             roleName: env.ROLE_NAME,
             externalId: env.EXTERNAL_ID
           ])
           
           sh """
-            export AWS_PROFILE=exp-dev
+            export AWS_PROFILE=${awsProfile}
             aws secretsmanager get-secret-value --secret-id "${secretName}" --region us-east-1 --query 'SecretString' --output text > db-secrets.json
             """
           
