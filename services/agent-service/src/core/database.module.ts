@@ -10,9 +10,33 @@ import { LoggerModule } from './logger.module.js'
 const POOL_WARM_SIZE = 5
 
 /**
- * Pre-warms the database connection pool on startup.
- * Establishes POOL_WARM_SIZE connections in parallel so the first real
- * request doesn't pay the TCP + TLS handshake cost.
+ * Queries that warm the PostgreSQL buffer cache on startup.
+ * Each query touches pages that the first real request would otherwise
+ * read from disk, eliminating cold-cache latency after deploys.
+ *
+ * Guidelines for adding warmup queries:
+ * - Only add queries for large tables used by high-traffic endpoints
+ * - Use COUNT(*) or LIMIT 1 — we need page reads, not result sets
+ * - Keep the list short; total warmup should complete in < 5s
+ */
+const CACHE_WARMUP_QUERIES = [
+  // Agent table (~267K rows) — most common list endpoint
+  `SELECT COUNT(*) FROM core.agent`,
+  // Contact methods — post-loaded for every agent list request
+  `SELECT 1 FROM core.contact_method LIMIT 1`,
+  // Address chain — post-loaded for primaryAddress include
+  `SELECT 1 FROM core.agent_address aa JOIN core.address a ON a.id = aa.address_id LIMIT 1`,
+]
+
+/**
+ * Pre-warms the database connection pool and PostgreSQL buffer cache on startup.
+ *
+ * Phase 1: Opens POOL_WARM_SIZE connections in parallel (TCP + TLS handshake).
+ * Phase 2: Runs CACHE_WARMUP_QUERIES to load hot table pages into shared_buffers
+ *          so the first real request doesn't pay disk I/O costs.
+ *
+ * Both phases are non-fatal — if they fail, connections and cache pages are
+ * created on demand.
  */
 @Injectable()
 class DatabaseWarmupService implements OnModuleInit {
@@ -24,18 +48,27 @@ class DatabaseWarmupService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     const start = Date.now()
     try {
-      // Run POOL_WARM_SIZE concurrent trivial queries.
-      // Each one forces pg-pool to open a new connection (up to pool max).
+      // Phase 1: Connection pool warmup
+      // Each query forces pg-pool to open a new connection (up to pool max).
       await Promise.all(
         Array.from({ length: POOL_WARM_SIZE }, () =>
           this.dataSource.query('SELECT 1'),
         ),
       )
-      const elapsed = Date.now() - start
-      this.logger.info(`[DatabaseModule] Connection pool pre-warmed: ${POOL_WARM_SIZE} connections in ${elapsed}ms`)
+      const poolElapsed = Date.now() - start
+      this.logger.info(`[DatabaseModule] Connection pool pre-warmed: ${POOL_WARM_SIZE} connections in ${poolElapsed}ms`)
+
+      // Phase 2: Buffer cache warmup
+      // Touches hot table pages so Postgres loads them into shared_buffers.
+      const cacheStart = Date.now()
+      for (const sql of CACHE_WARMUP_QUERIES) {
+        await this.dataSource.query(sql)
+      }
+      const cacheElapsed = Date.now() - cacheStart
+      this.logger.info(`[DatabaseModule] Buffer cache pre-warmed: ${CACHE_WARMUP_QUERIES.length} queries in ${cacheElapsed}ms`)
     } catch (error) {
-      // Non-fatal: pool will create connections on demand
-      this.logger.warn('[DatabaseModule] Pool pre-warm failed, connections will be created on demand', {
+      // Non-fatal: pool and cache will warm on demand
+      this.logger.warn('[DatabaseModule] Pre-warm failed, resources will be created on demand', {
         error: (error as Error).message,
       })
     }
