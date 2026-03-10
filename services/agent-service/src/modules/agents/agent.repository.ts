@@ -1467,7 +1467,20 @@ export class AgentTypeOrmRepository
 			return { ...result, items };
 		};
 
+		const alias = this.getAlias();
+		const ftsSearchOrCondition = this.buildFullTextSearchOrCondition(alias);
+		const queryOptions = {
+			skipDefaultSort: hasRelationalSort,
+			extraSearchOrConditions: ftsSearchOrCondition,
+		};
+
 		if (needsCustomQuery) {
+			if (candidateRestriction) {
+				this.logger.debug('Agent list using candidate set optimization', {
+					candidateSetMax: CANDIDATE_SET_MAX,
+					indexHint: 'lifecycle_status btree, id',
+				});
+			}
 			const result = await this.findWithQuery(modifiedQuery, selection, (qb) => {
 				// Restrict to candidate set so expensive filters run on at most CANDIDATE_SET_MAX rows
 				if (candidateRestriction) {
@@ -1531,7 +1544,7 @@ export class AgentTypeOrmRepository
 					this.applyFullNameSearch(qb, modifiedQuery.search);
 					this.applyEmailSearch(qb, modifiedQuery.search);
 				}
-			}, { skipDefaultSort: hasRelationalSort });
+			}, queryOptions);
 
 			return addPrimaryAddresses(
 				await addPrimaryContacts(
@@ -1556,7 +1569,7 @@ export class AgentTypeOrmRepository
 				this.applyFullNameSearch(qb, modifiedQuery.search);
 				this.applyEmailSearch(qb, modifiedQuery.search);
 			}
-		});
+		}, queryOptions);
 
 		return addPrimaryAddresses(
 			await addPrimaryContacts(
@@ -1565,5 +1578,28 @@ export class AgentTypeOrmRepository
 				),
 			),
 		);
+	}
+
+	/**
+	 * Builds the optional full-text search OR condition for the search bracket.
+	 * When search is not a UUID and not email-like, adds search_vector @@ plainto_tsquery('simple', :term)
+	 * so the planner can use the GIN index while keeping the same result set (combined with existing ILIKEs).
+	 */
+	private buildFullTextSearchOrCondition(
+		alias: string,
+	): (qb: SelectQueryBuilder<AgentEntity>, searchQuery: string | undefined) => void {
+		return (qb, searchQuery) => {
+			if (!searchQuery || !String(searchQuery).trim()) return;
+			const trimmed = String(searchQuery).trim();
+			if (isUuid(trimmed) || trimmed.includes('@')) return;
+			this.logger.debug('Agent list using full-text search_vector', {
+				indexHint: 'search_vector GIN',
+			});
+			const paramName = 'ftsSearch';
+			qb.orWhere(
+				`"${alias}"."search_vector" @@ plainto_tsquery('simple', :${paramName})`,
+				{ [paramName]: trimmed },
+			);
+		};
 	}
 }

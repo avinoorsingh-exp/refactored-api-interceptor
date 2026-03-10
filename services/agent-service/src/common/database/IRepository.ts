@@ -124,7 +124,11 @@ export abstract class BaseTypeOrmRepository<
 		params: Partial<QueryParams>,
         selection?: FieldSelection,
 		customizeQuery?: (qb: SelectQueryBuilder<TEntity>) => void,
-		options?: { skipDefaultSort?: boolean },
+		options?: {
+			skipDefaultSort?: boolean;
+			/** Add extra OR conditions inside the search bracket (e.g. full-text search_vector). */
+			extraSearchOrConditions?: (qb: SelectQueryBuilder<TEntity>, searchQuery: string | undefined) => void;
+		},
 	): Promise<{ items: TDomain[]; total: number }> {
 		const entityClass = this.getEntityClass()
 		const alias = this.getAlias()
@@ -161,7 +165,9 @@ export abstract class BaseTypeOrmRepository<
 		// Apply filters, search, and sorting via QueryService
 		if (config.useStrategySearch) {
 			// Use strategy-based search for type-aware searching (numeric, date, boolean)
-			this.queryService.applyAllWithStrategies(qb, normalized, entityClass, alias)
+			this.queryService.applyAllWithStrategies(qb, normalized, entityClass, alias, {
+				extraSearchOrConditions: options?.extraSearchOrConditions,
+			})
 		} else {
 			// Use simple ILIKE search (backward compatible)
 			this.queryService.applyAll(qb, normalized, alias)
