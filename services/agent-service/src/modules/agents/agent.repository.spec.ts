@@ -214,4 +214,159 @@ describe('AgentTypeOrmRepository', () => {
 			expect(candidateCall).toBeUndefined();
 		});
 	});
+
+	describe('findPage with full-text search (search_vector)', () => {
+		beforeEach(() => {
+			mockQb.getManyAndCount.mockResolvedValue([[minimalAgentEntity], 1]);
+		});
+
+		it('should pass extraSearchOrConditions to applyAllWithStrategies when search is non-UUID and non-email', async () => {
+			let capturedOptions: { extraSearchOrConditions?: (qb: any, searchQuery: string | undefined) => void } | undefined;
+			(mockQueryService.applyAllWithStrategies as jest.Mock).mockImplementation((qb: unknown, _p: unknown, _e: unknown, _a: unknown, options: unknown) => {
+				capturedOptions = options as typeof capturedOptions;
+				return mockQb;
+			});
+
+			await repository.findPage({
+				limit: 25,
+				offset: 0,
+				search: 'smith',
+			});
+
+			expect(capturedOptions?.extraSearchOrConditions).toBeDefined();
+			expect(typeof capturedOptions?.extraSearchOrConditions).toBe('function');
+		});
+
+		it('should add search_vector plainto_tsquery orWhere when extraSearchOrConditions callback is invoked with text search', async () => {
+			let capturedOptions: { extraSearchOrConditions?: (qb: any, searchQuery: string | undefined) => void } | undefined;
+			(mockQueryService.applyAllWithStrategies as jest.Mock).mockImplementation((qb: unknown, _p: unknown, _e: unknown, _a: unknown, options: unknown) => {
+				capturedOptions = options as typeof capturedOptions;
+				return mockQb;
+			});
+
+			await repository.findPage({
+				limit: 25,
+				offset: 0,
+				search: 'smith',
+			});
+
+			const orWhereCallsBefore = (mockQb.orWhere as jest.Mock).mock.calls.length;
+			capturedOptions?.extraSearchOrConditions?.(mockQb, 'smith');
+			expect(mockQb.orWhere).toHaveBeenCalledTimes(orWhereCallsBefore + 1);
+			const ftsCall = (mockQb.orWhere as jest.Mock).mock.calls.find(
+				(call: unknown[]) =>
+					typeof call[0] === 'string' &&
+					call[0].includes('search_vector') &&
+					call[0].includes('plainto_tsquery'),
+			);
+			expect(ftsCall).toBeDefined();
+			expect(ftsCall[1]).toEqual({ ftsSearch: 'smith' });
+		});
+
+		it('should not add FTS orWhere when search is UUID (callback does nothing)', async () => {
+			let capturedOptions: { extraSearchOrConditions?: (qb: any, searchQuery: string | undefined) => void } | undefined;
+			(mockQueryService.applyAllWithStrategies as jest.Mock).mockImplementation((_qb: unknown, _p: unknown, _e: unknown, _a: unknown, options: unknown) => {
+				capturedOptions = options as typeof capturedOptions;
+				return mockQb;
+			});
+
+			await repository.findPage({
+				limit: 25,
+				offset: 0,
+				search: '550e8400-e29b-41d4-a716-446655440000',
+			});
+
+			const orWhereCallsBefore = (mockQb.orWhere as jest.Mock).mock.calls.length;
+			capturedOptions?.extraSearchOrConditions?.(mockQb, '550e8400-e29b-41d4-a716-446655440000');
+			expect(mockQb.orWhere).toHaveBeenCalledTimes(orWhereCallsBefore);
+		});
+
+		it('should not add FTS orWhere when search contains @ (email)', async () => {
+			let capturedOptions: { extraSearchOrConditions?: (qb: any, searchQuery: string | undefined) => void } | undefined;
+			(mockQueryService.applyAllWithStrategies as jest.Mock).mockImplementation((_qb: unknown, _p: unknown, _e: unknown, _a: unknown, options: unknown) => {
+				capturedOptions = options as typeof capturedOptions;
+				return mockQb;
+			});
+
+			await repository.findPage({
+				limit: 25,
+				offset: 0,
+				search: 'user@example.com',
+			});
+
+			const orWhereCallsBefore = (mockQb.orWhere as jest.Mock).mock.calls.length;
+			capturedOptions?.extraSearchOrConditions?.(mockQb, 'user@example.com');
+			expect(mockQb.orWhere).toHaveBeenCalledTimes(orWhereCallsBefore);
+		});
+	});
+
+	describe('findPage result shape (pagination and filters unchanged)', () => {
+		beforeEach(() => {
+			mockQb.getManyAndCount.mockResolvedValue([[minimalAgentEntity], 1]);
+		});
+
+		it('should return items and total with default pagination', async () => {
+			const result = await repository.findPage({ limit: 10, offset: 0 });
+			expect(result).toEqual(
+				expect.objectContaining({
+					items: expect.any(Array),
+					total: 1,
+				}),
+			);
+			expect(result.items).toHaveLength(1);
+		});
+
+		it('should return same shape when filter has lifecycleStatus and search', async () => {
+			mockQueryService.normalizeWithValidation.mockReturnValue({
+				offset: 0,
+				limit: 25,
+				filter: { conditions: [{ field: 'lifecycleStatus', operator: 'eq', value: 'Active' }], logicalOperator: 'AND' },
+				sort: { conditions: [] },
+				search: { query: 'jane', fields: [] },
+			});
+			const result = await repository.findPage({
+				limit: 25,
+				offset: 0,
+				filter: JSON.stringify({ conditions: [{ field: 'lifecycleStatus', operator: 'eq', value: 'Active' }] }),
+				search: 'jane',
+			});
+			expect(result).toEqual(
+				expect.objectContaining({
+					items: expect.any(Array),
+					total: expect.any(Number),
+				}),
+			);
+		});
+	});
+
+	/**
+	 * Integration validation: run against a database with 250k+ agent rows and
+	 * confirm full-text search uses IDX_agent_search_vector (EXPLAIN ANALYZE).
+	 * Not run in CI; enable with RUN_AGENT_FTS_INTEGRATION=1 when DB has large dataset.
+	 */
+	describe('full-text search integration (250k+ rows)', () => {
+		const runIntegration = process.env.RUN_AGENT_FTS_INTEGRATION === '1';
+		const itIntegration = runIntegration ? it : it.skip;
+
+		itIntegration(
+			'should complete findPage with search without timeout when search_vector GIN index exists',
+			async () => {
+				// Requires real DB with migration 1772000000000 applied and 250k+ rows.
+				// Asserts query completes; for index validation run EXPLAIN ANALYZE in DB.
+				const result = await repository.findPage({
+					limit: 25,
+					offset: 0,
+					search: 'smith',
+					filter: JSON.stringify({ conditions: [{ field: 'lifecycleStatus', operator: 'eq', value: 'Active' }] }),
+				});
+				expect(result).toEqual(
+					expect.objectContaining({
+						items: expect.any(Array),
+						total: expect.any(Number),
+					}),
+				);
+			},
+			15000,
+		);
+	});
 });

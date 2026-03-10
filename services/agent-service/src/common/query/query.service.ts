@@ -514,6 +514,7 @@ export class QueryService {
     entityClass: new (...args: any[]) => T,
     alias: string,
     searchFields?: string[],
+    extraSearchOrConditions?: (qb: SelectQueryBuilder<T>, searchQuery: string | undefined) => void,
   ): SelectQueryBuilder<T> {
     if (!searchQuery || !this.strategies || !this.searchMetadataReader) {
       return qb;
@@ -565,6 +566,9 @@ export class QueryService {
             strategy.applySearch(qb, alias, config.field, searchQuery, paramName);
           }
         });
+        if (extraSearchOrConditions) {
+          extraSearchOrConditions(qb, searchQuery);
+        }
       }),
     );
 
@@ -599,12 +603,8 @@ export class QueryService {
   /**
    * Apply all query operations with strategy-based search.
    * Use this for entities that have numeric/date @Searchable fields.
-   * 
-   * @param qb - TypeORM SelectQueryBuilder
-   * @param params - Normalized query parameters including search.fields for field filtering
-   * @param entityClass - Entity class for metadata lookup
-   * @param alias - Query builder alias
-   * @param options - Optional field restrictions for filter/sort
+   *
+   * @param options.extraSearchOrConditions - Optional callback to add OR conditions (e.g. FTS) inside the search bracket
    */
   applyAllWithStrategies<T extends ObjectLiteral>(
     qb: SelectQueryBuilder<T>,
@@ -614,14 +614,21 @@ export class QueryService {
     options?: {
       allowedFilterFields?: Set<string>;
       allowedSortFields?: Set<string>;
+      extraSearchOrConditions?: (qb: SelectQueryBuilder<T>, searchQuery: string | undefined) => void;
     },
   ): SelectQueryBuilder<T> {
     // Apply filters
     this.applyFilters(qb, params.filter, alias, options?.allowedFilterFields);
 
-    // Apply strategy-based search with optional field filtering
-    // If params.search.fields is provided, only those fields are searched
-    this.applyStrategySearch(qb, params.search?.query, entityClass, alias, params.search?.fields);
+    // Apply strategy-based search with optional field filtering and optional FTS/extra OR conditions
+    this.applyStrategySearch(
+      qb,
+      params.search?.query,
+      entityClass,
+      alias,
+      params.search?.fields,
+      options?.extraSearchOrConditions,
+    );
 
     // Apply sorting
     this.applySorting(qb, params.sort, alias, options?.allowedSortFields);
