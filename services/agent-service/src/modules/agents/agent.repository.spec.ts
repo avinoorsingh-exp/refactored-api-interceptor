@@ -143,4 +143,75 @@ describe('AgentTypeOrmRepository', () => {
 			expect(mockQb.orderBy).not.toHaveBeenCalledWith('licensed_states_sort', expect.anything(), expect.anything());
 		});
 	});
+
+	describe('findPage with candidate set optimization', () => {
+		beforeEach(() => {
+			mockQb.getManyAndCount.mockResolvedValue([[minimalAgentEntity], 1]);
+			mockQueryService.normalizeWithValidation.mockReturnValue({
+				offset: 0,
+				limit: 25,
+				filter: {
+					conditions: [
+						{ field: 'lifecycleStatus', operator: 'eq', value: 'Active' },
+						{ field: 'id', operator: 'ne', value: 'fb52bfc9-0c85-11eb-9662-9be8f1cc03e5' },
+						{ field: 'firstName', operator: 'ilike', value: 'john' },
+					],
+					logicalOperator: 'AND',
+				},
+				sort: { conditions: [] },
+				search: undefined,
+			});
+		});
+
+		it('should apply candidate set andWhere when filter has cheap conditions and expensive filters (email)', async () => {
+			await repository.findPage({
+				limit: 25,
+				offset: 0,
+				filter: JSON.stringify({
+					conditions: [
+						{ field: 'lifecycleStatus', operator: 'eq', value: 'Active' },
+						{ field: 'id', operator: 'ne', value: 'fb52bfc9-0c85-11eb-9662-9be8f1cc03e5' },
+						{ field: 'email', operator: 'ilike', value: 'test' },
+					],
+					logicalOperator: 'AND',
+				}),
+			});
+
+			const andWhereCalls = (mockQb.andWhere as jest.Mock).mock.calls;
+			const candidateCall = andWhereCalls.find(
+				(call: unknown[]) =>
+					typeof call[0] === 'string' &&
+					call[0].includes('IN (SELECT "id" FROM "core"."agent"'),
+			);
+			expect(candidateCall).toBeDefined();
+			expect(candidateCall[0]).toContain('"lifecycle_status" = :candidate_ls');
+			expect(candidateCall[0]).toContain('"id" != :candidate_id_ne');
+			expect(candidateCall[0]).toContain('LIMIT :candidate_limit');
+			expect(candidateCall[1]).toEqual(
+				expect.objectContaining({
+					candidate_ls: 'Active',
+					candidate_id_ne: 'fb52bfc9-0c85-11eb-9662-9be8f1cc03e5',
+					candidate_limit: 2000,
+				}),
+			);
+		});
+
+		it('should not apply candidate set when filter has no cheap conditions', async () => {
+			await repository.findPage({
+				limit: 25,
+				offset: 0,
+				filter: JSON.stringify({
+					conditions: [{ field: 'firstName', operator: 'ilike', value: 'john' }],
+					logicalOperator: 'AND',
+				}),
+			});
+
+			const andWhereCalls = (mockQb.andWhere as jest.Mock).mock.calls;
+			const candidateCall = andWhereCalls.find(
+				(call: unknown[]) =>
+					typeof call[0] === 'string' && call[0].includes('candidate_limit'),
+			);
+			expect(candidateCall).toBeUndefined();
+		});
+	});
 });

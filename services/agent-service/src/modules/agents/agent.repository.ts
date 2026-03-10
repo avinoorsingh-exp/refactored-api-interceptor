@@ -55,6 +55,13 @@ const RELATIONAL_FILTER_FIELDS = ['email', 'country', 'licensedStates'] as const
 const RELATIONAL_SORT_FIELDS = ['primaryEmail', 'licensedStates'] as const;
 
 /**
+ * Maximum number of agent IDs in the candidate set for expensive-filter optimization.
+ * Cheap filters (lifecycleStatus eq, id ne) restrict the candidate set; expensive
+ * filters (ILIKE, EXISTS for email/country/licensedStates) are applied only on this set.
+ */
+const CANDIDATE_SET_MAX = 2000;
+
+/**
  * TypeORM adapter implementing IAgentRepository port.
  * Extends BaseTypeOrmRepository for shared CRUD operations.
  * This is the infrastructure layer - can be swapped without affecting business logic.
@@ -814,6 +821,49 @@ export class AgentTypeOrmRepository
 	}
 
 	/**
+	 * Whether a filter condition is "cheap" (index-friendly, no ILIKE/EXISTS).
+	 * Used to build the candidate set from lifecycleStatus eq and id ne only.
+	 */
+	private isCheapFilterCondition(c: { field: string; operator: string }): boolean {
+		return (
+			(c.field === 'lifecycleStatus' && c.operator === 'eq') ||
+			(c.field === 'id' && c.operator === 'ne')
+		);
+	}
+
+	/**
+	 * Builds the candidate set restriction (subquery + params) from cheap conditions only.
+	 * Returns null if there are no cheap conditions to form a bounded set.
+	 * Used so expensive filters (ILIKE, EXISTS) run on at most CANDIDATE_SET_MAX rows.
+	 */
+	private buildCandidateSetRestriction(standardConditions: Array<{ field: string; operator: string; value: any }>): {
+		subquery: string;
+		params: Record<string, unknown>;
+	} | null {
+		const lifecycleStatusEq = standardConditions.find(
+			c => c.field === 'lifecycleStatus' && c.operator === 'eq',
+		);
+		const idNe = standardConditions.find(c => c.field === 'id' && c.operator === 'ne');
+		if (!lifecycleStatusEq && !idNe) {
+			return null;
+		}
+		const parts: string[] = [];
+		const params: Record<string, unknown> = { candidate_limit: CANDIDATE_SET_MAX };
+		if (lifecycleStatusEq?.value != null) {
+			parts.push('"lifecycle_status" = :candidate_ls');
+			params.candidate_ls = lifecycleStatusEq.value;
+		}
+		if (idNe?.value != null) {
+			parts.push('"id" != :candidate_id_ne');
+			params.candidate_id_ne = idNe.value;
+		}
+		if (parts.length === 0) return null;
+		const whereClause = parts.join(' AND ');
+		const subquery = `(SELECT "id" FROM "core"."agent" WHERE ${whereClause} ORDER BY "id" LIMIT :candidate_limit)`;
+		return { subquery, params };
+	}
+
+	/**
 	 * Extract relational filter conditions from the query filter.
 	 * Returns the extracted conditions and the remaining standard conditions.
 	 *
@@ -1307,6 +1357,16 @@ export class AgentTypeOrmRepository
 			hasAddresses ||
 			hasRelationalFilters ||
 			hasRelationalSort;
+		// Candidate set: restrict expensive filters to a bounded set of IDs (cheap filters only)
+		const hasCheapConditions = standardConditions.some(c => this.isCheapFilterCondition(c));
+		const hasExpensiveFilters =
+			hasRelationalFilters ||
+			standardConditions.some(c => !this.isCheapFilterCondition(c));
+		const useCandidateSet =
+			needsCustomQuery && hasExpensiveFilters && hasCheapConditions;
+		const candidateRestriction = useCandidateSet
+			? this.buildCandidateSetRestriction(standardConditions)
+			: null;
 
 		// Build modified query params without relational fields
 		const modifiedQuery: Partial<QueryParams> = { ...query };
@@ -1408,6 +1468,14 @@ export class AgentTypeOrmRepository
 
 		if (needsCustomQuery) {
 			const result = await this.findWithQuery(modifiedQuery, selection, (qb) => {
+				// Restrict to candidate set so expensive filters run on at most CANDIDATE_SET_MAX rows
+				if (candidateRestriction) {
+					const alias = this.getAlias();
+					qb.andWhere(
+						`"${alias}".id IN ${candidateRestriction.subquery}`,
+						candidateRestriction.params as Record<string, any>,
+					);
+				}
 				// Add virtual relation joins for includes
 				if (hasPrimaryLicense) {
 					this.loadPrimaryLicense(qb, this.getAlias());
