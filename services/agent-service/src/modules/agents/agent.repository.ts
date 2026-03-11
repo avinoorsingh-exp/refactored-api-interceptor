@@ -1374,13 +1374,19 @@ export class AgentTypeOrmRepository
 		const isUuidSearch = isUuid(query.search);
 		const isMalformedUuid = this.isMalformedUuid(query.search);
 
-		// If UUID search, remove search from query to skip base strategy search
-		// This ensures UUID search is exclusive and doesn't trigger text searches on firstName, lastName, etc.
+		// Free-text path: one grouped WHERE with only :search and :fts (no strategy per-field params).
+		const isFreeTextSearch =
+			!isUuidSearch &&
+			!isMalformedUuid &&
+			query.search &&
+			!String(query.search).trim().includes('@') &&
+			!!String(query.search).trim();
 		if (isUuidSearch) {
 			modifiedQuery.search = undefined;
 		} else if (isMalformedUuid) {
-			// Reject malformed UUIDs - return empty results for security
-			// This prevents numeric search from extracting partial numbers (e.g., "76" from "76c8add5-...-extra")
+			modifiedQuery.search = undefined;
+		} else if (isFreeTextSearch) {
+			// Skip strategy search so we add a single grouped condition with :search and :fts only.
 			modifiedQuery.search = undefined;
 		}
 		if (hasRelationalFilters && filterObj) {
@@ -1467,10 +1473,9 @@ export class AgentTypeOrmRepository
 		};
 
 		const alias = this.getAlias();
-		const ftsSearchOrCondition = this.buildFullTextSearchOrCondition(alias);
 		const queryOptions = {
 			skipDefaultSort: hasRelationalSort,
-			extraSearchOrConditions: ftsSearchOrCondition,
+			extraSearchOrConditions: isFreeTextSearch ? undefined : this.buildFullTextSearchOrCondition(alias),
 		};
 
 		if (needsCustomQuery) {
@@ -1530,16 +1535,14 @@ export class AgentTypeOrmRepository
 						licensedStatesSort,
 					);
 				}
-				// Apply search: UUID search is exclusive
+				// Apply search: UUID exclusive, free-text single grouped clause, or full-name/email
 				if (isUuidSearch) {
-					// UUID search only - use exclusive method with andWhere
 					this.applyUuidSearchExclusive(qb, query.search);
 				} else if (isMalformedUuid) {
-					// Reject malformed UUIDs - explicitly return no results
-					// This prevents unintended matches from numeric/text searches
-					qb.andWhere('1=0'); // Always false condition = no results
+					qb.andWhere('1=0');
+				} else if (isFreeTextSearch) {
+					this.applyFreeTextSearchGrouped(qb, alias, String(query.search).trim());
 				} else {
-					// Apply all search methods for normal text search
 					this.applyFullNameSearch(qb, modifiedQuery.search);
 					this.applyEmailSearch(qb, modifiedQuery.search);
 				}
@@ -1555,16 +1558,13 @@ export class AgentTypeOrmRepository
 		}
 
 		const result = await this.findWithQuery(modifiedQuery, selection, (qb) => {
-			// Apply search: UUID search is exclusive
 			if (isUuidSearch) {
-				// UUID search only - use exclusive method with andWhere
 				this.applyUuidSearchExclusive(qb, query.search);
 			} else if (isMalformedUuid) {
-				// Reject malformed UUIDs - explicitly return no results
-				// This prevents unintended matches from numeric/text searches
-				qb.andWhere('1=0'); // Always false condition = no results
+				qb.andWhere('1=0');
+			} else if (isFreeTextSearch) {
+				this.applyFreeTextSearchGrouped(qb, alias, String(query.search).trim());
 			} else {
-				// Apply all search methods for normal text search
 				this.applyFullNameSearch(qb, modifiedQuery.search);
 				this.applyEmailSearch(qb, modifiedQuery.search);
 			}
@@ -1580,9 +1580,37 @@ export class AgentTypeOrmRepository
 	}
 
 	/**
-	 * Builds the optional full-text search OR condition for the search bracket.
-	 * When search is not a UUID and not email-like, adds search_vector @@ plainto_tsquery('simple', :term)
-	 * so the planner can use the GIN index while keeping the same result set (combined with existing ILIKEs).
+	 * Applies free-text search as a single grouped WHERE with two named parameters only.
+	 * Used when search is non-UUID and non-email; avoids duplicated ILIKE blocks and $1..$10.
+	 * Parameters: :search = `%value%`, :fts = value. ORDER BY and LIMIT/OFFSET are applied by findWithQuery.
+	 */
+	private applyFreeTextSearchGrouped<T>(
+		qb: SelectQueryBuilder<T>,
+		alias: string,
+		freeText: string,
+	): void {
+		const search = `%${freeText}%`;
+		const fts = freeText;
+		qb.andWhere(
+			`(
+				"${alias}"."search_vector" @@ plainto_tsquery('simple', :fts)
+				OR ${alias}.firstName ILIKE :search
+				OR ${alias}.lastName ILIKE :search
+				OR ${alias}.preferredName ILIKE :search
+				OR ${alias}.lifecycleStatus ILIKE :search
+				OR ${alias}.middleName ILIKE :search
+				OR CAST("${alias}"."agent_id" AS TEXT) ILIKE :search
+				OR CAST("${alias}"."system_id" AS TEXT) ILIKE :search
+				OR ${alias}.title ILIKE :search
+				OR ${alias}.suffix ILIKE :search
+			)`,
+			{ search, fts },
+		);
+	}
+
+	/**
+	 * Builds the optional full-text search OR condition for the search bracket (non-free-text path).
+	 * When search is not a UUID and not email-like, adds search_vector @@ plainto_tsquery('simple', :term).
 	 */
 	private buildFullTextSearchOrCondition(
 		alias: string,
