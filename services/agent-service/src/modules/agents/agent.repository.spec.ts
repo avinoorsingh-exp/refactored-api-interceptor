@@ -220,9 +220,9 @@ describe('AgentTypeOrmRepository', () => {
 			mockQb.getManyAndCount.mockResolvedValue([[minimalAgentEntity], 1]);
 		});
 
-		it('should pass extraSearchOrConditions to applyAllWithStrategies when search is non-UUID and non-email', async () => {
+		it('should not pass extraSearchOrConditions for free-text search (uses grouped andWhere with :search and :fts only)', async () => {
 			let capturedOptions: { extraSearchOrConditions?: (qb: any, searchQuery: string | undefined) => void } | undefined;
-			(mockQueryService.applyAllWithStrategies as jest.Mock).mockImplementation((qb: unknown, _p: unknown, _e: unknown, _a: unknown, options: unknown) => {
+			(mockQueryService.applyAllWithStrategies as jest.Mock).mockImplementation((_qb: unknown, _p: unknown, _e: unknown, _a: unknown, options: unknown) => {
 				capturedOptions = options as typeof capturedOptions;
 				return mockQb;
 			});
@@ -233,34 +233,26 @@ describe('AgentTypeOrmRepository', () => {
 				search: 'smith',
 			});
 
-			expect(capturedOptions?.extraSearchOrConditions).toBeDefined();
-			expect(typeof capturedOptions?.extraSearchOrConditions).toBe('function');
+			expect(capturedOptions?.extraSearchOrConditions).toBeUndefined();
 		});
 
-		it('should add search_vector plainto_tsquery orWhere when extraSearchOrConditions callback is invoked with text search', async () => {
-			let capturedOptions: { extraSearchOrConditions?: (qb: any, searchQuery: string | undefined) => void } | undefined;
-			(mockQueryService.applyAllWithStrategies as jest.Mock).mockImplementation((qb: unknown, _p: unknown, _e: unknown, _a: unknown, options: unknown) => {
-				capturedOptions = options as typeof capturedOptions;
-				return mockQb;
-			});
-
+		it('should add single grouped andWhere with :search and :fts for free-text search', async () => {
 			await repository.findPage({
 				limit: 25,
 				offset: 0,
 				search: 'smith',
 			});
 
-			const orWhereCallsBefore = (mockQb.orWhere as jest.Mock).mock.calls.length;
-			capturedOptions?.extraSearchOrConditions?.(mockQb, 'smith');
-			expect(mockQb.orWhere).toHaveBeenCalledTimes(orWhereCallsBefore + 1);
-			const ftsCall = (mockQb.orWhere as jest.Mock).mock.calls.find(
+			const andWhereCalls = (mockQb.andWhere as jest.Mock).mock.calls;
+			const groupedCall = andWhereCalls.find(
 				(call: unknown[]) =>
 					typeof call[0] === 'string' &&
 					call[0].includes('search_vector') &&
-					call[0].includes('plainto_tsquery'),
+					call[0].includes('plainto_tsquery') &&
+					call[0].includes('ILIKE'),
 			);
-			expect(ftsCall).toBeDefined();
-			expect(ftsCall[1]).toEqual({ ftsSearch: 'smith' });
+			expect(groupedCall).toBeDefined();
+			expect(groupedCall[1]).toEqual({ search: '%smith%', fts: 'smith' });
 		});
 
 		it('should not add FTS orWhere when search is UUID (callback does nothing)', async () => {
