@@ -4,6 +4,7 @@ import type { QueryService } from '../query/query.service.js'
 import type { LoggerService } from '../../core/logger.service.js'
 import { FieldSelection } from '@exprealty/shared-domain'
 import { ProjectionService } from '../query/projection.service.js'
+import type { CountCacheService, CountResult } from '../pagination/count-cache.service.js'
 
 import { 
   CursorPaginationSchema, 
@@ -128,8 +129,15 @@ export abstract class BaseTypeOrmRepository<
 			skipDefaultSort?: boolean;
 			/** Add extra OR conditions inside the search bracket (e.g. full-text search_vector). */
 			extraSearchOrConditions?: (qb: SelectQueryBuilder<TEntity>, searchQuery: string | undefined) => void;
+			/** When provided, uses cached count instead of getManyAndCount(). */
+			countCache?: {
+				service: CountCacheService;
+				entityName: string;
+				schema: string;
+				filters: Record<string, unknown>;
+			};
 		},
-	): Promise<{ items: TDomain[]; total: number }> {
+	): Promise<{ items: TDomain[]; total: number; isApproximate?: boolean; countResult?: CountResult }> {
 		const entityClass = this.getEntityClass()
 		const alias = this.getAlias()
 		const config = this.getQueryConfig()
@@ -181,7 +189,21 @@ export abstract class BaseTypeOrmRepository<
 		// Apply pagination
 		qb.skip(normalized.offset).take(normalized.limit)
 
-		// Execute query
+		// Execute query — use count cache when provided, otherwise fall back to getManyAndCount
+		if (options?.countCache) {
+			const { service, entityName, schema, filters } = options.countCache
+			const [entities, countResult] = await Promise.all([
+				qb.getMany(),
+				service.getCount(entityName, schema, filters, { queryBuilder: qb }),
+			])
+			return {
+				items: entities.map((e) => this.mapToDomain(e, selection)),
+				total: countResult.count,
+				isApproximate: countResult.isApproximate,
+				countResult,
+			}
+		}
+
 		const [entities, total] = await qb.getManyAndCount()
 
 		return {

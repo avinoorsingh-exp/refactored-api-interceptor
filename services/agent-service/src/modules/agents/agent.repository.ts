@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import type { IAgentRepository } from './ports/agent.repository.port.js';
@@ -9,6 +9,7 @@ import { QueryService } from '../../common/query/query.service.js';
 import { LoggerService } from '../../core/logger.service.js';
 import { ProjectionService } from '../../common/query/projection.service.js';
 import { BaseTypeOrmRepository, BaseQueryConfig } from '../../common/database/IRepository.js';
+import { CountCacheService } from '../../common/pagination/count-cache.service.js';
 import { AGENT_PROJECTION_CONFIG } from './config/agent-projection.config.js';
 
 /**
@@ -34,8 +35,7 @@ const AGENT_QUERY_CONFIG: BaseQueryConfig = {
 		'licensedStates', // full licensed state list string for sort (matches display)
 	],
 	allowedSearchFields: [
-		'id', 'agentId', 'title', 'firstName', 'middleName', 'lastName', 'suffix',
-		'preferredName', 'lifecycleStatus', 'systemId',
+		'id', 'agentId', 'firstName', 'middleName', 'lastName', 'preferredName',
 	],
 	defaultSort: { field: 'agentId', direction: 'ASC' },
 	projectionConfig: AGENT_PROJECTION_CONFIG,
@@ -77,6 +77,7 @@ export class AgentTypeOrmRepository
 		queryService: QueryService,
 		logger: LoggerService,
 		projectionService: ProjectionService,
+		@Optional() private readonly countCache?: CountCacheService,
 	) {
 		super(repo, queryService, logger, projectionService);
 		this.logger.setContext('AgentRepository');
@@ -1473,9 +1474,24 @@ export class AgentTypeOrmRepository
 		};
 
 		const alias = this.getAlias();
+
+		// Build count cache options when CountCacheService is available
+		const countCacheOption = this.countCache
+			? {
+				service: this.countCache,
+				entityName: 'agent',
+				schema: 'core',
+				filters: {
+					...(query.filter ? { filter: query.filter } : {}),
+					...(query.search ? { search: query.search } : {}),
+				},
+			}
+			: undefined;
+
 		const queryOptions = {
 			skipDefaultSort: hasRelationalSort,
 			extraSearchOrConditions: isFreeTextSearch ? undefined : this.buildFullTextSearchOrCondition(alias),
+			countCache: countCacheOption,
 		};
 
 		if (needsCustomQuery) {
