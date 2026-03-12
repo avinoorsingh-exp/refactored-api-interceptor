@@ -236,7 +236,7 @@ describe('AgentTypeOrmRepository', () => {
 			expect(capturedOptions?.extraSearchOrConditions).toBeUndefined();
 		});
 
-		it('should add single grouped andWhere with :search and :fts for free-text search', async () => {
+		it('should add single grouped andWhere with :search and :ftsPrefix for free-text search', async () => {
 			await repository.findPage({
 				limit: 25,
 				offset: 0,
@@ -248,11 +248,12 @@ describe('AgentTypeOrmRepository', () => {
 				(call: unknown[]) =>
 					typeof call[0] === 'string' &&
 					call[0].includes('search_vector') &&
-					call[0].includes('plainto_tsquery') &&
-					call[0].includes('ILIKE'),
+					call[0].includes('to_tsquery') &&
+					call[0].includes('ILIKE') &&
+					call[0].includes('preferredName'),
 			);
 			expect(groupedCall).toBeDefined();
-			expect(groupedCall[1]).toEqual({ search: '%smith%', fts: 'smith' });
+			expect(groupedCall[1]).toEqual({ search: '%smith%', ftsPrefix: 'smith:*' });
 		});
 
 		it('should not add FTS orWhere when search is UUID (callback does nothing)', async () => {

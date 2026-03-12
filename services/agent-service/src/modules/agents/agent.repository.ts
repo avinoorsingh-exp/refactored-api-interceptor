@@ -1580,9 +1580,19 @@ export class AgentTypeOrmRepository
 	}
 
 	/**
-	 * Applies free-text search as a single grouped WHERE with two named parameters only.
-	 * Used when search is non-UUID and non-email; avoids duplicated ILIKE blocks and $1..$10.
-	 * Parameters: :search = `%value%`, :fts = value. ORDER BY and LIMIT/OFFSET are applied by findWithQuery.
+	 * Applies free-text search as a single grouped WHERE clause.
+	 *
+	 * Primary strategy: GIN-indexed search_vector with prefix matching (to_tsquery
+	 * 'term:*'). The search_vector already contains first_name, last_name,
+	 * preferred_name, middle_name, title, suffix, agent_id, and system_id, so
+	 * a single @@ check covers all fields via the GIN index.
+	 *
+	 * Fallback: ILIKE on first_name, last_name, and preferred_name (all trgm-indexed)
+	 * catches true substring matches not found by prefix matching (e.g. searching
+	 * "ohn" to find "John"). Other fields are omitted: title/suffix/lifecycleStatus
+	 * have negligible match value and no trgm index; CAST(bigint AS TEXT) prevents
+	 * any index usage. For numeric input, an exact agent_id match (B-tree indexed)
+	 * is added instead.
 	 */
 	private applyFreeTextSearchGrouped<T>(
 		qb: SelectQueryBuilder<T>,
@@ -1590,27 +1600,42 @@ export class AgentTypeOrmRepository
 		freeText: string,
 	): void {
 		const search = `%${freeText}%`;
-		const fts = freeText;
-		qb.andWhere(
-			`(
-				"${alias}"."search_vector" @@ plainto_tsquery('simple', :fts)
+		// Build prefix tsquery: split words, append :* to each, AND them together.
+		// e.g. "John Smith" → "John:* & Smith:*"
+		const sanitisedTokens = freeText
+			.split(/\s+/)
+			.filter(Boolean)
+			.map(t => t.replace(/[&|!<>():*\\'"]/g, ''))
+			.filter(Boolean);
+		const prefixTerms = sanitisedTokens
+			.map(t => `${t}:*`)
+			.join(' & ');
+
+		// Guard against empty input after sanitisation
+		if (!prefixTerms) return;
+
+		const params: Record<string, any> = { search, ftsPrefix: prefixTerms };
+		const isNumeric = /^\d+$/.test(freeText.trim());
+
+		let clause = `(
+				"${alias}"."search_vector" @@ to_tsquery('simple', :ftsPrefix)
 				OR ${alias}.firstName ILIKE :search
 				OR ${alias}.lastName ILIKE :search
-				OR ${alias}.preferredName ILIKE :search
-				OR ${alias}.lifecycleStatus ILIKE :search
-				OR ${alias}.middleName ILIKE :search
-				OR CAST("${alias}"."agent_id" AS TEXT) ILIKE :search
-				OR CAST("${alias}"."system_id" AS TEXT) ILIKE :search
-				OR ${alias}.title ILIKE :search
-				OR ${alias}.suffix ILIKE :search
-			)`,
-			{ search, fts },
-		);
+				OR ${alias}.preferredName ILIKE :search`;
+
+		if (isNumeric) {
+			clause += `\n				OR "${alias}"."agent_id" = :numericAgentId`;
+			params.numericAgentId = parseInt(freeText.trim(), 10);
+		}
+
+		clause += '\n			)';
+
+		qb.andWhere(clause, params);
 	}
 
 	/**
 	 * Builds the optional full-text search OR condition for the search bracket (non-free-text path).
-	 * When search is not a UUID and not email-like, adds search_vector @@ plainto_tsquery('simple', :term).
+	 * When search is not a UUID and not email-like, adds search_vector @@ to_tsquery('simple', 'term:*').
 	 */
 	private buildFullTextSearchOrCondition(
 		alias: string,
@@ -1622,10 +1647,18 @@ export class AgentTypeOrmRepository
 			this.logger.debug('Agent list using full-text search_vector', {
 				indexHint: 'search_vector GIN',
 			});
+			const prefixTerms = trimmed
+				.split(/\s+/)
+				.filter(Boolean)
+				.map(t => t.replace(/[&|!<>():*\\'"]/g, ''))
+				.filter(Boolean)
+				.map(t => `${t}:*`)
+				.join(' & ');
+			if (!prefixTerms) return;
 			const paramName = 'ftsSearch';
 			qb.orWhere(
-				`"${alias}"."search_vector" @@ plainto_tsquery('simple', :${paramName})`,
-				{ [paramName]: trimmed },
+				`"${alias}"."search_vector" @@ to_tsquery('simple', :${paramName})`,
+				{ [paramName]: prefixTerms },
 			);
 		};
 	}
