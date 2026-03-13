@@ -1,5 +1,5 @@
 import { Redis, RedisOptions } from 'ioredis'
-import type { Logger } from '@exprealty/logger'
+import type { Logger as WinstonLogger } from '@exprealty/logger'
 
 // Export async context storage functionality
 export { AsyncContextStorage, CorrelationIdHelper } from './async-context.storage.js'
@@ -17,7 +17,7 @@ export interface CacheOptions {
 	redisTls?: boolean
 	keyPrefix?: string
 	defaultTTL?: number // seconds
-	logger?: Logger
+	logger?: WinstonLogger
 	onError?: (error: Error) => void
 }
 
@@ -35,7 +35,7 @@ export class CacheService {
 	private redis: Redis
 	private keyPrefix: string
 	private defaultTTL: number
-	private logger?: Logger
+	private logger?: WinstonLogger
 
 	constructor(options: CacheOptions = {}) {
 		const {
