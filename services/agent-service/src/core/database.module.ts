@@ -10,18 +10,36 @@ import { LoggerModule } from './logger.module.js'
 const POOL_WARM_SIZE = 5
 
 /**
- * Queries that warm the PostgreSQL buffer cache on startup.
- * Each query touches pages that the first real request would otherwise
+ * Relations to pre-warm via pg_prewarm(). Loads ALL pages of each relation/index
+ * into shared_buffers — more thorough than running sample queries.
+ * Requires the pg_prewarm extension (migration 1772100000000).
+ */
+const PG_PREWARM_RELATIONS = [
+  // Core tables
+  'core.agent',
+  'core.contact_method',
+  // GIN indexes — biggest cold start offenders
+  'core.IDX_contact_method_value_trgm',
+  'core.IDX_agent_search_vector',
+  // Btree indexes used by most filtered queries
+  'core.IDX_agent_lifecycle_status',
+  'core.IDX_contact_method_agent_id_value',
+]
+
+/**
+ * Fallback queries when pg_prewarm is not available.
+ * Each query touches index pages that the first real request would otherwise
  * read from disk, eliminating cold-cache latency after deploys.
- *
- * Guidelines for adding warmup queries:
- * - Only add queries for large tables used by high-traffic endpoints
- * - Use COUNT(*) or LIMIT 1 — we need page reads, not result sets
- * - Keep the list short; total warmup should complete in < 5s
  */
 const CACHE_WARMUP_QUERIES = [
   // Agent table (~267K rows) — most common list endpoint
   `SELECT COUNT(*) FROM core.agent`,
+  // Lifecycle status btree index — used by nearly every filtered query
+  `SELECT COUNT(*) FROM core.agent WHERE lifecycle_status = 'Active'`,
+  // FTS GIN index (search_vector) — used by free-text search
+  `SELECT COUNT(*) FROM core.agent WHERE search_vector @@ to_tsquery('simple', 'smith:*')`,
+  // Trigram GIN index on contact_method.value — used by email ilike filters
+  `SELECT COUNT(*) FROM core.contact_method WHERE value ILIKE '%@exprealty.com%'`,
   // Contact methods — post-loaded for every agent list request
   `SELECT 1 FROM core.contact_method LIMIT 1`,
   // Address chain — post-loaded for primaryAddress include
@@ -58,19 +76,59 @@ class DatabaseWarmupService implements OnModuleInit {
       const poolElapsed = Date.now() - start
       this.logger.info(`[DatabaseModule] Connection pool pre-warmed: ${POOL_WARM_SIZE} connections in ${poolElapsed}ms`)
 
-      // Phase 2: Buffer cache warmup
-      // Touches hot table pages so Postgres loads them into shared_buffers.
+      // Phase 2: Buffer cache warmup via pg_prewarm (preferred) or fallback queries
       const cacheStart = Date.now()
-      for (const sql of CACHE_WARMUP_QUERIES) {
-        await this.dataSource.query(sql)
+      const usedPgPrewarm = await this.tryPgPrewarm()
+
+      if (!usedPgPrewarm) {
+        // Fallback: run queries that touch hot index pages
+        for (const sql of CACHE_WARMUP_QUERIES) {
+          await this.dataSource.query(sql)
+        }
+        this.logger.info(`[DatabaseModule] Buffer cache pre-warmed via queries: ${CACHE_WARMUP_QUERIES.length} queries in ${Date.now() - cacheStart}ms`)
       }
-      const cacheElapsed = Date.now() - cacheStart
-      this.logger.info(`[DatabaseModule] Buffer cache pre-warmed: ${CACHE_WARMUP_QUERIES.length} queries in ${cacheElapsed}ms`)
     } catch (error) {
       // Non-fatal: pool and cache will warm on demand
       this.logger.warn('[DatabaseModule] Pre-warm failed, resources will be created on demand', {
         error: (error as Error).message,
       })
+    }
+  }
+
+  /**
+   * Attempt to use pg_prewarm() to load hot tables and indexes into shared_buffers.
+   * Returns true if pg_prewarm was available and succeeded, false to fall back to queries.
+   */
+  private async tryPgPrewarm(): Promise<boolean> {
+    try {
+      // Check if pg_prewarm extension is installed
+      const [ext] = await this.dataSource.query(
+        `SELECT 1 FROM pg_extension WHERE extname = 'pg_prewarm'`,
+      )
+      if (!ext) return false
+
+      const prewarmStart = Date.now()
+      let totalBlocks = 0
+
+      for (const relation of PG_PREWARM_RELATIONS) {
+        try {
+          const [result] = await this.dataSource.query(
+            `SELECT pg_prewarm($1, 'buffer', 'main') AS blocks`,
+            [relation],
+          )
+          const blocks = parseInt(result?.blocks ?? '0', 10)
+          totalBlocks += blocks
+        } catch {
+          // Individual relation may not exist yet — skip silently
+        }
+      }
+
+      this.logger.info(
+        `[DatabaseModule] Buffer cache pre-warmed via pg_prewarm: ${totalBlocks} blocks for ${PG_PREWARM_RELATIONS.length} relations in ${Date.now() - prewarmStart}ms`,
+      )
+      return true
+    } catch {
+      return false
     }
   }
 }
