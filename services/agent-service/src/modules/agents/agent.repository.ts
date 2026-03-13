@@ -1222,6 +1222,27 @@ export class AgentTypeOrmRepository
 			{ emailSearchValue: `%${trimmed}%` },
 		);
 	}
+
+	/**
+	 * Applies email-only search as an exclusive AND condition.
+	 * Used when the search term contains '@' — skips all name ILIKE fields
+	 * and only searches contact_method.value via EXISTS.
+	 * Uses andWhere (not orWhere) since this is the sole search condition.
+	 */
+	private applyEmailSearchExclusive<T>(
+		qb: SelectQueryBuilder<T>,
+		searchQuery?: string,
+	): void {
+		if (!searchQuery || !searchQuery.trim()) return;
+
+		const trimmed = searchQuery.trim();
+		const alias = this.getAlias();
+		qb.andWhere(
+			`EXISTS (SELECT 1 FROM core.contact_method cm_search WHERE cm_search.agent_id = "${alias}".id AND cm_search.value ILIKE :emailSearchValue)`,
+			{ emailSearchValue: `%${trimmed}%` },
+		);
+	}
+
 	/**
  * Applies UUID search exclusively for agent ID.
  * When a UUID is detected in the search query, this method ensures
@@ -1375,19 +1396,28 @@ export class AgentTypeOrmRepository
 		const isUuidSearch = isUuid(query.search);
 		const isMalformedUuid = this.isMalformedUuid(query.search);
 
-		// Free-text path: one grouped WHERE with only :search and :fts (no strategy per-field params).
+		// Free-text path: one grouped WHERE with only :fts (no strategy per-field params).
 		const isFreeTextSearch =
 			!isUuidSearch &&
 			!isMalformedUuid &&
 			query.search &&
 			!String(query.search).trim().includes('@') &&
 			!!String(query.search).trim();
+		// Email path: search contains '@' — skip all name ILIKEs, only search contact_method.value
+		const isEmailSearch =
+			!isUuidSearch &&
+			!isMalformedUuid &&
+			query.search &&
+			String(query.search).trim().includes('@');
 		if (isUuidSearch) {
 			modifiedQuery.search = undefined;
 		} else if (isMalformedUuid) {
 			modifiedQuery.search = undefined;
 		} else if (isFreeTextSearch) {
-			// Skip strategy search so we add a single grouped condition with :search and :fts only.
+			// Skip strategy search so we add a single grouped condition with :fts only.
+			modifiedQuery.search = undefined;
+		} else if (isEmailSearch) {
+			// Skip strategy search — name ILIKEs are useless for email lookups.
 			modifiedQuery.search = undefined;
 		}
 		if (hasRelationalFilters && filterObj) {
@@ -1490,7 +1520,7 @@ export class AgentTypeOrmRepository
 
 		const queryOptions = {
 			skipDefaultSort: hasRelationalSort,
-			extraSearchOrConditions: isFreeTextSearch ? undefined : this.buildFullTextSearchOrCondition(alias),
+			extraSearchOrConditions: (isFreeTextSearch || isEmailSearch) ? undefined : this.buildFullTextSearchOrCondition(alias),
 			countCache: countCacheOption,
 		};
 
@@ -1551,13 +1581,15 @@ export class AgentTypeOrmRepository
 						licensedStatesSort,
 					);
 				}
-				// Apply search: UUID exclusive, free-text single grouped clause, or full-name/email
+				// Apply search: UUID exclusive, free-text single grouped clause, email-only, or full-name/email
 				if (isUuidSearch) {
 					this.applyUuidSearchExclusive(qb, query.search);
 				} else if (isMalformedUuid) {
 					qb.andWhere('1=0');
 				} else if (isFreeTextSearch) {
 					this.applyFreeTextSearchGrouped(qb, alias, String(query.search).trim());
+				} else if (isEmailSearch) {
+					this.applyEmailSearchExclusive(qb, query.search);
 				} else {
 					this.applyFullNameSearch(qb, modifiedQuery.search);
 					this.applyEmailSearch(qb, modifiedQuery.search);
@@ -1580,6 +1612,8 @@ export class AgentTypeOrmRepository
 				qb.andWhere('1=0');
 			} else if (isFreeTextSearch) {
 				this.applyFreeTextSearchGrouped(qb, alias, String(query.search).trim());
+			} else if (isEmailSearch) {
+				this.applyEmailSearchExclusive(qb, query.search);
 			} else {
 				this.applyFullNameSearch(qb, modifiedQuery.search);
 				this.applyEmailSearch(qb, modifiedQuery.search);
@@ -1615,7 +1649,6 @@ export class AgentTypeOrmRepository
 		alias: string,
 		freeText: string,
 	): void {
-		const search = `%${freeText}%`;
 		// Build prefix tsquery: split words, append :* to each, AND them together.
 		// e.g. "John Smith" → "John:* & Smith:*"
 		const sanitisedTokens = freeText
@@ -1630,14 +1663,13 @@ export class AgentTypeOrmRepository
 		// Guard against empty input after sanitisation
 		if (!prefixTerms) return;
 
-		const params: Record<string, any> = { search, ftsPrefix: prefixTerms };
+		const params: Record<string, any> = { ftsPrefix: prefixTerms };
 		const isNumeric = /^\d+$/.test(freeText.trim());
 
+		// search_vector covers first_name, last_name, preferred_name, middle_name,
+		// title, suffix, agent_id, system_id via GIN index — no ILIKE fallbacks needed.
 		let clause = `(
-				"${alias}"."search_vector" @@ to_tsquery('simple', :ftsPrefix)
-				OR ${alias}.firstName ILIKE :search
-				OR ${alias}.lastName ILIKE :search
-				OR ${alias}.preferredName ILIKE :search`;
+				"${alias}"."search_vector" @@ to_tsquery('simple', :ftsPrefix)`;
 
 		if (isNumeric) {
 			clause += `\n				OR "${alias}"."agent_id" = :numericAgentId`;

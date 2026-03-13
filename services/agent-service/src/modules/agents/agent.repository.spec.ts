@@ -236,7 +236,7 @@ describe('AgentTypeOrmRepository', () => {
 			expect(capturedOptions?.extraSearchOrConditions).toBeUndefined();
 		});
 
-		it('should add single grouped andWhere with :search and :ftsPrefix for free-text search', async () => {
+		it('should add single grouped andWhere with :ftsPrefix for free-text search (no ILIKE fallbacks)', async () => {
 			await repository.findPage({
 				limit: 25,
 				offset: 0,
@@ -248,12 +248,12 @@ describe('AgentTypeOrmRepository', () => {
 				(call: unknown[]) =>
 					typeof call[0] === 'string' &&
 					call[0].includes('search_vector') &&
-					call[0].includes('to_tsquery') &&
-					call[0].includes('ILIKE') &&
-					call[0].includes('preferredName'),
+					call[0].includes('to_tsquery'),
 			);
 			expect(groupedCall).toBeDefined();
-			expect(groupedCall[1]).toEqual({ search: '%smith%', ftsPrefix: 'smith:*' });
+			expect(groupedCall[1]).toEqual({ ftsPrefix: 'smith:*' });
+			// Should NOT contain ILIKE fallbacks — search_vector covers all name fields
+			expect(groupedCall[0]).not.toContain('ILIKE');
 		});
 
 		it('should not add FTS orWhere when search is UUID (callback does nothing)', async () => {
@@ -290,6 +290,34 @@ describe('AgentTypeOrmRepository', () => {
 			const orWhereCallsBefore = (mockQb.orWhere as jest.Mock).mock.calls.length;
 			capturedOptions?.extraSearchOrConditions?.(mockQb, 'user@example.com');
 			expect(mockQb.orWhere).toHaveBeenCalledTimes(orWhereCallsBefore);
+		});
+
+		it('should use exclusive email EXISTS andWhere when search contains @', async () => {
+			await repository.findPage({
+				limit: 25,
+				offset: 0,
+				search: 'john@exprealty.com',
+			});
+
+			const andWhereCalls = (mockQb.andWhere as jest.Mock).mock.calls;
+			const emailCall = andWhereCalls.find(
+				(call: unknown[]) =>
+					typeof call[0] === 'string' &&
+					call[0].includes('EXISTS') &&
+					call[0].includes('contact_method') &&
+					call[0].includes('ILIKE'),
+			);
+			expect(emailCall).toBeDefined();
+			expect(emailCall[1]).toEqual({ emailSearchValue: '%john@exprealty.com%' });
+
+			// Should NOT have any name ILIKE conditions
+			const nameIlike = andWhereCalls.find(
+				(call: unknown[]) =>
+					typeof call[0] === 'string' &&
+					call[0].includes('firstName') &&
+					call[0].includes('ILIKE'),
+			);
+			expect(nameIlike).toBeUndefined();
 		});
 	});
 
