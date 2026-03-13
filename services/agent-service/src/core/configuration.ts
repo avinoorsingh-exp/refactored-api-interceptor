@@ -44,7 +44,7 @@ export const ConfigSchema = BaseConfig.extend({
 	}, z.boolean().default(false)),
 
 	// ===== Redis =====
-	REDIS_URL: z.string().url().default('redis://localhost:6379'),
+	REDIS_URL: z.string().url().optional(),
 	REDIS_TLS: z.preprocess((val) => {
 		if (typeof val === 'string') return val.toLowerCase() === 'true' || val === '1';
 		return val;

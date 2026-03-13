@@ -25,11 +25,13 @@ import { LoggerService } from './logger.service.js'
 						return undefined
 					},
 				})
+				const redisUrl = config.get('REDIS_URL')
 				return new CacheService({
-					redisUrl: config.get('REDIS_URL'),
+					redisUrl,
 					redisTls: config.get('REDIS_TLS'),
 					keyPrefix: 'exprealty:agentdb',
 					logger: lazyLogger,
+					enabled: !!redisUrl,
 				})
 			},
 			inject: [ConfigService, LoggerService],
