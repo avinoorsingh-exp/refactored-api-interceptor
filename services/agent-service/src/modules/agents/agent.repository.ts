@@ -949,9 +949,10 @@ export class AgentTypeOrmRepository
 	}
 
 	/**
-	 * Apply email filter conditions using EXISTS subqueries.
-	 * Avoids LEFT JOIN on contact_method which inflates COUNT in getManyAndCount().
-	 * Covered by: idx_contact_method_agent_channel + IDX_contact_method_value_trgm.
+	 * Apply email filter conditions using IN subqueries.
+	 * Uses IN (SELECT agent_id FROM contact_method WHERE ...) instead of
+	 * correlated EXISTS so PostgreSQL can run the subquery once and hash-join.
+	 * Covered by: IDX_contact_method_value_trgm (GIN), idx_contact_method_agent_channel.
 	 */
 	private applyEmailFilters<T>(
 		qb: SelectQueryBuilder<T>,
@@ -961,39 +962,39 @@ export class AgentTypeOrmRepository
 		if (filters.length === 0) return;
 
 		const aliasRef = `"${alias}".id`;
+		const base = `SELECT cm.agent_id FROM core.contact_method cm WHERE cm.channel = 'email'`;
 
 		filters.forEach((condition, index) => {
 			const paramName = `emailFilter_${index}`;
-			const base = `EXISTS (SELECT 1 FROM core.contact_method cm WHERE cm.agent_id = ${aliasRef} AND cm.channel = 'email'`;
 
 			switch (condition.operator) {
 				case 'eq':
-					qb.andWhere(`${base} AND cm.value = :${paramName})`, { [paramName]: condition.value });
+					qb.andWhere(`${aliasRef} IN (${base} AND cm.value = :${paramName})`, { [paramName]: condition.value });
 					break;
 				case 'ne':
-					qb.andWhere(`${base} AND cm.value != :${paramName})`, { [paramName]: condition.value });
+					qb.andWhere(`${aliasRef} NOT IN (${base} AND cm.value = :${paramName})`, { [paramName]: condition.value });
 					break;
 				case 'ilike':
 				case 'contains':
-					qb.andWhere(`${base} AND cm.value ILIKE :${paramName})`, { [paramName]: `%${condition.value}%` });
+					qb.andWhere(`${aliasRef} IN (${base} AND cm.value ILIKE :${paramName})`, { [paramName]: `%${condition.value}%` });
 					break;
 				case 'startsWith':
-					qb.andWhere(`${base} AND cm.value ILIKE :${paramName})`, { [paramName]: `${condition.value}%` });
+					qb.andWhere(`${aliasRef} IN (${base} AND cm.value ILIKE :${paramName})`, { [paramName]: `${condition.value}%` });
 					break;
 				case 'endsWith':
-					qb.andWhere(`${base} AND cm.value ILIKE :${paramName})`, { [paramName]: `%${condition.value}` });
+					qb.andWhere(`${aliasRef} IN (${base} AND cm.value ILIKE :${paramName})`, { [paramName]: `%${condition.value}` });
 					break;
 				case 'in':
-					qb.andWhere(`${base} AND cm.value IN (:...${paramName}))`, { [paramName]: condition.value });
+					qb.andWhere(`${aliasRef} IN (${base} AND cm.value IN (:...${paramName}))`, { [paramName]: condition.value });
 					break;
 				case 'isNull':
-					qb.andWhere(`NOT EXISTS (SELECT 1 FROM core.contact_method cm WHERE cm.agent_id = ${aliasRef} AND cm.channel = 'email' AND cm.value IS NOT NULL)`);
+					qb.andWhere(`${aliasRef} NOT IN (${base} AND cm.value IS NOT NULL)`);
 					break;
 				case 'isNotNull':
-					qb.andWhere(`${base} AND cm.value IS NOT NULL)`);
+					qb.andWhere(`${aliasRef} IN (${base} AND cm.value IS NOT NULL)`);
 					break;
 				default:
-					qb.andWhere(`${base} AND cm.value = :${paramName})`, { [paramName]: condition.value });
+					qb.andWhere(`${aliasRef} IN (${base} AND cm.value = :${paramName})`, { [paramName]: condition.value });
 			}
 		});
 	}
@@ -1379,13 +1380,15 @@ export class AgentTypeOrmRepository
 			hasAddresses ||
 			hasRelationalFilters ||
 			hasRelationalSort;
-		// Candidate set: restrict expensive filters to a bounded set of IDs (cheap filters only)
+		// Candidate set: restrict expensive filters to a bounded set of IDs (cheap filters only).
+		// Disabled when email filters are present — the IN subquery on contact_method already
+		// narrows results efficiently, and the 2000-row LIMIT would silently truncate matches.
 		const hasCheapConditions = standardConditions.some(c => this.isCheapFilterCondition(c));
 		const hasExpensiveFilters =
 			hasRelationalFilters ||
 			standardConditions.some(c => !this.isCheapFilterCondition(c));
 		const useCandidateSet =
-			needsCustomQuery && hasExpensiveFilters && hasCheapConditions;
+			needsCustomQuery && hasExpensiveFilters && hasCheapConditions && emailFilters.length === 0;
 		const candidateRestriction = useCandidateSet
 			? this.buildCandidateSetRestriction(standardConditions)
 			: null;

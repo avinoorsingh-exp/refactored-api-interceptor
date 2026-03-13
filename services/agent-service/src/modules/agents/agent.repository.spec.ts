@@ -163,7 +163,7 @@ describe('AgentTypeOrmRepository', () => {
 			});
 		});
 
-		it('should apply candidate set andWhere when filter has cheap conditions and expensive filters (email)', async () => {
+		it('should not apply candidate set when email filters are present (IN subquery narrows results)', async () => {
 			await repository.findPage({
 				limit: 25,
 				offset: 0,
@@ -183,17 +183,57 @@ describe('AgentTypeOrmRepository', () => {
 					typeof call[0] === 'string' &&
 					call[0].includes('IN (SELECT "id" FROM "core"."agent"'),
 			);
-			expect(candidateCall).toBeDefined();
-			expect(candidateCall[0]).toContain('"lifecycle_status" = :candidate_ls');
-			expect(candidateCall[0]).toContain('"id" != :candidate_id_ne');
-			expect(candidateCall[0]).toContain('LIMIT :candidate_limit');
-			expect(candidateCall[1]).toEqual(
-				expect.objectContaining({
-					candidate_ls: 'Active',
-					candidate_id_ne: 'fb52bfc9-0c85-11eb-9662-9be8f1cc03e5',
-					candidate_limit: 2000,
+			// Candidate set should NOT be applied — email IN subquery already narrows results
+			expect(candidateCall).toBeUndefined();
+		});
+
+		it('should apply email filter using IN subquery (not correlated EXISTS)', async () => {
+			await repository.findPage({
+				limit: 25,
+				offset: 0,
+				filter: JSON.stringify({
+					conditions: [
+						{ field: 'lifecycleStatus', operator: 'eq', value: 'Active' },
+						{ field: 'email', operator: 'ilike', value: 'test@example.com' },
+					],
+					logicalOperator: 'AND',
 				}),
+			});
+
+			const andWhereCalls = (mockQb.andWhere as jest.Mock).mock.calls;
+			const emailCall = andWhereCalls.find(
+				(call: unknown[]) =>
+					typeof call[0] === 'string' &&
+					call[0].includes('IN (SELECT cm.agent_id FROM core.contact_method'),
 			);
+			expect(emailCall).toBeDefined();
+			expect(emailCall[0]).toContain("cm.channel = 'email'");
+			expect(emailCall[0]).toContain('cm.value ILIKE');
+			expect(emailCall[1]).toEqual({ emailFilter_0: '%test@example.com%' });
+		});
+
+		it('should apply candidate set when cheap + non-email relational expensive filters (country)', async () => {
+			await repository.findPage({
+				limit: 25,
+				offset: 0,
+				filter: JSON.stringify({
+					conditions: [
+						{ field: 'lifecycleStatus', operator: 'eq', value: 'Active' },
+						{ field: 'id', operator: 'ne', value: 'fb52bfc9-0c85-11eb-9662-9be8f1cc03e5' },
+						{ field: 'country', operator: 'ilike', value: 'usa' },
+					],
+					logicalOperator: 'AND',
+				}),
+			});
+
+			const andWhereCalls = (mockQb.andWhere as jest.Mock).mock.calls;
+			const candidateCall = andWhereCalls.find(
+				(call: unknown[]) =>
+					typeof call[0] === 'string' &&
+					call[0].includes('IN (SELECT "id" FROM "core"."agent"'),
+			);
+			expect(candidateCall).toBeDefined();
+			expect(candidateCall[0]).toContain('LIMIT :candidate_limit');
 		});
 
 		it('should not apply candidate set when filter has no cheap conditions', async () => {
