@@ -37,18 +37,23 @@ function createMockLogger() {
 	}
 }
 
-/** Creates a mock SelectQueryBuilder with clone/getQuery/getParameters for EXPLAIN tests */
+/** Creates a mock SelectQueryBuilder with getQueryAndParameters for EXPLAIN tests */
 function createExplainMockQb(overrides?: {
 	sql?: string
-	parameters?: Record<string, any>
+	paramValues?: any[]
 	getCountResult?: number | Promise<number>
 }) {
+	const sqlAndParams: [string, any[]] = [
+		overrides?.sql ?? 'SELECT COUNT(*) FROM agent',
+		overrides?.paramValues ?? [],
+	]
 	const self: any = {
 		select: jest.fn().mockReturnThis(),
+		skip: jest.fn().mockReturnThis(),
+		take: jest.fn().mockReturnThis(),
 		offset: jest.fn().mockReturnThis(),
 		limit: jest.fn().mockReturnThis(),
-		getQuery: jest.fn().mockReturnValue(overrides?.sql ?? 'SELECT COUNT(*) FROM agent'),
-		getParameters: jest.fn().mockReturnValue(overrides?.parameters ?? {}),
+		getQueryAndParameters: jest.fn().mockReturnValue(sqlAndParams),
 		getCount: jest.fn().mockResolvedValue(overrides?.getCountResult ?? 0),
 		clone: jest.fn(),
 	}
@@ -56,10 +61,11 @@ function createExplainMockQb(overrides?: {
 	self.clone.mockImplementation(() => {
 		const cloned: any = {
 			select: jest.fn().mockReturnThis(),
+			skip: jest.fn().mockReturnThis(),
+			take: jest.fn().mockReturnThis(),
 			offset: jest.fn().mockReturnThis(),
 			limit: jest.fn().mockReturnThis(),
-			getQuery: jest.fn().mockReturnValue(overrides?.sql ?? 'SELECT COUNT(*) FROM agent'),
-			getParameters: jest.fn().mockReturnValue(overrides?.parameters ?? {}),
+			getQueryAndParameters: jest.fn().mockReturnValue(sqlAndParams),
 			getCount: jest.fn().mockResolvedValue(overrides?.getCountResult ?? 0),
 			clone: jest.fn(),
 		}
@@ -362,10 +368,11 @@ describe('CountCacheService', () => {
 			const mockQb = createExplainMockQb()
 			mockQb.clone.mockImplementation(() => ({
 				select: jest.fn().mockReturnThis(),
+				skip: jest.fn().mockReturnThis(),
+				take: jest.fn().mockReturnThis(),
 				offset: jest.fn().mockReturnThis(),
 				limit: jest.fn().mockReturnThis(),
-				getQuery: jest.fn().mockReturnValue('SELECT ...'),
-				getParameters: jest.fn().mockReturnValue({}),
+				getQueryAndParameters: jest.fn().mockReturnValue(['SELECT ...', []]),
 				getCount: jest.fn().mockReturnValue(new Promise(() => {})), // never resolves
 				clone: jest.fn(),
 			}))
@@ -399,6 +406,8 @@ describe('CountCacheService', () => {
 				const qb = createExplainMockQb()
 				qb.clone.mockImplementation(() => ({
 					select: jest.fn().mockReturnThis(),
+					skip: jest.fn().mockReturnThis(),
+					take: jest.fn().mockReturnThis(),
 					offset: jest.fn().mockReturnThis(),
 					limit: jest.fn().mockReturnThis(),
 					getQuery: jest.fn().mockReturnValue('SELECT ...'),
@@ -430,6 +439,8 @@ describe('CountCacheService', () => {
 			mockQb.clone.mockImplementation(() => {
 				const cloned: any = {
 					select: jest.fn().mockReturnThis(),
+					skip: jest.fn().mockReturnThis(),
+					take: jest.fn().mockReturnThis(),
 					offset: jest.fn().mockReturnThis(),
 					limit: jest.fn().mockReturnThis(),
 					getQuery: jest.fn().mockReturnValue('SELECT ...'),
@@ -603,17 +614,13 @@ describe('CountCacheService', () => {
 	// EXPLAIN parameter ordering
 	// -----------------------------------------------------------------------
 
-	describe('EXPLAIN parameter ordering', () => {
-		it('should sort parameters numerically for orm_param keys', async () => {
+	describe('EXPLAIN parameter passing', () => {
+		it('should pass parameters from getQueryAndParameters to EXPLAIN query', async () => {
 			const { service, dataSource } = buildService()
 
 			const mockQb = createExplainMockQb({
 				sql: 'SELECT COUNT(*) FROM agent WHERE a = $1 AND b = $2 AND c = $3',
-				parameters: {
-					orm_param_2: 'third',
-					orm_param_0: 'first',
-					orm_param_1: 'second',
-				},
+				paramValues: ['first', 'second', 'third'],
 			})
 
 			dataSource.query.mockResolvedValueOnce([{

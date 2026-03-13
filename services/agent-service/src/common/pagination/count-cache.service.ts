@@ -273,21 +273,19 @@ export class CountCacheService implements OnModuleDestroy {
     qb: SelectQueryBuilder<any>,
   ): Promise<number> {
     try {
-      // Clone to avoid mutating the original QB, then build a COUNT query
-      // Use undefined to remove LIMIT/OFFSET — limit(0) would make EXPLAIN estimate 0 rows
-      const countQb = qb.clone().select('COUNT(*)', 'cnt').offset(undefined).limit(undefined)
-      const sql = countQb.getQuery()
-      const parameters = countQb.getParameters()
+      // Clone and strip pagination so EXPLAIN sees the full result set.
+      // We EXPLAIN the original SELECT (not a COUNT(*) rewrite) to avoid
+      // conflicts with GROUP BY / ORDER BY / HAVING from projections/joins.
+      // The top-level Plan Rows gives the planner's row estimate.
+      const explainQb = qb.clone()
+        .skip(undefined as any)
+        .take(undefined as any)
+        .offset(undefined as any)
+        .limit(undefined as any)
 
-      // Build ordered parameter array matching $1, $2, ... placeholder order
-      const paramKeys = Object.keys(parameters).sort((a, b) => {
-        // Sort numerically if keys are numeric (orm_param_0, etc.) or by natural order
-        const aNum = parseInt(a.replace(/\D/g, ''), 10)
-        const bNum = parseInt(b.replace(/\D/g, ''), 10)
-        if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum
-        return a.localeCompare(b)
-      })
-      const paramValues = paramKeys.map(k => parameters[k])
+      // getQueryAndParameters() returns native SQL with $1/$2 placeholders
+      // and an ordered parameter array — unlike getQuery() which uses :named params
+      const [sql, paramValues] = explainQb.getQueryAndParameters()
 
       // EXPLAIN (no ANALYZE) — planner estimate only, no execution
       const result = await this.dataSource.query(
