@@ -386,6 +386,7 @@ async function bootstrap() {
 				.setVersion('1.0')
 				.addBearerAuth()
 				.addTag('countries', 'Country management endpoints')
+				.addTag('lookup', 'Lookup endpoints')
 				.addTag('companies', 'Company management endpoints')
 				.addTag('regions', 'Region management endpoints')
 				.addTag('api-monitoring', 'API monitoring and metrics (GET only). Use ISO 8601 for dates.')

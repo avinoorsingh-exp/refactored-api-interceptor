@@ -84,6 +84,28 @@ describe('CountriesRepository', () => {
     });
   });
 
+  describe('findAll', () => {
+    it('should return all countries ordered by alpha2 ASC', async () => {
+      mockTypeOrmRepo.find.mockResolvedValue([mockCountryEntity]);
+
+      const result = await repository.findAll();
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toEqual(expectedDomainCountry);
+      expect(mockTypeOrmRepo.find).toHaveBeenCalledWith({
+        order: { alpha2: 'ASC' },
+      });
+    });
+
+    it('should return empty array when no countries exist', async () => {
+      mockTypeOrmRepo.find.mockResolvedValue([]);
+
+      const result = await repository.findAll();
+
+      expect(result).toEqual([]);
+    });
+  });
+
   describe('findByCode', () => {
     /**
      * Test successful retrieval by alpha-2 code

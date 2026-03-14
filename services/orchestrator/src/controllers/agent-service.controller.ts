@@ -49,7 +49,10 @@ export class AgentServiceController {
   ): Promise<void> {
     const startTime = Date.now()
     const method = req.method
-    const path = req.path
+    // Forward full pathname (including /v1) so agent-service receives e.g. /v1/lookup/countries.
+    // req.path is relative to controller mount (/v1); query is forwarded separately via req.query.
+    const pathname = (req.originalUrl ?? '').replace(/\?.*$/, '')
+    const path = pathname || (req.baseUrl || '') + (req.path?.startsWith('/') ? req.path : `/${req.path || ''}`)
     const body = req.body
     const query = req.query
     const headers = req.headers
