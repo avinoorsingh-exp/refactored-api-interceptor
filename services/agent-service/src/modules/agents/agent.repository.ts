@@ -1,4 +1,4 @@
-import { Injectable, Optional, Inject } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import type { IAgentRepository } from './ports/agent.repository.port.js';
@@ -9,7 +9,6 @@ import { QueryService } from '../../common/query/query.service.js';
 import { LoggerService } from '../../core/logger.service.js';
 import { ProjectionService } from '../../common/query/projection.service.js';
 import { BaseTypeOrmRepository, BaseQueryConfig } from '../../common/database/IRepository.js';
-import { CountCacheService } from '../../common/pagination/count-cache.service.js';
 import { AGENT_PROJECTION_CONFIG } from './config/agent-projection.config.js';
 
 /**
@@ -55,13 +54,6 @@ const RELATIONAL_FILTER_FIELDS = ['email', 'country', 'licensedStates'] as const
 const RELATIONAL_SORT_FIELDS = ['primaryEmail', 'licensedStates'] as const;
 
 /**
- * Maximum number of agent IDs in the candidate set for expensive-filter optimization.
- * Cheap filters (lifecycleStatus eq, id ne) restrict the candidate set; expensive
- * filters (ILIKE, EXISTS for email/country/licensedStates) are applied only on this set.
- */
-const CANDIDATE_SET_MAX = 2000;
-
-/**
  * TypeORM adapter implementing IAgentRepository port.
  * Extends BaseTypeOrmRepository for shared CRUD operations.
  * This is the infrastructure layer - can be swapped without affecting business logic.
@@ -77,7 +69,6 @@ export class AgentTypeOrmRepository
 		queryService: QueryService,
 		logger: LoggerService,
 		projectionService: ProjectionService,
-		@Optional() private readonly countCache?: CountCacheService,
 	) {
 		super(repo, queryService, logger, projectionService);
 		this.logger.setContext('AgentRepository');
@@ -822,49 +813,6 @@ export class AgentTypeOrmRepository
 	}
 
 	/**
-	 * Whether a filter condition is "cheap" (index-friendly, no ILIKE/EXISTS).
-	 * Used to build the candidate set from lifecycleStatus eq and id ne only.
-	 */
-	private isCheapFilterCondition(c: { field: string; operator: string }): boolean {
-		return (
-			(c.field === 'lifecycleStatus' && c.operator === 'eq') ||
-			(c.field === 'id' && c.operator === 'ne')
-		);
-	}
-
-	/**
-	 * Builds the candidate set restriction (subquery + params) from cheap conditions only.
-	 * Returns null if there are no cheap conditions to form a bounded set.
-	 * Used so expensive filters (ILIKE, EXISTS) run on at most CANDIDATE_SET_MAX rows.
-	 */
-	private buildCandidateSetRestriction(standardConditions: Array<{ field: string; operator: string; value: any }>): {
-		subquery: string;
-		params: Record<string, unknown>;
-	} | null {
-		const lifecycleStatusEq = standardConditions.find(
-			c => c.field === 'lifecycleStatus' && c.operator === 'eq',
-		);
-		const idNe = standardConditions.find(c => c.field === 'id' && c.operator === 'ne');
-		if (!lifecycleStatusEq && !idNe) {
-			return null;
-		}
-		const parts: string[] = [];
-		const params: Record<string, unknown> = { candidate_limit: CANDIDATE_SET_MAX };
-		if (lifecycleStatusEq?.value != null) {
-			parts.push('"lifecycle_status" = :candidate_ls');
-			params.candidate_ls = lifecycleStatusEq.value;
-		}
-		if (idNe?.value != null) {
-			parts.push('"id" != :candidate_id_ne');
-			params.candidate_id_ne = idNe.value;
-		}
-		if (parts.length === 0) return null;
-		const whereClause = parts.join(' AND ');
-		const subquery = `(SELECT "id" FROM "core"."agent" WHERE ${whereClause} ORDER BY "id" LIMIT :candidate_limit)`;
-		return { subquery, params };
-	}
-
-	/**
 	 * Extract relational filter conditions from the query filter.
 	 * Returns the extracted conditions and the remaining standard conditions.
 	 *
@@ -1001,6 +949,8 @@ export class AgentTypeOrmRepository
 
 	/**
 	 * Apply country filter conditions using EXISTS subqueries.
+	 * Restricts to primary address only (aa.is_primary = true) so filter matches
+	 * what the API returns in primaryAddress.country.
 	 * Avoids 3-hop LEFT JOIN chain (agentAddresses → address → country) which
 	 * inflates COUNT in getManyAndCount().
 	 * Covered by: PK_agent_address (agent_id, address_id), PK_address_id, PK_country.
@@ -1017,7 +967,7 @@ export class AgentTypeOrmRepository
 			`EXISTS (SELECT 1 FROM core.agent_address aa`,
 			`JOIN core.address a ON a.id = aa.address_id`,
 			`JOIN core.country c ON c.id = a.country_id`,
-			`WHERE aa.agent_id = ${aliasRef}`,
+			`WHERE aa.agent_id = ${aliasRef} AND aa.is_primary = true`,
 		].join(' ');
 
 		filters.forEach((condition, index) => {
@@ -1048,7 +998,7 @@ export class AgentTypeOrmRepository
 					[paramName]: condition.value,
 				});
 			} else if (condition.operator === 'isNull') {
-				qb.andWhere(`NOT EXISTS (SELECT 1 FROM core.agent_address aa JOIN core.address a ON a.id = aa.address_id WHERE aa.agent_id = ${aliasRef} AND a.country_id IS NOT NULL)`);
+				qb.andWhere(`NOT EXISTS (SELECT 1 FROM core.agent_address aa JOIN core.address a ON a.id = aa.address_id WHERE aa.agent_id = ${aliasRef} AND aa.is_primary = true AND a.country_id IS NOT NULL)`);
 			} else if (condition.operator === 'isNotNull') {
 				qb.andWhere(`${base} AND c.id IS NOT NULL)`);
 			} else {
@@ -1380,19 +1330,6 @@ export class AgentTypeOrmRepository
 			hasAddresses ||
 			hasRelationalFilters ||
 			hasRelationalSort;
-		// Candidate set: restrict expensive filters to a bounded set of IDs (cheap filters only).
-		// Disabled when email filters are present — the IN subquery on contact_method already
-		// narrows results efficiently, and the 2000-row LIMIT would silently truncate matches.
-		const hasCheapConditions = standardConditions.some(c => this.isCheapFilterCondition(c));
-		const hasExpensiveFilters =
-			hasRelationalFilters ||
-			standardConditions.some(c => !this.isCheapFilterCondition(c));
-		const useCandidateSet =
-			needsCustomQuery && hasExpensiveFilters && hasCheapConditions && emailFilters.length === 0;
-		const candidateRestriction = useCandidateSet
-			? this.buildCandidateSetRestriction(standardConditions)
-			: null;
-
 		// Build modified query params without relational fields
 		const modifiedQuery: Partial<QueryParams> = { ...query };
 		// Check if search is a UUID - if so, make it exclusive
@@ -1508,41 +1445,15 @@ export class AgentTypeOrmRepository
 
 		const alias = this.getAlias();
 
-		// Build count cache options when CountCacheService is available
-		const countCacheOption = this.countCache
-			? {
-				service: this.countCache,
-				entityName: 'agent',
-				schema: 'core',
-				filters: {
-					...(query.filter ? { filter: query.filter } : {}),
-					...(query.search ? { search: query.search } : {}),
-				},
-			}
-			: undefined;
-
+		// Count cache disabled for agents so meta.total is always from getManyAndCount().
 		const queryOptions = {
 			skipDefaultSort: hasRelationalSort,
 			extraSearchOrConditions: (isFreeTextSearch || isEmailSearch) ? undefined : this.buildFullTextSearchOrCondition(alias),
-			countCache: countCacheOption,
+			countCache: undefined,
 		};
 
 		if (needsCustomQuery) {
-			if (candidateRestriction) {
-				this.logger.debug('Agent list using candidate set optimization', {
-					candidateSetMax: CANDIDATE_SET_MAX,
-					indexHint: 'lifecycle_status btree, id',
-				});
-			}
 			const result = await this.findWithQuery(modifiedQuery, selection, (qb) => {
-				// Restrict to candidate set so expensive filters run on at most CANDIDATE_SET_MAX rows
-				if (candidateRestriction) {
-					const alias = this.getAlias();
-					qb.andWhere(
-						`"${alias}".id IN ${candidateRestriction.subquery}`,
-						candidateRestriction.params as Record<string, any>,
-					);
-				}
 				// Add virtual relation joins for includes
 				if (hasPrimaryLicense) {
 					this.loadPrimaryLicense(qb, this.getAlias());

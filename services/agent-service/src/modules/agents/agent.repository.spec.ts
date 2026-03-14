@@ -144,7 +144,7 @@ describe('AgentTypeOrmRepository', () => {
 		});
 	});
 
-	describe('findPage with candidate set optimization', () => {
+	describe('findPage with relational and standard filters', () => {
 		beforeEach(() => {
 			mockQb.getManyAndCount.mockResolvedValue([[minimalAgentEntity], 1]);
 			mockQueryService.normalizeWithValidation.mockReturnValue({
@@ -163,7 +163,7 @@ describe('AgentTypeOrmRepository', () => {
 			});
 		});
 
-		it('should not apply candidate set when email filters are present (IN subquery narrows results)', async () => {
+		it('should apply email filter using IN subquery when email filter is present', async () => {
 			await repository.findPage({
 				limit: 25,
 				offset: 0,
@@ -178,13 +178,12 @@ describe('AgentTypeOrmRepository', () => {
 			});
 
 			const andWhereCalls = (mockQb.andWhere as jest.Mock).mock.calls;
-			const candidateCall = andWhereCalls.find(
+			const emailInSubqueryCall = andWhereCalls.find(
 				(call: unknown[]) =>
 					typeof call[0] === 'string' &&
-					call[0].includes('IN (SELECT "id" FROM "core"."agent"'),
+					call[0].includes('IN (SELECT cm.agent_id FROM core.contact_method'),
 			);
-			// Candidate set should NOT be applied — email IN subquery already narrows results
-			expect(candidateCall).toBeUndefined();
+			expect(emailInSubqueryCall).toBeDefined();
 		});
 
 		it('should apply email filter using IN subquery (not correlated EXISTS)', async () => {
@@ -212,7 +211,7 @@ describe('AgentTypeOrmRepository', () => {
 			expect(emailCall[1]).toEqual({ emailFilter_0: '%test@example.com%' });
 		});
 
-		it('should apply candidate set when cheap + non-email relational expensive filters (country)', async () => {
+		it('should apply country filter via EXISTS on primary address only (alpha_2)', async () => {
 			await repository.findPage({
 				limit: 25,
 				offset: 0,
@@ -220,23 +219,25 @@ describe('AgentTypeOrmRepository', () => {
 					conditions: [
 						{ field: 'lifecycleStatus', operator: 'eq', value: 'Active' },
 						{ field: 'id', operator: 'ne', value: 'fb52bfc9-0c85-11eb-9662-9be8f1cc03e5' },
-						{ field: 'country', operator: 'ilike', value: 'usa' },
+						{ field: 'country', operator: 'eq', value: 'US' },
 					],
 					logicalOperator: 'AND',
 				}),
 			});
 
 			const andWhereCalls = (mockQb.andWhere as jest.Mock).mock.calls;
-			const candidateCall = andWhereCalls.find(
+			const countryExistsCall = andWhereCalls.find(
 				(call: unknown[]) =>
 					typeof call[0] === 'string' &&
-					call[0].includes('IN (SELECT "id" FROM "core"."agent"'),
+					call[0].includes('EXISTS') &&
+					call[0].includes('core.agent_address') &&
+					call[0].includes('aa.is_primary = true') &&
+					call[0].includes('c.alpha_2'),
 			);
-			expect(candidateCall).toBeDefined();
-			expect(candidateCall[0]).toContain('LIMIT :candidate_limit');
+			expect(countryExistsCall).toBeDefined();
 		});
 
-		it('should not apply candidate set when filter has no cheap conditions', async () => {
+		it('should apply standard filters (e.g. firstName ilike) without agent id IN subquery', async () => {
 			await repository.findPage({
 				limit: 25,
 				offset: 0,
@@ -247,11 +248,12 @@ describe('AgentTypeOrmRepository', () => {
 			});
 
 			const andWhereCalls = (mockQb.andWhere as jest.Mock).mock.calls;
-			const candidateCall = andWhereCalls.find(
+			const agentIdInSubqueryCall = andWhereCalls.find(
 				(call: unknown[]) =>
-					typeof call[0] === 'string' && call[0].includes('candidate_limit'),
+					typeof call[0] === 'string' &&
+					call[0].includes('IN (SELECT "id" FROM "core"."agent"'),
 			);
-			expect(candidateCall).toBeUndefined();
+			expect(agentIdInSubqueryCall).toBeUndefined();
 		});
 	});
 

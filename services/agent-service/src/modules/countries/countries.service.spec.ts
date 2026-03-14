@@ -28,6 +28,7 @@ describe('CountriesService', () => {
   beforeEach(() => {
     repository = {
       findById: jest.fn(),
+      findAll: jest.fn(),
       findByCode: jest.fn(),
       findPage: jest.fn(),
       create: jest.fn(),
@@ -49,6 +50,18 @@ describe('CountriesService', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('findAllCountries', () => {
+    it('should return all countries from repository', async () => {
+      const countries: Country[] = [mockCountry];
+      repository.findAll.mockResolvedValue(countries);
+
+      const result = await service.findAllCountries();
+
+      expect(result).toEqual(countries);
+      expect(repository.findAll).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('create', () => {
