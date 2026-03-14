@@ -110,24 +110,30 @@ class DatabaseWarmupService implements OnModuleInit {
 
       const prewarmStart = Date.now()
       let totalBlocks = 0
+      const warmed: string[] = []
+      const failed: string[] = []
 
       for (const relation of PG_PREWARM_RELATIONS) {
         try {
+          // Cast to regclass inline — parameterized $1 doesn't work with regclass
           const [result] = await this.dataSource.query(
-            `SELECT pg_prewarm($1, 'buffer', 'main') AS blocks`,
-            [relation],
+            `SELECT pg_prewarm('${relation}'::regclass, 'buffer', 'main') AS blocks`,
           )
           const blocks = parseInt(result?.blocks ?? '0', 10)
           totalBlocks += blocks
-        } catch {
-          // Individual relation may not exist yet — skip silently
+          warmed.push(`${relation}(${blocks})`)
+        } catch (err) {
+          // Relation may not exist yet (e.g. index not created) — log and continue
+          failed.push(relation)
+          this.logger.debug(`[DatabaseModule] pg_prewarm skipped ${relation}: ${(err as Error).message}`)
         }
       }
 
       this.logger.info(
-        `[DatabaseModule] Buffer cache pre-warmed via pg_prewarm: ${totalBlocks} blocks for ${PG_PREWARM_RELATIONS.length} relations in ${Date.now() - prewarmStart}ms`,
+        `[DatabaseModule] Buffer cache pre-warmed via pg_prewarm: ${totalBlocks} blocks for ${warmed.length}/${PG_PREWARM_RELATIONS.length} relations in ${Date.now() - prewarmStart}ms`,
+        { warmed, ...(failed.length > 0 ? { failed } : {}) },
       )
-      return true
+      return warmed.length > 0
     } catch {
       return false
     }
