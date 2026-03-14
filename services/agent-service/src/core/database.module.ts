@@ -19,11 +19,12 @@ const PG_PREWARM_RELATIONS = [
   'core.agent',
   'core.contact_method',
   // GIN indexes — biggest cold start offenders
-  'core.IDX_contact_method_value_trgm',
-  'core.IDX_agent_search_vector',
+  // Identifiers must be double-quoted to preserve case in pg_prewarm()
+  'core."IDX_contact_method_value_trgm"',
+  'core."IDX_agent_search_vector"',
   // Btree indexes used by most filtered queries
-  'core.IDX_agent_lifecycle_status',
-  'core.IDX_contact_method_agent_id_value',
+  'core."IDX_agent_lifecycle_status"',
+  'core."IDX_contact_method_agent_id_value"',
 ]
 
 /**
