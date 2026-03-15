@@ -147,6 +147,8 @@ describe('AgentTypeOrmRepository', () => {
 	describe('findPage with relational and standard filters', () => {
 		beforeEach(() => {
 			mockQb.getManyAndCount.mockResolvedValue([[minimalAgentEntity], 1]);
+			// Candidate set: getCandidateAgentIds() calls getRawMany(); return one id so main query runs.
+			mockQb.getRawMany.mockResolvedValue([{ id: minimalAgentEntity.id }]);
 			mockQueryService.normalizeWithValidation.mockReturnValue({
 				offset: 0,
 				limit: 25,
@@ -235,6 +237,48 @@ describe('AgentTypeOrmRepository', () => {
 					call[0].includes('c.alpha_2'),
 			);
 			expect(countryExistsCall).toBeDefined();
+		});
+
+		it('should apply candidate set IN clause when only cheap filters + relational filter', async () => {
+			await repository.findPage({
+				limit: 25,
+				offset: 0,
+				filter: JSON.stringify({
+					conditions: [
+						{ field: 'lifecycleStatus', operator: 'eq', value: 'Active' },
+						{ field: 'country', operator: 'eq', value: 'US' },
+					],
+					logicalOperator: 'AND',
+				}),
+			});
+
+			const andWhereCalls = (mockQb.andWhere as jest.Mock).mock.calls;
+			const candidateInCall = andWhereCalls.find(
+				(call: unknown[]) =>
+					typeof call[0] === 'string' &&
+					call[0].includes('"agent".id IN (:...candidateIds)'),
+			);
+			expect(candidateInCall).toBeDefined();
+			expect(candidateInCall[1]).toEqual({ candidateIds: [minimalAgentEntity.id] });
+		});
+
+		it('should return empty result when candidate set is empty (only cheap + relational filters)', async () => {
+			mockQb.getRawMany.mockResolvedValue([]);
+			const result = await repository.findPage({
+				limit: 25,
+				offset: 0,
+				filter: JSON.stringify({
+					conditions: [
+						{ field: 'lifecycleStatus', operator: 'eq', value: 'Active' },
+						{ field: 'country', operator: 'eq', value: 'US' },
+					],
+					logicalOperator: 'AND',
+				}),
+			});
+
+			expect(result.items).toEqual([]);
+			expect(result.total).toBe(0);
+			expect(mockQb.getManyAndCount).not.toHaveBeenCalled();
 		});
 
 		it('should apply standard filters (e.g. firstName ilike) without agent id IN subquery', async () => {

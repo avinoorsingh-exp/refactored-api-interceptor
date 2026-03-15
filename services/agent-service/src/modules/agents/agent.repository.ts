@@ -54,6 +54,16 @@ const RELATIONAL_FILTER_FIELDS = ['email', 'country', 'licensedStates'] as const
 const RELATIONAL_SORT_FIELDS = ['primaryEmail', 'licensedStates'] as const;
 
 /**
+ * Filter fields that are index-friendly and safe for candidate-set subquery (no ILIKE).
+ * When the only standard filters are these, we can restrict relational filters to a
+ * bounded candidate set for performance.
+ */
+const CHEAP_FILTER_FIELDS = ['id', 'agentId', 'lifecycleStatus'] as const;
+
+/** Max agent IDs in candidate set when using cheap-filters-only + relational filters. */
+const CANDIDATE_SET_LIMIT = 2000;
+
+/**
  * TypeORM adapter implementing IAgentRepository port.
  * Extends BaseTypeOrmRepository for shared CRUD operations.
  * This is the infrastructure layer - can be swapped without affecting business logic.
@@ -897,6 +907,51 @@ export class AgentTypeOrmRepository
 	}
 
 	/**
+	 * Returns true if every filter condition uses a cheap (index-friendly) field only.
+	 * Used to decide when the candidate-set optimization is safe.
+	 */
+	private isOnlyCheapStandardConditions(
+		conditions: Array<{ field: string; operator: string; value: unknown }>,
+	): boolean {
+		if (conditions.length === 0) return true;
+		return conditions.every((c) =>
+			(CHEAP_FILTER_FIELDS as readonly string[]).includes(c.field),
+		);
+	}
+
+	/**
+	 * Fetches up to CANDIDATE_SET_LIMIT agent IDs using only cheap filters (id, agentId, lifecycleStatus).
+	 * Used to restrict the main query when combining cheap filters with relational filters.
+	 */
+	private async getCandidateAgentIds(
+		standardConditions: Array<{ field: string; operator: string; value: unknown }>,
+	): Promise<string[]> {
+		const alias = this.getAlias();
+		const cheapOnlyParams: Partial<QueryParams> = {
+			filter: JSON.stringify(standardConditions) as any,
+			offset: 0,
+			limit: 25,
+		};
+		const normalized = this.queryService.normalizeWithValidation(
+			cheapOnlyParams,
+			this.getEntityClass(),
+		);
+		const qb = this.repo.createQueryBuilder(alias);
+		this.queryService.applyAllWithStrategies(
+			qb,
+			normalized,
+			this.getEntityClass(),
+			alias,
+		);
+		const rows = await qb
+			.select(`"${alias}".id`)
+			.orderBy(`"${alias}".id`, 'ASC')
+			.take(CANDIDATE_SET_LIMIT)
+			.getRawMany<{ id: string }>();
+		return rows.map((r) => r.id);
+	}
+
+	/**
 	 * Apply email filter conditions using IN subqueries.
 	 * Uses IN (SELECT agent_id FROM contact_method WHERE ...) instead of
 	 * correlated EXISTS so PostgreSQL can run the subquery once and hash-join.
@@ -1445,6 +1500,25 @@ export class AgentTypeOrmRepository
 
 		const alias = this.getAlias();
 
+		// Candidate set: when only cheap filters + relational filters, restrict to first N agent IDs for performance.
+		const useCandidateSet =
+			hasRelationalFilters &&
+			this.isOnlyCheapStandardConditions(standardConditions) &&
+			!isFreeTextSearch &&
+			!isEmailSearch;
+		let candidateIds: string[] = [];
+		if (useCandidateSet) {
+			candidateIds = await this.getCandidateAgentIds(standardConditions);
+			if (candidateIds.length === 0) {
+				const empty: PageResult<Agent> = { items: [], total: 0 };
+				return addPrimaryAddresses(
+					await addPrimaryContacts(
+						await addContactMethods(await addLicensedStates(empty)),
+					),
+				);
+			}
+		}
+
 		// Count cache disabled for agents so meta.total is always from getManyAndCount().
 		const queryOptions = {
 			skipDefaultSort: hasRelationalSort,
@@ -1454,6 +1528,9 @@ export class AgentTypeOrmRepository
 
 		if (needsCustomQuery) {
 			const result = await this.findWithQuery(modifiedQuery, selection, (qb) => {
+				if (candidateIds.length > 0) {
+					qb.andWhere(`"${alias}".id IN (:...candidateIds)`, { candidateIds });
+				}
 				// Add virtual relation joins for includes
 				if (hasPrimaryLicense) {
 					this.loadPrimaryLicense(qb, this.getAlias());
