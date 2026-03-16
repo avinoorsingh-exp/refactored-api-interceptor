@@ -129,6 +129,15 @@ export class CountriesService {
 	}
 
 	/**
+	 * Retrieves all countries (for lookup lists).
+	 *
+	 * @returns All countries
+	 */
+	async findAllCountries(): Promise<Country[]> {
+		return this.countriesRepository.findAll();
+	}
+
+	/**
 	 * Retrieves a country by its alpha-2 code.
 	 *
 	 * @param code - The alpha-2 country code (e.g., "US")

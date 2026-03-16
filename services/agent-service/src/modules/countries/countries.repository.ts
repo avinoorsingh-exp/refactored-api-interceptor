@@ -44,6 +44,14 @@ export class CountriesRepository implements ICountriesRepository {
   ) {}
 
   /**
+   * Find all countries ordered by alpha2 ASC.
+   */
+  async findAll(): Promise<Country[]> {
+    const entities = await this.repo.find({ order: { alpha2: 'ASC' } });
+    return entities.map(mapEntity);
+  }
+
+  /**
    * Find a country by its numeric ID.
    */
   async findById(id: number): Promise<Country | null> {

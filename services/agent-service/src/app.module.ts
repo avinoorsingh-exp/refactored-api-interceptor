@@ -8,6 +8,7 @@ import { QueryModule } from './common/query/query.module.js'
 import { MetadataModule } from './modules/metadata/metadata.module.js'
 import { AgentController, RootHealthController } from './app.controller.js'
 import { CountriesModule } from './modules/countries/countries.module.js'
+import { LookupModule } from './modules/lookup/lookup.module.js'
 import { CurrenciesModule } from './modules/currencies/currencies.module.js'
 import { CompaniesModule } from './modules/companies/companies.module.js'
 import { RegionsModule } from './modules/regions/regions.module.js'
@@ -25,6 +26,9 @@ import { LineOfBusinessModule } from './modules/line-of-business/line-of-busines
 import { ApiMonitoringModule, ApiActorMiddleware, API_MONITORING_LOGGER_TOKEN } from '@exprealty/api-monitoring'
 import { CorrelationIdMiddleware } from './common/correlation-id.middleware.js'
 import { SharedEncryptionModule } from './common/encryption/shared-encryption.module.js'
+import { CacheProviderModule } from './core/cache.module.js'
+import { CountCacheModule } from './common/pagination/count-cache.module.js'
+import { CacheAdminModule } from './modules/admin/cache/cache-admin.module.js'
 import { LoggerService } from './core/logger.service.js'
 
 @Module({
@@ -32,11 +36,14 @@ import { LoggerService } from './core/logger.service.js'
     LoggerModule,  // Must be first so LoggerService is available
     ConfigModule,
     SharedEncryptionModule,
+    CacheProviderModule,
+    CountCacheModule.forRoot(),
     DatabaseModule,
     ScheduleModule.forRoot(), // Enable scheduled tasks
     QueryModule,  // Global module - provides QueryService and search strategies
     MetadataModule,  // Global module - provides MetadataService for entity metadata
     CountriesModule,
+    LookupModule,
     CurrenciesModule,
     CompaniesModule,
     RegionsModule,
@@ -51,6 +58,7 @@ import { LoggerService } from './core/logger.service.js'
     AgentCompanyAssociationModule,
     AgentTaxModule,
     LineOfBusinessModule,
+    CacheAdminModule,
     ApiMonitoringModule.forRoot({
       logger: LoggerService, // LoggerService class from LoggerModule (which is @Global())
     }),

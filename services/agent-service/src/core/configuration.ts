@@ -43,6 +43,13 @@ export const ConfigSchema = BaseConfig.extend({
 		return val;
 	}, z.boolean().default(false)),
 
+	// ===== Redis =====
+	REDIS_URL: z.string().url().optional(),
+	REDIS_TLS: z.preprocess((val) => {
+		if (typeof val === 'string') return val.toLowerCase() === 'true' || val === '1';
+		return val;
+	}, z.boolean().default(false)),
+
 	// ===== Encryption =====
 	HMAC_SECRET: z.string().min(32),
 	HMAC_SECRET_PREVIOUS: z.string().min(32).optional(),

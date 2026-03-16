@@ -15,6 +15,11 @@ export class ConfigService {
 	private buildConfig(): Config {
 		// Fallback: build config from individual keys
 		const get = (key: string) => this.configService.get(key)
+		const getBool = (key: string): boolean => {
+			const val = get(key)
+			if (typeof val === 'boolean') return val
+			return String(val).toLowerCase() === 'true' || val === '1'
+		}
 		return {
 			NODE_ENV: get('NODE_ENV'),
 			PORT: get('PORT'),
@@ -29,6 +34,9 @@ export class ConfigService {
 			DB_PASSWORD: get('DB_PASSWORD'),
 			DB_NAME: get('DB_NAME'),
 			DB_SSL: get('DB_SSL'),
+
+			REDIS_URL: get('REDIS_URL'),
+			REDIS_TLS: getBool('REDIS_TLS'),
 
 			HMAC_SECRET: get('HMAC_SECRET'),
 			HMAC_SECRET_PREVIOUS: get('HMAC_SECRET_PREVIOUS'),

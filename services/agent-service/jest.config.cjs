@@ -24,6 +24,7 @@ module.exports = {
   coverageReporters: ['text', 'text-summary', 'lcov', 'json-summary', 'cobertura'],
   coverageDirectory: '<rootDir>/coverage',
   moduleNameMapper: {
+    '^\\.\\./countries/dto/country-lookup-item\\.dto\\.js$': '<rootDir>/src/modules/countries/dto/country-lookup-item.dto.ts',
     ...unitPreset.moduleNameMapper,
     '^@exprealty/shared-domain$': '<rootDir>/../../packages/shared-domain/src/index.ts',
     '^@exprealty/database$': '<rootDir>/../../packages/database/src/index.ts',

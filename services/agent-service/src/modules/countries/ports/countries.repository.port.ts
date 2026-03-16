@@ -13,6 +13,13 @@ import type { Country, CreateCountryInput } from '@exprealty/shared-domain';
  */
 export interface ICountriesRepository extends IRepository<number, Country> {
   /**
+   * Find all countries (for lookup lists).
+   *
+   * @returns All countries ordered by alpha2 ASC
+   */
+  findAll(): Promise<Country[]>;
+
+  /**
    * Find a country by its alpha-2 code (e.g., "US", "CA").
    * 
    * @param code - The ISO 3166-1 alpha-2 country code

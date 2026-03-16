@@ -1,5 +1,5 @@
 import { Redis, RedisOptions } from 'ioredis'
-import type { Logger } from '@exprealty/logger'
+import type { Logger as WinstonLogger } from '@exprealty/logger'
 
 // Export async context storage functionality
 export { AsyncContextStorage, CorrelationIdHelper } from './async-context.storage.js'
@@ -17,8 +17,10 @@ export interface CacheOptions {
 	redisTls?: boolean
 	keyPrefix?: string
 	defaultTTL?: number // seconds
-	logger?: Logger
+	logger?: WinstonLogger
 	onError?: (error: Error) => void
+	/** Set to false to disable Redis entirely (all ops become no-ops). Defaults to true. */
+	enabled?: boolean
 }
 
 export interface CacheEntry<T = unknown> {
@@ -32,10 +34,11 @@ export interface CacheEntry<T = unknown> {
  * Can be used standalone or wrapped in NestJS providers.
  */
 export class CacheService {
-	private redis: Redis
+	private redis!: Redis
 	private keyPrefix: string
 	private defaultTTL: number
-	private logger?: Logger
+	private logger?: WinstonLogger
+	private readonly enabled: boolean
 
 	constructor(options: CacheOptions = {}) {
 		const {
@@ -46,11 +49,18 @@ export class CacheService {
 			defaultTTL = 3600, // 1 hour
 			logger,
 			onError,
+			enabled = true,
 		} = options
 
 		this.keyPrefix = keyPrefix
 		this.defaultTTL = defaultTTL
 		this.logger = logger
+		this.enabled = enabled
+
+		if (!enabled) {
+			this.logger?.info('Redis disabled — all cache operations are no-ops')
+			return
+		}
 
 		// Parse Redis URL
 		const url = new URL(redisUrl)
@@ -60,50 +70,45 @@ export class CacheService {
 			port: parseInt(url.port || '6379', 10),
 			password: redisPassword || url.password || undefined,
 			db: url.pathname ? parseInt(url.pathname.slice(1), 10) : 0,
-			//lazyConnect: true, // Don't connect in constructor; wait for explicit connect/waitForReady
-			lazyConnect: false, // Connect immediately to avoid race conditions
+			lazyConnect: false,
 			retryStrategy: (times) => {
-				const delay = Math.min(times * 50, 2000)
+				if (times > 3) {
+					this.logger?.warn('Redis max retries reached — operating without Redis (L1 LRU only)', {
+						host: url.hostname,
+						attempts: times,
+					})
+					return null // stop retrying
+				}
+				const delay = Math.min(times * 500, 2000)
 				this.logger?.info(`Redis retry attempt ${times}, waiting ${delay}ms`)
 				return delay
 			},
-			maxRetriesPerRequest: 3,
-			connectTimeout: 10000, // 10 second connection timeout
+			maxRetriesPerRequest: 1,
+			connectTimeout: 3000,
 		}
 
-		// ADD EXTENSIVE LOGGING HERE
-		console.log('[CACHE-DEBUG] redisTls parameter:', redisTls)
-		console.log('[CACHE-DEBUG] typeof redisTls:', typeof redisTls)
-		console.log('[CACHE-DEBUG] redisTls is truthy:', redisTls)
-
 		if (redisTls) {
-			console.log('[CACHE-DEBUG] TLS IS BEING ENABLED!')
 			redisOptions.tls = {
 				rejectUnauthorized: false,
 			}
-		} else {
-			console.log('[CACHE-DEBUG] TLS is NOT being enabled')
 		}
-
-		console.log(
-			'[CACHE-DEBUG] Final redisOptions:',
-			JSON.stringify(redisOptions, null, 2),
-		)
 
 		this.redis = new Redis(redisOptions)
 
+		const redisHost = `${redisOptions.host}:${redisOptions.port}`
+
 		// Error handling
 		this.redis.on('error', (error) => {
-			this.logger?.error('Redis connection error', { error: error.message })
+			this.logger?.error('Redis connection error', { error: error.message, host: redisHost, tls: !!redisOptions.tls })
 			onError?.(error)
 		})
 
 		this.redis.on('connect', () => {
-			this.logger?.info('Redis connected successfully')
+			this.logger?.info('Redis connected successfully', { host: redisHost })
 		})
 
 		this.redis.on('ready', () => {
-			this.logger?.info('Redis ready to accept commands')
+			this.logger?.info('Redis ready to accept commands', { host: redisHost })
 		})
 	}
 
@@ -118,6 +123,7 @@ export class CacheService {
 	 * Get a value from cache
 	 */
 	async get<T = unknown>(key: string): Promise<T | null> {
+		if (!this.enabled) return null
 		try {
 			const fullKey = this.buildKey(key)
 			const value = await this.redis.get(fullKey)
@@ -141,6 +147,7 @@ export class CacheService {
 	 * Set a value in cache with optional TTL
 	 */
 	async set(key: string, value: unknown, ttlSeconds?: number): Promise<void> {
+		if (!this.enabled) return
 		try {
 			const fullKey = this.buildKey(key)
 			const serialized = JSON.stringify(value)
@@ -165,6 +172,7 @@ export class CacheService {
 	 * Delete a key from cache
 	 */
 	async del(key: string | string[]): Promise<number> {
+		if (!this.enabled) return 0
 		try {
 			const keys = Array.isArray(key) ? key : [key]
 			const fullKeys = keys.map((k) => this.buildKey(k))
@@ -184,6 +192,7 @@ export class CacheService {
 	 * Check if a key exists
 	 */
 	async exists(key: string): Promise<boolean> {
+		if (!this.enabled) return false
 		try {
 			const fullKey = this.buildKey(key)
 			const exists = await this.redis.exists(fullKey)
@@ -200,6 +209,7 @@ export class CacheService {
 	 * Get remaining TTL for a key (in seconds)
 	 */
 	async ttl(key: string): Promise<number> {
+		if (!this.enabled) return -2
 		try {
 			const fullKey = this.buildKey(key)
 			return await this.redis.ttl(fullKey)
@@ -215,6 +225,7 @@ export class CacheService {
 	 * Set expiration time for an existing key
 	 */
 	async expire(key: string, ttlSeconds: number): Promise<boolean> {
+		if (!this.enabled) return false
 		try {
 			const fullKey = this.buildKey(key)
 			const result = await this.redis.expire(fullKey, ttlSeconds)
@@ -231,6 +242,7 @@ export class CacheService {
 	 * Delete all keys matching a pattern
 	 */
 	async delPattern(pattern: string): Promise<number> {
+		if (!this.enabled) return 0
 		try {
 			const fullPattern = this.buildKey(pattern)
 			const keys = await this.redis.keys(fullPattern)
@@ -254,6 +266,7 @@ export class CacheService {
 	 * Flush all keys in the current database
 	 */
 	async flushAll(): Promise<void> {
+		if (!this.enabled) return
 		try {
 			await this.redis.flushdb()
 			this.logger?.warn('Cache flushed all keys')
@@ -288,6 +301,7 @@ export class CacheService {
 	 * Increment a numeric value
 	 */
 	async incr(key: string, by = 1): Promise<number> {
+		if (!this.enabled) return 0
 		try {
 			const fullKey = this.buildKey(key)
 			const result = await this.redis.incrby(fullKey, by)
@@ -304,6 +318,7 @@ export class CacheService {
 	 * Decrement a numeric value
 	 */
 	async decr(key: string, by = 1): Promise<number> {
+		if (!this.enabled) return 0
 		try {
 			const fullKey = this.buildKey(key)
 			const result = await this.redis.decrby(fullKey, by)
@@ -325,6 +340,7 @@ export class CacheService {
 		uptime: number
 		connected: boolean
 	}> {
+		if (!this.enabled) return { keys: 0, memory: 'disabled', uptime: 0, connected: false }
 		try {
 			const info = await this.redis.info('stats')
 			const keyspace = await this.redis.info('keyspace')
@@ -416,6 +432,7 @@ export class CacheService {
 	 * Health check - verify Redis connection
 	 */
 	async healthCheck(): Promise<boolean> {
+		if (!this.enabled) return true
 		try {
 			// Check if client is ready first
 			if (this.redis.status !== 'ready') {
