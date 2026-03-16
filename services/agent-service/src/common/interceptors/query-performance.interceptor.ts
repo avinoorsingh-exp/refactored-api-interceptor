@@ -362,6 +362,7 @@ export class QueryPerformanceInterceptor implements NestInterceptor {
             data: data.items,
             meta: {
               total: data.total,
+              ...(data.isApproximate !== undefined && { isApproximate: data.isApproximate }),
               count: data.items.length,
               query: queryMetadata,
             },

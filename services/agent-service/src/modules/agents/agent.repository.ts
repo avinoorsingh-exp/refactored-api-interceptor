@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, SelectQueryBuilder } from 'typeorm';
 import type { IAgentRepository } from './ports/agent.repository.port.js';
@@ -34,8 +34,7 @@ const AGENT_QUERY_CONFIG: BaseQueryConfig = {
 		'licensedStates', // full licensed state list string for sort (matches display)
 	],
 	allowedSearchFields: [
-		'id', 'agentId', 'title', 'firstName', 'middleName', 'lastName', 'suffix',
-		'preferredName', 'lifecycleStatus', 'systemId',
+		'id', 'agentId', 'firstName', 'middleName', 'lastName', 'preferredName',
 	],
 	defaultSort: { field: 'agentId', direction: 'ASC' },
 	projectionConfig: AGENT_PROJECTION_CONFIG,
@@ -53,6 +52,16 @@ const RELATIONAL_FILTER_FIELDS = ['email', 'country', 'licensedStates'] as const
  * These are extracted from sort conditions and applied separately.
  */
 const RELATIONAL_SORT_FIELDS = ['primaryEmail', 'licensedStates'] as const;
+
+/**
+ * Filter fields that are index-friendly and safe for candidate-set subquery (no ILIKE).
+ * When the only standard filters are these, we can restrict relational filters to a
+ * bounded candidate set for performance.
+ */
+const CHEAP_FILTER_FIELDS = ['id', 'agentId', 'lifecycleStatus'] as const;
+
+/** Max agent IDs in candidate set when using cheap-filters-only + relational filters. */
+const CANDIDATE_SET_LIMIT = 2000;
 
 /**
  * TypeORM adapter implementing IAgentRepository port.
@@ -898,9 +907,55 @@ export class AgentTypeOrmRepository
 	}
 
 	/**
-	 * Apply email filter conditions using EXISTS subqueries.
-	 * Avoids LEFT JOIN on contact_method which inflates COUNT in getManyAndCount().
-	 * Covered by: idx_contact_method_agent_channel + IDX_contact_method_value_trgm.
+	 * Returns true if every filter condition uses a cheap (index-friendly) field only.
+	 * Used to decide when the candidate-set optimization is safe.
+	 */
+	private isOnlyCheapStandardConditions(
+		conditions: Array<{ field: string; operator: string; value: unknown }>,
+	): boolean {
+		if (conditions.length === 0) return true;
+		return conditions.every((c) =>
+			(CHEAP_FILTER_FIELDS as readonly string[]).includes(c.field),
+		);
+	}
+
+	/**
+	 * Fetches up to CANDIDATE_SET_LIMIT agent IDs using only cheap filters (id, agentId, lifecycleStatus).
+	 * Used to restrict the main query when combining cheap filters with relational filters.
+	 */
+	private async getCandidateAgentIds(
+		standardConditions: Array<{ field: string; operator: string; value: unknown }>,
+	): Promise<string[]> {
+		const alias = this.getAlias();
+		const cheapOnlyParams: Partial<QueryParams> = {
+			filter: JSON.stringify(standardConditions) as any,
+			offset: 0,
+			limit: 25,
+		};
+		const normalized = this.queryService.normalizeWithValidation(
+			cheapOnlyParams,
+			this.getEntityClass(),
+		);
+		const qb = this.repo.createQueryBuilder(alias);
+		this.queryService.applyAllWithStrategies(
+			qb,
+			normalized,
+			this.getEntityClass(),
+			alias,
+		);
+		const rows = await qb
+			.select(`"${alias}".id`)
+			.orderBy(`"${alias}".id`, 'ASC')
+			.take(CANDIDATE_SET_LIMIT)
+			.getRawMany<{ id: string }>();
+		return rows.map((r) => r.id);
+	}
+
+	/**
+	 * Apply email filter conditions using IN subqueries.
+	 * Uses IN (SELECT agent_id FROM contact_method WHERE ...) instead of
+	 * correlated EXISTS so PostgreSQL can run the subquery once and hash-join.
+	 * Covered by: IDX_contact_method_value_trgm (GIN), idx_contact_method_agent_channel.
 	 */
 	private applyEmailFilters<T>(
 		qb: SelectQueryBuilder<T>,
@@ -910,45 +965,47 @@ export class AgentTypeOrmRepository
 		if (filters.length === 0) return;
 
 		const aliasRef = `"${alias}".id`;
+		const base = `SELECT cm.agent_id FROM core.contact_method cm WHERE cm.channel = 'email'`;
 
 		filters.forEach((condition, index) => {
 			const paramName = `emailFilter_${index}`;
-			const base = `EXISTS (SELECT 1 FROM core.contact_method cm WHERE cm.agent_id = ${aliasRef} AND cm.channel = 'email'`;
 
 			switch (condition.operator) {
 				case 'eq':
-					qb.andWhere(`${base} AND cm.value = :${paramName})`, { [paramName]: condition.value });
+					qb.andWhere(`${aliasRef} IN (${base} AND cm.value = :${paramName})`, { [paramName]: condition.value });
 					break;
 				case 'ne':
-					qb.andWhere(`${base} AND cm.value != :${paramName})`, { [paramName]: condition.value });
+					qb.andWhere(`${aliasRef} NOT IN (${base} AND cm.value = :${paramName})`, { [paramName]: condition.value });
 					break;
 				case 'ilike':
 				case 'contains':
-					qb.andWhere(`${base} AND cm.value ILIKE :${paramName})`, { [paramName]: `%${condition.value}%` });
+					qb.andWhere(`${aliasRef} IN (${base} AND cm.value ILIKE :${paramName})`, { [paramName]: `%${condition.value}%` });
 					break;
 				case 'startsWith':
-					qb.andWhere(`${base} AND cm.value ILIKE :${paramName})`, { [paramName]: `${condition.value}%` });
+					qb.andWhere(`${aliasRef} IN (${base} AND cm.value ILIKE :${paramName})`, { [paramName]: `${condition.value}%` });
 					break;
 				case 'endsWith':
-					qb.andWhere(`${base} AND cm.value ILIKE :${paramName})`, { [paramName]: `%${condition.value}` });
+					qb.andWhere(`${aliasRef} IN (${base} AND cm.value ILIKE :${paramName})`, { [paramName]: `%${condition.value}` });
 					break;
 				case 'in':
-					qb.andWhere(`${base} AND cm.value IN (:...${paramName}))`, { [paramName]: condition.value });
+					qb.andWhere(`${aliasRef} IN (${base} AND cm.value IN (:...${paramName}))`, { [paramName]: condition.value });
 					break;
 				case 'isNull':
-					qb.andWhere(`NOT EXISTS (SELECT 1 FROM core.contact_method cm WHERE cm.agent_id = ${aliasRef} AND cm.channel = 'email' AND cm.value IS NOT NULL)`);
+					qb.andWhere(`${aliasRef} NOT IN (${base} AND cm.value IS NOT NULL)`);
 					break;
 				case 'isNotNull':
-					qb.andWhere(`${base} AND cm.value IS NOT NULL)`);
+					qb.andWhere(`${aliasRef} IN (${base} AND cm.value IS NOT NULL)`);
 					break;
 				default:
-					qb.andWhere(`${base} AND cm.value = :${paramName})`, { [paramName]: condition.value });
+					qb.andWhere(`${aliasRef} IN (${base} AND cm.value = :${paramName})`, { [paramName]: condition.value });
 			}
 		});
 	}
 
 	/**
 	 * Apply country filter conditions using EXISTS subqueries.
+	 * Restricts to primary address only (aa.is_primary = true) so filter matches
+	 * what the API returns in primaryAddress.country.
 	 * Avoids 3-hop LEFT JOIN chain (agentAddresses → address → country) which
 	 * inflates COUNT in getManyAndCount().
 	 * Covered by: PK_agent_address (agent_id, address_id), PK_address_id, PK_country.
@@ -965,7 +1022,7 @@ export class AgentTypeOrmRepository
 			`EXISTS (SELECT 1 FROM core.agent_address aa`,
 			`JOIN core.address a ON a.id = aa.address_id`,
 			`JOIN core.country c ON c.id = a.country_id`,
-			`WHERE aa.agent_id = ${aliasRef}`,
+			`WHERE aa.agent_id = ${aliasRef} AND aa.is_primary = true`,
 		].join(' ');
 
 		filters.forEach((condition, index) => {
@@ -996,7 +1053,7 @@ export class AgentTypeOrmRepository
 					[paramName]: condition.value,
 				});
 			} else if (condition.operator === 'isNull') {
-				qb.andWhere(`NOT EXISTS (SELECT 1 FROM core.agent_address aa JOIN core.address a ON a.id = aa.address_id WHERE aa.agent_id = ${aliasRef} AND a.country_id IS NOT NULL)`);
+				qb.andWhere(`NOT EXISTS (SELECT 1 FROM core.agent_address aa JOIN core.address a ON a.id = aa.address_id WHERE aa.agent_id = ${aliasRef} AND aa.is_primary = true AND a.country_id IS NOT NULL)`);
 			} else if (condition.operator === 'isNotNull') {
 				qb.andWhere(`${base} AND c.id IS NOT NULL)`);
 			} else {
@@ -1171,6 +1228,27 @@ export class AgentTypeOrmRepository
 			{ emailSearchValue: `%${trimmed}%` },
 		);
 	}
+
+	/**
+	 * Applies email-only search as an exclusive AND condition.
+	 * Used when the search term contains '@' — skips all name ILIKE fields
+	 * and only searches contact_method.value via EXISTS.
+	 * Uses andWhere (not orWhere) since this is the sole search condition.
+	 */
+	private applyEmailSearchExclusive<T>(
+		qb: SelectQueryBuilder<T>,
+		searchQuery?: string,
+	): void {
+		if (!searchQuery || !searchQuery.trim()) return;
+
+		const trimmed = searchQuery.trim();
+		const alias = this.getAlias();
+		qb.andWhere(
+			`EXISTS (SELECT 1 FROM core.contact_method cm_search WHERE cm_search.agent_id = "${alias}".id AND cm_search.value ILIKE :emailSearchValue)`,
+			{ emailSearchValue: `%${trimmed}%` },
+		);
+	}
+
 	/**
  * Applies UUID search exclusively for agent ID.
  * When a UUID is detected in the search query, this method ensures
@@ -1307,20 +1385,34 @@ export class AgentTypeOrmRepository
 			hasAddresses ||
 			hasRelationalFilters ||
 			hasRelationalSort;
-
 		// Build modified query params without relational fields
 		const modifiedQuery: Partial<QueryParams> = { ...query };
 		// Check if search is a UUID - if so, make it exclusive
 		const isUuidSearch = isUuid(query.search);
 		const isMalformedUuid = this.isMalformedUuid(query.search);
 
-		// If UUID search, remove search from query to skip base strategy search
-		// This ensures UUID search is exclusive and doesn't trigger text searches on firstName, lastName, etc.
+		// Free-text path: one grouped WHERE with only :fts (no strategy per-field params).
+		const isFreeTextSearch =
+			!isUuidSearch &&
+			!isMalformedUuid &&
+			query.search &&
+			!String(query.search).trim().includes('@') &&
+			!!String(query.search).trim();
+		// Email path: search contains '@' — skip all name ILIKEs, only search contact_method.value
+		const isEmailSearch =
+			!isUuidSearch &&
+			!isMalformedUuid &&
+			query.search &&
+			String(query.search).trim().includes('@');
 		if (isUuidSearch) {
 			modifiedQuery.search = undefined;
 		} else if (isMalformedUuid) {
-			// Reject malformed UUIDs - return empty results for security
-			// This prevents numeric search from extracting partial numbers (e.g., "76" from "76c8add5-...-extra")
+			modifiedQuery.search = undefined;
+		} else if (isFreeTextSearch) {
+			// Skip strategy search so we add a single grouped condition with :fts only.
+			modifiedQuery.search = undefined;
+		} else if (isEmailSearch) {
+			// Skip strategy search — name ILIKEs are useless for email lookups.
 			modifiedQuery.search = undefined;
 		}
 		if (hasRelationalFilters && filterObj) {
@@ -1406,8 +1498,39 @@ export class AgentTypeOrmRepository
 			return { ...result, items };
 		};
 
+		const alias = this.getAlias();
+
+		// Candidate set: when only cheap filters + relational filters, restrict to first N agent IDs for performance.
+		const useCandidateSet =
+			hasRelationalFilters &&
+			this.isOnlyCheapStandardConditions(standardConditions) &&
+			!isFreeTextSearch &&
+			!isEmailSearch;
+		let candidateIds: string[] = [];
+		if (useCandidateSet) {
+			candidateIds = await this.getCandidateAgentIds(standardConditions);
+			if (candidateIds.length === 0) {
+				const empty: PageResult<Agent> = { items: [], total: 0 };
+				return addPrimaryAddresses(
+					await addPrimaryContacts(
+						await addContactMethods(await addLicensedStates(empty)),
+					),
+				);
+			}
+		}
+
+		// Count cache disabled for agents so meta.total is always from getManyAndCount().
+		const queryOptions = {
+			skipDefaultSort: hasRelationalSort,
+			extraSearchOrConditions: (isFreeTextSearch || isEmailSearch) ? undefined : this.buildFullTextSearchOrCondition(alias),
+			countCache: undefined,
+		};
+
 		if (needsCustomQuery) {
 			const result = await this.findWithQuery(modifiedQuery, selection, (qb) => {
+				if (candidateIds.length > 0) {
+					qb.andWhere(`"${alias}".id IN (:...candidateIds)`, { candidateIds });
+				}
 				// Add virtual relation joins for includes
 				if (hasPrimaryLicense) {
 					this.loadPrimaryLicense(qb, this.getAlias());
@@ -1449,20 +1572,20 @@ export class AgentTypeOrmRepository
 						licensedStatesSort,
 					);
 				}
-				// Apply search: UUID search is exclusive
+				// Apply search: UUID exclusive, free-text single grouped clause, email-only, or full-name/email
 				if (isUuidSearch) {
-					// UUID search only - use exclusive method with andWhere
 					this.applyUuidSearchExclusive(qb, query.search);
 				} else if (isMalformedUuid) {
-					// Reject malformed UUIDs - explicitly return no results
-					// This prevents unintended matches from numeric/text searches
-					qb.andWhere('1=0'); // Always false condition = no results
+					qb.andWhere('1=0');
+				} else if (isFreeTextSearch) {
+					this.applyFreeTextSearchGrouped(qb, alias, String(query.search).trim());
+				} else if (isEmailSearch) {
+					this.applyEmailSearchExclusive(qb, query.search);
 				} else {
-					// Apply all search methods for normal text search
 					this.applyFullNameSearch(qb, modifiedQuery.search);
 					this.applyEmailSearch(qb, modifiedQuery.search);
 				}
-			}, { skipDefaultSort: hasRelationalSort });
+			}, queryOptions);
 
 			return addPrimaryAddresses(
 				await addPrimaryContacts(
@@ -1474,20 +1597,19 @@ export class AgentTypeOrmRepository
 		}
 
 		const result = await this.findWithQuery(modifiedQuery, selection, (qb) => {
-			// Apply search: UUID search is exclusive
 			if (isUuidSearch) {
-				// UUID search only - use exclusive method with andWhere
 				this.applyUuidSearchExclusive(qb, query.search);
 			} else if (isMalformedUuid) {
-				// Reject malformed UUIDs - explicitly return no results
-				// This prevents unintended matches from numeric/text searches
-				qb.andWhere('1=0'); // Always false condition = no results
+				qb.andWhere('1=0');
+			} else if (isFreeTextSearch) {
+				this.applyFreeTextSearchGrouped(qb, alias, String(query.search).trim());
+			} else if (isEmailSearch) {
+				this.applyEmailSearchExclusive(qb, query.search);
 			} else {
-				// Apply all search methods for normal text search
 				this.applyFullNameSearch(qb, modifiedQuery.search);
 				this.applyEmailSearch(qb, modifiedQuery.search);
 			}
-		});
+		}, queryOptions);
 
 		return addPrimaryAddresses(
 			await addPrimaryContacts(
@@ -1496,5 +1618,87 @@ export class AgentTypeOrmRepository
 				),
 			),
 		);
+	}
+
+	/**
+	 * Applies free-text search as a single grouped WHERE clause.
+	 *
+	 * Primary strategy: GIN-indexed search_vector with prefix matching (to_tsquery
+	 * 'term:*'). The search_vector already contains first_name, last_name,
+	 * preferred_name, middle_name, title, suffix, agent_id, and system_id, so
+	 * a single @@ check covers all fields via the GIN index.
+	 *
+	 * Fallback: ILIKE on first_name, last_name, and preferred_name (all trgm-indexed)
+	 * catches true substring matches not found by prefix matching (e.g. searching
+	 * "ohn" to find "John"). Other fields are omitted: title/suffix/lifecycleStatus
+	 * have negligible match value and no trgm index; CAST(bigint AS TEXT) prevents
+	 * any index usage. For numeric input, an exact agent_id match (B-tree indexed)
+	 * is added instead.
+	 */
+	private applyFreeTextSearchGrouped<T>(
+		qb: SelectQueryBuilder<T>,
+		alias: string,
+		freeText: string,
+	): void {
+		// Build prefix tsquery: split words, append :* to each, AND them together.
+		// e.g. "John Smith" → "John:* & Smith:*"
+		const sanitisedTokens = freeText
+			.split(/\s+/)
+			.filter(Boolean)
+			.map(t => t.replace(/[&|!<>():*\\'"]/g, ''))
+			.filter(Boolean);
+		const prefixTerms = sanitisedTokens
+			.map(t => `${t}:*`)
+			.join(' & ');
+
+		// Guard against empty input after sanitisation
+		if (!prefixTerms) return;
+
+		const params: Record<string, any> = { ftsPrefix: prefixTerms };
+		const isNumeric = /^\d+$/.test(freeText.trim());
+
+		// search_vector covers first_name, last_name, preferred_name, middle_name,
+		// title, suffix, agent_id, system_id via GIN index — no ILIKE fallbacks needed.
+		let clause = `(
+				"${alias}"."search_vector" @@ to_tsquery('simple', :ftsPrefix)`;
+
+		if (isNumeric) {
+			clause += `\n				OR "${alias}"."agent_id" = :numericAgentId`;
+			params.numericAgentId = parseInt(freeText.trim(), 10);
+		}
+
+		clause += '\n			)';
+
+		qb.andWhere(clause, params);
+	}
+
+	/**
+	 * Builds the optional full-text search OR condition for the search bracket (non-free-text path).
+	 * When search is not a UUID and not email-like, adds search_vector @@ to_tsquery('simple', 'term:*').
+	 */
+	private buildFullTextSearchOrCondition(
+		alias: string,
+	): (qb: SelectQueryBuilder<AgentEntity>, searchQuery: string | undefined) => void {
+		return (qb, searchQuery) => {
+			if (!searchQuery || !String(searchQuery).trim()) return;
+			const trimmed = String(searchQuery).trim();
+			if (isUuid(trimmed) || trimmed.includes('@')) return;
+			this.logger.debug('Agent list using full-text search_vector', {
+				indexHint: 'search_vector GIN',
+			});
+			const prefixTerms = trimmed
+				.split(/\s+/)
+				.filter(Boolean)
+				.map(t => t.replace(/[&|!<>():*\\'"]/g, ''))
+				.filter(Boolean)
+				.map(t => `${t}:*`)
+				.join(' & ');
+			if (!prefixTerms) return;
+			const paramName = 'ftsSearch';
+			qb.orWhere(
+				`"${alias}"."search_vector" @@ to_tsquery('simple', :${paramName})`,
+				{ [paramName]: prefixTerms },
+			);
+		};
 	}
 }

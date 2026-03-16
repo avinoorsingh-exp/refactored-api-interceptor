@@ -45,7 +45,7 @@
 		"@exprealty/shared-domain": "workspace:*",
 		"pg": "^8.11.3",
 		"reflect-metadata": "^0.2.1",
-		"typeorm": "^0.3.20",
+		"typeorm": "^0.3.28",
 		"zod": "^3.24.1"
 	},
 	"devDependencies": {

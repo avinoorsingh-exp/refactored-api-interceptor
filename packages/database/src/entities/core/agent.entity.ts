@@ -77,7 +77,6 @@ export class AgentEntity extends AuditableEntity {
 	 * @public
 	 */
 	@Column({ type: 'text', nullable: true })
-	@Searchable({ weight: 2, behavior: 'exact', description: 'Agent title (Mr, Mrs, Ms, Miss)' })
 	@Filterable()
 	@Sortable()
 	title?: AgentTitle
@@ -117,7 +116,6 @@ export class AgentEntity extends AuditableEntity {
 	 * @public
 	 */
 	@Column({ type: 'text', nullable: true })
-	@Searchable({ weight: 2, behavior: 'partial', description: 'Name suffix (Jr, Sr, PhD, etc.)' })
 	@Filterable()
 	@Sortable()
 	suffix?: string
@@ -137,7 +135,6 @@ export class AgentEntity extends AuditableEntity {
 	 * @public
 	 */
 	@Column({ name: 'birth_date', type: 'timestamp with time zone', nullable: true })
-	@Searchable({ type: 'date', weight: 3, behavior: 'range', description: 'Agent birth date' })
 	@Filterable()
 	@Sortable()
 	birthDate?: Date
@@ -148,7 +145,6 @@ export class AgentEntity extends AuditableEntity {
 	 * @public
 	 */
 	@Column({ name: 'lifecycle_status', type: 'text', default: 'Joining' })
-	@Searchable({ weight: 7, behavior: 'exact', description: 'Agent lifecycle status (Joining, Active, InActive, Vested, VestedRetired, LeadOnly)' })
 	@Filterable()
 	@Sortable()
 	lifecycleStatus!: AgentLifecycleStatus
@@ -158,7 +154,6 @@ export class AgentEntity extends AuditableEntity {
 	 * @public
 	 */
 	@Column({ name: 'system_id', type: 'integer', nullable: true })
-	@Searchable({ type: 'integer', weight: 3, behavior: 'exact', description: 'System ID reference', validate: SearchValidators.integer })
 	@Filterable()
 	@Sortable()
 	systemId?: number
@@ -168,7 +163,6 @@ export class AgentEntity extends AuditableEntity {
 	 * @public
 	 */
 	@Column({ name: 'seed_agent', type: 'boolean', default: false })
-	@Searchable({ type: 'boolean', weight: 2, behavior: 'exact', description: 'Whether agent is a seed agent' })
 	@Filterable()
 	@Sortable()
 	seedAgent!: boolean
@@ -178,7 +172,6 @@ export class AgentEntity extends AuditableEntity {
 	 * @public
 	 */
 	@Column({ name: 'join_date', type: 'timestamp with time zone', nullable: true })
-	@Searchable({ type: 'date', weight: 5, behavior: 'range', description: 'Date when agent joined' })
 	@Filterable()
 	@Sortable()
 	joinDate?: Date
@@ -188,7 +181,6 @@ export class AgentEntity extends AuditableEntity {
 	 * @public
 	 */
 	@Column({ name: 'anniversary_date', type: 'timestamp with time zone', nullable: true })
-	@Searchable({ type: 'date', weight: 4, behavior: 'range', description: 'Agent anniversary date' })
 	@Filterable()
 	@Sortable()
 	anniversaryDate?: Date
@@ -198,7 +190,6 @@ export class AgentEntity extends AuditableEntity {
 	 * @public
 	 */
 	@Column({ name: 'termination_date', type: 'timestamp with time zone', nullable: true })
-	@Searchable({ type: 'date', weight: 4, behavior: 'range', description: 'Date when agent was terminated' })
 	@Filterable()
 	@Sortable()
 	terminationDate?: Date
@@ -208,7 +199,6 @@ export class AgentEntity extends AuditableEntity {
 	 * @public
 	 */
 	@Column({ name: 'is_staff', type: 'boolean', default: false })
-	@Searchable({ type: 'boolean', weight: 2, behavior: 'exact', description: 'Whether agent is staff member' })
 	@Filterable()
 	@Sortable()
 	isStaff!: boolean

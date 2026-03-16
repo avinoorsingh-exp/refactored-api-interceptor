@@ -53,6 +53,7 @@ import { ExternalReferenceController } from './external-references/external-refe
 import { ExternalReferenceService } from './external-references/external-reference.service.js';
 import { ExternalReferenceTypeOrmRepository } from './external-references/external-reference.repository.js';
 import { AgentExistsGuard } from '../../common/guards/agent-exists.guard.js';
+;
 
 /**
  * Module for Agent aggregate.

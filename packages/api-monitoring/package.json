@@ -37,7 +37,7 @@
 		"class-transformer": "^0.5.1",
 		"class-validator": "^0.14.2",
 		"rxjs": "^7.8.1",
-		"typeorm": "^0.3.20"
+		"typeorm": "^0.3.28"
 	},
 	"peerDependencies": {
 		"@exprealty/logger": "workspace:*"
@@ -56,5 +56,3 @@
 	},
 	"repository": "https://bitbucket.org/exp-realty/agent-service/src/main/packages/api-monitoring"
 }
-
-
