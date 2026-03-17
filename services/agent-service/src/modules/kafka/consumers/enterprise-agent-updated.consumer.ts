@@ -1,4 +1,4 @@
-import { Injectable, Inject, forwardRef } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { ZodError } from 'zod';
 import { Consumer, KafkaMessage } from 'kafkajs';
@@ -28,14 +28,12 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 	private readonly maxRetries = 3;
 	private readonly retryDelayMs = 1000; // Initial delay: 1 second
 	private readonly serviceId: string;
-	/** Lazy-resolved when constructor injection is null (e.g. circular dependency in some envs). */
-	private _resolvedMessageProcessingService: KafkaMessageProcessingService | null = null;
+	/** Lazy-resolved via ModuleRef to avoid circular dependency with KafkaMessageProcessingService. */
+	private _messageProcessingService: KafkaMessageProcessingService | null = null;
 
 	constructor(
 		private readonly kafkaClientService: KafkaClientService,
 		private readonly configService: ConfigService,
-		@Inject(forwardRef(() => KafkaMessageProcessingService))
-		private readonly kafkaMessageProcessingService: KafkaMessageProcessingService | null,
 		private readonly enterpriseAgentUpsertService: EnterpriseAgentUpsertService,
 		private readonly moduleRef: ModuleRef,
 		loggerService: LoggerService,
@@ -48,23 +46,20 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 	}
 
 	/**
-	 * Resolve KafkaMessageProcessingService (constructor-injected or via ModuleRef if null).
+	 * Resolve KafkaMessageProcessingService lazily via ModuleRef.
 	 * Throws with a fatal log if unavailable so message processing does not proceed with null.
 	 */
 	private getMessageProcessingService(): KafkaMessageProcessingService {
-		if (this.kafkaMessageProcessingService) {
-			return this.kafkaMessageProcessingService;
-		}
-		if (this._resolvedMessageProcessingService) {
-			return this._resolvedMessageProcessingService;
+		if (this._messageProcessingService) {
+			return this._messageProcessingService;
 		}
 		const resolved = this.moduleRef.get(KafkaMessageProcessingService, { strict: false });
 		if (resolved) {
-			this._resolvedMessageProcessingService = resolved;
+			this._messageProcessingService = resolved;
 			return resolved;
 		}
 		this.logger.error(
-			'FATAL: KafkaMessageProcessingService is null - circular dependency or DI resolution failure. Consumer cannot process messages.',
+			'FATAL: KafkaMessageProcessingService is null - DI resolution failure. Consumer cannot process messages.',
 			{
 				topic: this.topic,
 				groupId: this.groupId,
@@ -72,7 +67,7 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 			},
 		);
 		throw new Error(
-			'KafkaMessageProcessingService is not available. Check circular dependency and KafkaModule provider order.',
+			'KafkaMessageProcessingService is not available. Check KafkaModule provider order.',
 		);
 	}
 
