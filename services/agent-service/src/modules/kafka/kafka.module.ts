@@ -80,13 +80,14 @@ import { PaginationModule } from '../../common/pagination/pagination.module.js';
 		KafkaRuntimeManager,
 		KafkaBootstrapService,
 		KafkaProducerService,
+		// KafkaMessageProcessingService before consumers that depend on it (breaks circular injection order)
+		KafkaMessageProcessingService,
 		EnterpriseAgentUpdatedConsumer,
 		AuAgentDetailsAgentUpdatedConsumer,
 		UkAgentDetailsAgentUpdatedConsumer,
 		GlobalAdsAgentCreatedConsumer,
 		GlobalAdsAgentUpdatedConsumer,
 		SponsorChangedService,
-		KafkaMessageProcessingService,
 		KafkaMessageCleanupService,
 		KafkaBulkOperationsService,
 		EnterpriseAgentUpsertService,
@@ -105,6 +106,7 @@ import { PaginationModule } from '../../common/pagination/pagination.module.js';
 		KafkaClientService,
 		KafkaProducerService,
 		KafkaRuntimeManager,
+		KafkaMessageProcessingService,
 		KafkaMessageCleanupService,
 	],
 })

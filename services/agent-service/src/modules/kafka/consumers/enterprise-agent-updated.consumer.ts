@@ -1,4 +1,5 @@
 import { Injectable, Inject, forwardRef } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { ZodError } from 'zod';
 import { Consumer, KafkaMessage } from 'kafkajs';
 import { KafkaMessageStatus } from '@exprealty/database';
@@ -27,19 +28,52 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 	private readonly maxRetries = 3;
 	private readonly retryDelayMs = 1000; // Initial delay: 1 second
 	private readonly serviceId: string;
+	/** Lazy-resolved when constructor injection is null (e.g. circular dependency in some envs). */
+	private _resolvedMessageProcessingService: KafkaMessageProcessingService | null = null;
 
 	constructor(
 		private readonly kafkaClientService: KafkaClientService,
 		private readonly configService: ConfigService,
 		@Inject(forwardRef(() => KafkaMessageProcessingService))
-		private readonly kafkaMessageProcessingService: KafkaMessageProcessingService,
+		private readonly kafkaMessageProcessingService: KafkaMessageProcessingService | null,
 		private readonly enterpriseAgentUpsertService: EnterpriseAgentUpsertService,
+		private readonly moduleRef: ModuleRef,
 		loggerService: LoggerService,
 	) {
 		this.logger = loggerService;
+		this.logger.setContext('EnterpriseAgentUpdatedConsumer');
 		this.groupId = this.configService.get('KAFKA_CONSUMER_GROUP_ID');
 		// Generate a unique service ID based on topic and groupId
 		this.serviceId = `consumer-${this.topic}-${this.groupId}`;
+	}
+
+	/**
+	 * Resolve KafkaMessageProcessingService (constructor-injected or via ModuleRef if null).
+	 * Throws with a fatal log if unavailable so message processing does not proceed with null.
+	 */
+	private getMessageProcessingService(): KafkaMessageProcessingService {
+		if (this.kafkaMessageProcessingService) {
+			return this.kafkaMessageProcessingService;
+		}
+		if (this._resolvedMessageProcessingService) {
+			return this._resolvedMessageProcessingService;
+		}
+		const resolved = this.moduleRef.get(KafkaMessageProcessingService, { strict: false });
+		if (resolved) {
+			this._resolvedMessageProcessingService = resolved;
+			return resolved;
+		}
+		this.logger.error(
+			'FATAL: KafkaMessageProcessingService is null - circular dependency or DI resolution failure. Consumer cannot process messages.',
+			{
+				topic: this.topic,
+				groupId: this.groupId,
+				serviceId: this.serviceId,
+			},
+		);
+		throw new Error(
+			'KafkaMessageProcessingService is not available. Check circular dependency and KafkaModule provider order.',
+		);
 	}
 
 	/**
@@ -181,6 +215,8 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 		throwOnError: boolean = false,
 	): Promise<void> {
 		this.logger.setContext('EnterpriseAgentUpdatedConsumer');
+		// Defensive: ensure KafkaMessageProcessingService is available before any processing (fatal log + throw if null)
+		this.getMessageProcessingService();
 		try {
 			const messageValue = message.value?.toString() || '';
 			const messageKey = message.key?.toString() || '';
@@ -254,7 +290,7 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 			// This ensures we track every message attempt, even if processing fails
 			const allConfig = this.configService.getAll();
 			const serviceName = String((allConfig as Record<string, unknown>)['SERVICE_NAME'] || 'agent-service');
-			await this.kafkaMessageProcessingService.lookupOrUpdateSentAndIncrementAttempt(
+			await this.getMessageProcessingService().lookupOrUpdateSentAndIncrementAttempt(
 				{
 					topic,
 					partition,
@@ -330,7 +366,7 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 				await this.processAgentUpdate(message, skipTranslation);
 				
 				// After successful processing: Update status = PROCESSED, processed_at = now(), updated_at = now()
-				await this.kafkaMessageProcessingService.markAsProcessed(
+				await this.getMessageProcessingService().markAsProcessed(
 					topic,
 					partition,
 					offset,
@@ -366,7 +402,7 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 					});
 					
 					// Mark as error and throw immediately
-					await this.kafkaMessageProcessingService.markAsError(
+					await this.getMessageProcessingService().markAsError(
 						topic,
 						partition,
 						offset,
@@ -380,7 +416,7 @@ export class EnterpriseAgentUpdatedConsumer implements RegisterableKafkaService 
 				const isLastAttempt = attempt === this.maxRetries;
 				
 				// Mark as error in database (non-blocking)
-				await this.kafkaMessageProcessingService.markAsError(
+				await this.getMessageProcessingService().markAsError(
 					topic,
 					partition,
 					offset,

@@ -1,9 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ModuleRef } from '@nestjs/core';
 import { EnterpriseAgentUpdatedConsumer } from './enterprise-agent-updated.consumer.js';
 import { KafkaClientService } from '../kafka-client.service.js';
 import { ConfigService } from '../../../core/config.service.js';
 import { LoggerService } from '../../../core/logger.service.js';
 import { KafkaMessageProcessingService } from '../kafka-message-processing.service.js';
+import { EnterpriseAgentUpsertService } from '../services/enterprise-agent-upsert.service.js';
 import { Consumer, Kafka, KafkaMessage } from 'kafkajs';
 
 describe('EnterpriseAgentUpdatedConsumer', () => {
@@ -21,6 +23,8 @@ describe('EnterpriseAgentUpdatedConsumer', () => {
 			disconnect: jest.fn().mockResolvedValue(undefined),
 			subscribe: jest.fn().mockResolvedValue(undefined),
 			run: jest.fn().mockResolvedValue(undefined),
+			on: jest.fn(),
+			events: { GROUP_JOIN: 'group.join', CRASH: 'crash' },
 		} as any;
 
 		mockKafka = {
@@ -49,6 +53,19 @@ describe('EnterpriseAgentUpdatedConsumer', () => {
 			markAsError: jest.fn().mockResolvedValue(undefined),
 		} as any;
 
+		const mockEnterpriseAgentUpsertService = {
+			upsertAgentWithAssociations: jest.fn().mockResolvedValue(undefined),
+		} as any;
+
+		const mockModuleRef = {
+			get: jest.fn().mockImplementation((token: any) => {
+				if (token === KafkaMessageProcessingService) {
+					return mockKafkaMessageProcessingService;
+				}
+				return undefined;
+			}),
+		} as any;
+
 		const module: TestingModule = await Test.createTestingModule({
 			providers: [
 				EnterpriseAgentUpdatedConsumer,
@@ -56,6 +73,8 @@ describe('EnterpriseAgentUpdatedConsumer', () => {
 				{ provide: ConfigService, useValue: mockConfigService },
 				{ provide: LoggerService, useValue: mockLogger },
 				{ provide: KafkaMessageProcessingService, useValue: mockKafkaMessageProcessingService },
+				{ provide: EnterpriseAgentUpsertService, useValue: mockEnterpriseAgentUpsertService },
+				{ provide: ModuleRef, useValue: mockModuleRef },
 			],
 		}).compile();
 
@@ -80,17 +99,43 @@ describe('EnterpriseAgentUpdatedConsumer', () => {
 		});
 	});
 
+	describe('getMessageProcessingService', () => {
+		it('should resolve via ModuleRef when constructor injection is null (fallback for circular dependency)', async () => {
+			const mockModuleRefResolve = {
+				get: jest.fn().mockImplementation((token: any) => {
+					if (token === KafkaMessageProcessingService) {
+						return mockKafkaMessageProcessingService;
+					}
+					return undefined;
+				}),
+			} as any;
+			const moduleWithNullService = await Test.createTestingModule({
+				providers: [
+					EnterpriseAgentUpdatedConsumer,
+					{ provide: KafkaClientService, useValue: mockKafkaClient },
+					{ provide: ConfigService, useValue: mockConfigService },
+					{ provide: LoggerService, useValue: mockLogger },
+					{ provide: KafkaMessageProcessingService, useValue: null },
+					{ provide: EnterpriseAgentUpsertService, useValue: { upsertAgentWithAssociations: jest.fn() } },
+					{ provide: ModuleRef, useValue: mockModuleRefResolve },
+				],
+			}).compile();
+			const consumerWithNullInjection = moduleWithNullService.get<EnterpriseAgentUpdatedConsumer>(EnterpriseAgentUpdatedConsumer);
+			const resolved = (consumerWithNullInjection as any).getMessageProcessingService();
+			expect(resolved).toBe(mockKafkaMessageProcessingService);
+			expect(mockModuleRefResolve.get).toHaveBeenCalledWith(KafkaMessageProcessingService, { strict: false });
+		});
+	});
+
 
 	describe('message handling', () => {
 		let messageHandler: (params: { topic: string; partition: number; message: KafkaMessage }) => Promise<void>;
 
 		beforeEach(async () => {
-			// Manually set up consumer for testing (skip start/initialization)
 			mockConfigService.get.mockReturnValue('dev');
 			await (consumer as any).start();
-			// Extract the message handler from the run call
-			const runCall = mockConsumer.run.mock.calls[0][0];
-			messageHandler = runCall.eachMessage;
+			// Consumer does not call run() in start(); runtime manager does. Use getMessageHandler() for tests.
+			messageHandler = consumer.getMessageHandler();
 		});
 
 		it('should handle valid JSON message', async () => {
@@ -116,7 +161,7 @@ describe('EnterpriseAgentUpdatedConsumer', () => {
 				timestamp: expect.any(String),
 			});
 
-			expect(processSpy).toHaveBeenCalledWith({ agentId: '123', name: 'Test' });
+			expect(processSpy).toHaveBeenCalledWith({ agentId: '123', name: 'Test' }, false);
 			expect(mockLogger.info).toHaveBeenCalledWith('Message processed successfully', {
 				topic: 'Enterprise_AgentUpdated_V2',
 				partition: 0,
@@ -214,7 +259,7 @@ describe('EnterpriseAgentUpdatedConsumer', () => {
 
 			expect(processSpy).toHaveBeenCalledTimes(3);
 			expect(mockLogger.error).toHaveBeenCalledWith(
-				'Message processing failed after all retries',
+				'Message processing failed',
 				expect.objectContaining({
 					attempt: 3,
 					maxRetries: 3,
