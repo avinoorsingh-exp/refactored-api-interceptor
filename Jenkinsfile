@@ -666,7 +666,7 @@ pipeline
           def buildInfo = ecsDeployHelpers.getBuildInfoFromEnv(project: env.PROJECT, ecr: env.ECR)
           sh "docker rmi ${buildInfo.fullImagePath} | true"
         } catch (Exception e) {
-          // ignore when prepareBuild was not run (e.g. skipped stage)
+          // ignore when prepareBuild was not run (eg skipped stage)
         }
         sh 'rm -rf .aws'
       }
