@@ -632,7 +632,7 @@ pipeline
           def buildInfo = ecsDeployHelpers.getBuildInfoFromEnv(project: env.PROJECT, ecr: env.ECR)
           ecsDeployHelpers.runTerragruntDeploy([
             imagePath: buildInfo.fullImagePath,
-            tfPath: 'account/exp-realty-prod/us-east-1/agent-service/prod/agent-service/ecs',
+            tfPath: 'account/exp-realty-prod/us-east-1/agent-service/prod/agent-service-prod/ecs',
             awsProfile: 'exp-production'
           ])
           sh 'rm -rf .aws'
