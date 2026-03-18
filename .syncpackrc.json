@@ -1,0 +1,63 @@
+{
+  "$schema": "https://unpkg.com/syncpack@14.0.0-alpha.13/dist/schema.json",
+  "versionGroups": [
+    {
+      "label": "Use workspace protocol for internal packages",
+      "dependencies": ["@exprealty/*"],
+      "dependencyTypes": ["dev", "prod"],
+      "pinVersion": "workspace:*"
+    },
+    {
+      "label": "Pin Jest ecosystem to v29 (stable with ts-jest)",
+      "dependencies": ["jest", "@types/jest", "ts-jest"],
+      "dependencyTypes": ["dev"],
+      "pinVersion": "29.x.x",
+      "policy": "sameRange"
+    },
+    {
+      "label": "Keep all @types in sync",
+      "dependencies": ["@types/**"],
+      "dependencyTypes": ["dev"],
+      "policy": "sameRange"
+    },
+    {
+      "label": "Keep TypeScript version consistent",
+      "dependencies": ["typescript"],
+      "policy": "sameRange"
+    },
+    {
+      "label": "Keep MSW version consistent",
+      "dependencies": ["msw", "@types/node"],
+      "policy": "sameRange"
+    },
+    {
+      "label": "Keep NestJS versions aligned",
+      "dependencies": ["@nestjs/**"],
+      "policy": "sameRange"
+    },
+    {
+      "label": "Pin uuid to a single version",
+      "dependencies": ["uuid"],
+      "dependencyTypes": ["dev", "prod"],
+      "pinVersion": "11.1.0"
+    }
+  ],
+  "semverGroups": [
+    {
+      "label": "Enforce workspace protocol for internal deps",
+      "range": "",
+      "dependencies": ["@exprealty/*"],
+      "packages": ["**"]
+    }
+  ],
+  "semverRanges": ["^"],
+  "sortAz": [
+    "contributors",
+    "dependencies",
+    "devDependencies",
+    "keywords",
+    "peerDependencies",
+    "scripts"
+  ],
+  "sortFirst": ["name", "version", "description", "private", "license"]
+}

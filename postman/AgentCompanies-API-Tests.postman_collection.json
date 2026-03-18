@@ -1,0 +1,1151 @@
+{
+  "info": {
+    "_postman_id": "agent-companies-api-tests",
+    "name": "AgentCompanies API - CRUD & Association Tests",
+    "description": "Tests for AgentCompany entity CRUD operations at /v1/agent-companies and agent-company associations at /v1/agents/:id/agent-companies.\n\nFeatures tested:\n- AgentCompany entity CRUD (list, get, create, update)\n- Agent-Company association management (nested routes)\n- Tax ID last4 + HMAC token storage (write-only plaintext, masked on read)\n- Masked placeholder rejection (400)\n- Validation and error handling",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "apiVersion",
+      "value": "v1",
+      "type": "string"
+    },
+    {
+      "key": "agentId",
+      "value": "",
+      "type": "string",
+      "description": "Valid agent UUID - set by setup tests"
+    },
+    {
+      "key": "agentCompanyId",
+      "value": "",
+      "type": "string",
+      "description": "Created agent company ID - set by create tests"
+    },
+    {
+      "key": "agentCompanyId2",
+      "value": "",
+      "type": "string",
+      "description": "Second agent company ID for association tests"
+    },
+    {
+      "key": "associationId",
+      "value": "",
+      "type": "string",
+      "description": "Created association ID - set by association tests"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Setup",
+      "item": [
+        {
+          "name": "Get First Agent (for association tests)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has data array', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "    pm.expect(jsonData.data.length).to.be.greaterThan(0);",
+                  "});",
+                  "",
+                  "pm.test('Set agentId variable', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var agentId = jsonData.data[0].id;",
+                  "    pm.collectionVariables.set('agentId', agentId);",
+                  "    console.log('Using agent ID:', agentId);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents?offset=0&limit=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents"],
+              "query": [
+                {"key": "offset", "value": "0"},
+                {"key": "limit", "value": "1"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. AgentCompany Entity CRUD",
+      "item": [
+        {
+          "name": "Create AgentCompany",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response has Location header', function () {",
+                  "    pm.response.to.have.header('Location');",
+                  "    var location = pm.response.headers.get('Location');",
+                  "    pm.expect(location).to.include('/v1/agent-companies/');",
+                  "});",
+                  "",
+                  "pm.test('Response contains agent company data', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData.id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);",
+                  "    pm.expect(jsonData).to.have.property('name', 'Test Brokerage LLC');",
+                  "    pm.expect(jsonData).to.have.property('email');",
+                  "    pm.expect(jsonData).to.have.property('phone');",
+                  "    pm.expect(jsonData).to.have.property('legacyId');",
+                  "    pm.expect(jsonData).to.have.property('useSsn', false);",
+                  "    pm.collectionVariables.set('agentCompanyId', jsonData.id);",
+                  "});",
+                  "",
+                  "pm.test('Response has audit timestamps', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('createdAt');",
+                  "    pm.expect(jsonData).to.have.property('updatedAt');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"legacyId\": \"{{$timestamp}}\",\n  \"name\": \"Test Brokerage LLC\",\n  \"email\": \"brokerage{{$timestamp}}@example.com\",\n  \"phone\": \"5551234567\",\n  \"useSsn\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies"]
+            }
+          }
+        },
+        {
+          "name": "Create AgentCompany with TaxId (last4 + token storage)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response contains agent company with masked taxId', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData).to.have.property('taxId');",
+                  "    pm.collectionVariables.set('agentCompanyId2', jsonData.id);",
+                  "});",
+                  "",
+                  "pm.test('TaxId is masked — shows *****last4, never plaintext', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.taxId).to.match(/^\\*{5}\\d{4}$/);",
+                  "    pm.expect(jsonData.taxId).to.equal('*****6789');",
+                  "});",
+                  "",
+                  "pm.test('TaxIdToken is a 64-char hex HMAC', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.taxIdToken) {",
+                  "        pm.expect(jsonData.taxIdToken).to.match(/^[0-9a-f]{64}$/);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"legacyId\": \"{{$timestamp}}\",\n  \"name\": \"Encrypted Tax Company\",\n  \"email\": \"taxcompany{{$timestamp}}@example.com\",\n  \"phone\": \"5559876543\",\n  \"taxId\": \"123456789\",\n  \"useSsn\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies"]
+            }
+          }
+        },
+        {
+          "name": "Create AgentCompany with Masked Placeholder (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error rejects masked placeholder as input', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('type');",
+                  "    var message = JSON.stringify(jsonData).toLowerCase();",
+                  "    pm.expect(message).to.include('masked');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"legacyId\": \"99999\",\n  \"name\": \"Masked Placeholder Test\",\n  \"email\": \"masked@example.com\",\n  \"phone\": \"5550000000\",\n  \"taxId\": \"*****6789\",\n  \"useSsn\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies"]
+            }
+          }
+        },
+        {
+          "name": "Get AgentCompany by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response contains correct agent company', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.id).to.equal(pm.collectionVariables.get('agentCompanyId'));",
+                  "    pm.expect(jsonData).to.have.property('name');",
+                  "    pm.expect(jsonData).to.have.property('email');",
+                  "    pm.expect(jsonData).to.have.property('phone');",
+                  "    pm.expect(jsonData).to.have.property('legacyId');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies/{{agentCompanyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies", "{{agentCompanyId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get AgentCompany with TaxId (verify masking)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('TaxId is masked — *****last4 format', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('taxId');",
+                  "    if (jsonData.taxId) {",
+                  "        pm.expect(jsonData.taxId).to.match(/^\\*{5}\\d{4}$/);",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test('TaxIdToken is present for lookup', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.taxIdToken) {",
+                  "        pm.expect(jsonData.taxIdToken).to.match(/^[0-9a-f]{64}$/);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies/{{agentCompanyId2}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies", "{{agentCompanyId2}}"]
+            }
+          }
+        },
+        {
+          "name": "List All AgentCompanies",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has data array with pagination', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('data');",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "    pm.expect(jsonData).to.have.property('meta');",
+                  "    pm.expect(jsonData.meta).to.have.property('total');",
+                  "    pm.expect(jsonData.meta).to.have.property('totalPages');",
+                  "    pm.expect(jsonData.meta).to.have.property('currentPage');",
+                  "});",
+                  "",
+                  "pm.test('Returns created agent companies', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.length).to.be.greaterThan(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies?offset=0&limit=25",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies"],
+              "query": [
+                {"key": "offset", "value": "0"},
+                {"key": "limit", "value": "25"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update AgentCompany",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response reflects updated values', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.id).to.equal(pm.collectionVariables.get('agentCompanyId'));",
+                  "    pm.expect(jsonData.name).to.equal('Updated Brokerage Name');",
+                  "    pm.expect(jsonData.phone).to.equal('5559999999');",
+                  "});",
+                  "",
+                  "pm.test('UpdatedAt timestamp changed', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('updatedAt');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Brokerage Name\",\n  \"phone\": \"5559999999\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies/{{agentCompanyId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies", "{{agentCompanyId}}"]
+            }
+          }
+        },
+        {
+          "name": "Update AgentCompany TaxId (new last4 + token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('TaxId updated — masked with new last 4 digits', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('taxId');",
+                  "    if (jsonData.taxId) {",
+                  "        pm.expect(jsonData.taxId).to.equal('*****4321');",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test('TaxIdToken updated', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.taxIdToken) {",
+                  "        pm.expect(jsonData.taxIdToken).to.match(/^[0-9a-f]{64}$/);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"taxId\": \"987654321\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies/{{agentCompanyId2}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies", "{{agentCompanyId2}}"]
+            }
+          }
+        },
+        {
+          "name": "Update AgentCompany with Masked Placeholder (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 Bad Request', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Error rejects masked placeholder on update', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var message = JSON.stringify(jsonData).toLowerCase();",
+                  "    pm.expect(message).to.include('masked');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"taxId\": \"*****4321\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies/{{agentCompanyId2}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies", "{{agentCompanyId2}}"]
+            }
+          }
+        },
+        {
+          "name": "Clear TaxId (set null)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('TaxId is cleared', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.taxId).to.be.oneOf([null, undefined]);",
+                  "});",
+                  "",
+                  "pm.test('TaxIdToken is cleared', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.taxIdToken).to.be.oneOf([null, undefined]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"taxId\": null\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies/{{agentCompanyId2}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies", "{{agentCompanyId2}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Agent-Company Associations (Nested Routes)",
+      "item": [
+        {
+          "name": "List Agent's Company Associations (initial)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has data array', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('data');",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "    pm.expect(jsonData).to.have.property('meta');",
+                  "});",
+                  "",
+                  "pm.test('Each association has agentCompany relation', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.data.length > 0) {",
+                  "        jsonData.data.forEach(function(assoc) {",
+                  "            pm.expect(assoc).to.have.property('id');",
+                  "            pm.expect(assoc).to.have.property('agentId');",
+                  "            pm.expect(assoc).to.have.property('agentCompanyId');",
+                  "            pm.expect(assoc).to.have.property('isPrimary');",
+                  "            pm.expect(assoc).to.have.property('agentCompany');",
+                  "        });",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents/{{agentId}}/agent-companies",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents", "{{agentId}}", "agent-companies"]
+            }
+          }
+        },
+        {
+          "name": "Create Association (link agent to company)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response has Location header', function () {",
+                  "    pm.response.to.have.header('Location');",
+                  "});",
+                  "",
+                  "pm.test('Response contains association data', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData.id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);",
+                  "    pm.expect(jsonData).to.have.property('agentId');",
+                  "    pm.expect(jsonData.agentId).to.equal(pm.collectionVariables.get('agentId'));",
+                  "    pm.expect(jsonData).to.have.property('agentCompanyId');",
+                  "    pm.expect(jsonData.agentCompanyId).to.equal(pm.collectionVariables.get('agentCompanyId'));",
+                  "    pm.expect(jsonData).to.have.property('isPrimary', false);",
+                  "    pm.collectionVariables.set('associationId', jsonData.id);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentCompanyId\": \"{{agentCompanyId}}\",\n  \"isPrimary\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents/{{agentId}}/agent-companies",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents", "{{agentId}}", "agent-companies"]
+            }
+          }
+        },
+        {
+          "name": "List Agent's Company Associations (after create)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Association list includes new association', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var associationId = pm.collectionVariables.get('associationId');",
+                  "    var found = jsonData.data.some(function(a) { return a.id === associationId; });",
+                  "    pm.expect(found).to.be.true;",
+                  "});",
+                  "",
+                  "pm.test('AgentCompany data is included', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var associationId = pm.collectionVariables.get('associationId');",
+                  "    var assoc = jsonData.data.find(function(a) { return a.id === associationId; });",
+                  "    if (assoc) {",
+                  "        pm.expect(assoc.agentCompany).to.have.property('name');",
+                  "        pm.expect(assoc.agentCompany).to.have.property('email');",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents/{{agentId}}/agent-companies",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents", "{{agentId}}", "agent-companies"]
+            }
+          }
+        },
+        {
+          "name": "Update Association (set isPrimary true)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Association isPrimary updated', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.id).to.equal(pm.collectionVariables.get('associationId'));",
+                  "    pm.expect(jsonData.isPrimary).to.equal(true);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isPrimary\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents/{{agentId}}/agent-companies/{{associationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents", "{{agentId}}", "agent-companies", "{{associationId}}"]
+            }
+          }
+        },
+        {
+          "name": "Create Second Association",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Second association created', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.expect(jsonData.agentCompanyId).to.equal(pm.collectionVariables.get('agentCompanyId2'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentCompanyId\": \"{{agentCompanyId2}}\",\n  \"isPrimary\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents/{{agentId}}/agent-companies",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents", "{{agentId}}", "agent-companies"]
+            }
+          }
+        },
+        {
+          "name": "Verify Multiple Associations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Agent has multiple company associations', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.length).to.be.greaterThan(1);",
+                  "});",
+                  "",
+                  "pm.test('At least one association is primary', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var hasPrimary = jsonData.data.some(function(a) { return a.isPrimary === true; });",
+                  "    pm.expect(hasPrimary).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents/{{agentId}}/agent-companies",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents", "{{agentId}}", "agent-companies"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Validation & Error Cases",
+      "item": [
+        {
+          "name": "Get Non-existent AgentCompany (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Response is Problem Details format', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('type');",
+                  "    pm.expect(jsonData).to.have.property('title', 'Not Found');",
+                  "    pm.expect(jsonData).to.have.property('status', 404);",
+                  "    pm.expect(jsonData).to.have.property('detail');",
+                  "    pm.expect(jsonData).to.have.property('instance');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies/00000000-0000-0000-0000-000000000000",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies", "00000000-0000-0000-0000-000000000000"]
+            }
+          }
+        },
+        {
+          "name": "Get AgentCompany with Invalid UUID (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Response is Problem Details format', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('type');",
+                  "    pm.expect(jsonData).to.have.property('status', 400);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies/invalid-uuid",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies", "invalid-uuid"]
+            }
+          }
+        },
+        {
+          "name": "Create AgentCompany - Missing Required Fields (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Response has validation errors', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('type');",
+                  "    pm.expect(jsonData).to.have.property('title', 'Validation Failed');",
+                  "    pm.expect(jsonData).to.have.property('invalidParams');",
+                  "    pm.expect(jsonData.invalidParams).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Missing Fields Company\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies"]
+            }
+          }
+        },
+        {
+          "name": "Create AgentCompany - Invalid LegacyId (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Validation error for legacyId', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('invalidParams');",
+                  "    var legacyIdError = jsonData.invalidParams.find(function(p) { return p.name === 'legacyId'; });",
+                  "    pm.expect(legacyIdError).to.not.be.undefined;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"legacyId\": \"not-a-number\",\n  \"name\": \"Invalid Legacy ID Company\",\n  \"email\": \"invalid@example.com\",\n  \"phone\": \"5551234567\",\n  \"useSsn\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies"]
+            }
+          }
+        },
+        {
+          "name": "Get Association for Non-existent Agent (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Error indicates agent not found', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('type');",
+                  "    pm.expect(jsonData.type).to.include('not_found');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents/00000000-0000-0000-0000-000000000000/agent-companies",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents", "00000000-0000-0000-0000-000000000000", "agent-companies"]
+            }
+          }
+        },
+        {
+          "name": "Create Association with Invalid AgentCompanyId (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 or 404', function () {",
+                  "    pm.expect([400, 404]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "pm.test('Response is Problem Details format', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('type');",
+                  "    pm.expect(jsonData).to.have.property('status');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentCompanyId\": \"00000000-0000-0000-0000-000000000000\",\n  \"isPrimary\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents/{{agentId}}/agent-companies",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents", "{{agentId}}", "agent-companies"]
+            }
+          }
+        },
+        {
+          "name": "Update Non-existent Association (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Response indicates not found', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('type');",
+                  "    pm.expect(jsonData).to.have.property('status', 404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isPrimary\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agents/{{agentId}}/agent-companies/00000000-0000-0000-0000-000000000000",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agents", "{{agentId}}", "agent-companies", "00000000-0000-0000-0000-000000000000"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Query & Filtering",
+      "item": [
+        {
+          "name": "List AgentCompanies with Pagination",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Pagination respects limit', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.length).to.be.at.most(5);",
+                  "    pm.expect(jsonData.meta.limit).to.equal(5);",
+                  "});",
+                  "",
+                  "pm.test('Pagination metadata is correct', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.meta).to.have.property('offset', 0);",
+                  "    pm.expect(jsonData.meta).to.have.property('hasNext');",
+                  "    pm.expect(jsonData.meta).to.have.property('hasPrev');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies?offset=0&limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies"],
+              "query": [
+                {"key": "offset", "value": "0"},
+                {"key": "limit", "value": "5"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "List AgentCompanies Sorted by Name",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Results are sorted by name', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.data.length > 1) {",
+                  "        for (var i = 1; i < jsonData.data.length; i++) {",
+                  "            var prev = jsonData.data[i-1].name.toLowerCase();",
+                  "            var curr = jsonData.data[i].name.toLowerCase();",
+                  "            pm.expect(prev <= curr).to.be.true;",
+                  "        }",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies?sort=name:asc",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies"],
+              "query": [
+                {"key": "sort", "value": "name:asc"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Search AgentCompanies by Name",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Results match search term', function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.data.length > 0) {",
+                  "        jsonData.data.forEach(function(company) {",
+                  "            pm.expect(company.name.toLowerCase()).to.include('brokerage');",
+                  "        });",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/agent-companies?search=Brokerage",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "agent-companies"],
+              "query": [
+                {"key": "search", "value": "Brokerage"}
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

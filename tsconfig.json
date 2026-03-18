@@ -1,0 +1,26 @@
+{
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "NodeNext",
+		"moduleResolution": "NodeNext",
+		"noEmit": true,
+		"noImplicitAny": true,
+		"allowJs": true,
+		"strict": true,
+		"allowSyntheticDefaultImports": true,
+		"noUncheckedSideEffectImports": true,
+		"experimentalDecorators": true,
+		"emitDecoratorMetadata": true,
+
+		"baseUrl": "."
+	},
+	"include": [
+		"packages/*/src/**/*.ts",
+		"packages/*/src/**/*.js",
+		"packages/*/tests/**/*.ts",
+		"packages/*/tests/**/*.js",
+		"services/*/src/**/*.ts",
+		"eslint.config.mts"
+	],
+	"exclude": ["**/assets/**/*", "node_modules", "dist"]
+}

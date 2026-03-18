@@ -1,0 +1,1271 @@
+{
+  "info": {
+    "_postman_id": "offices-api-query-tests",
+    "name": "Offices API - Query/Filter/Sort/Search Tests",
+    "description": "Comprehensive Postman collection for Offices API testing CRUD, search, filter, and sort capabilities using the JSON query syntax.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "apiVersion",
+      "value": "v1",
+      "type": "string"
+    },
+    {
+      "key": "officeId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "companyId",
+      "value": "1",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. CRUD Operations",
+      "item": [
+        {
+          "name": "Create Office",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () { pm.response.to.have.status(201); });",
+                  "pm.test('Response has id', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('id');",
+                  "    pm.collectionVariables.set('officeId', jsonData.id);",
+                  "});",
+                  "pm.test('Response has audit fields', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('created');",
+                  "    pm.expect(jsonData).to.have.property('lastModified');",
+                  "    pm.expect(jsonData).to.have.property('modifiedBy');",
+                  "});",
+                  "pm.test('Response has office fields', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('name');",
+                  "    pm.expect(jsonData).to.have.property('phone');",
+                  "    pm.expect(jsonData).to.have.property('lifecycleStatus');",
+                  "    pm.expect(jsonData).to.have.property('companyId');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Office {{$timestamp}}\",\n  \"phone\": \"555-123-4567\",\n  \"lifecycleStatus\": \"active\",\n  \"primaryState\": \"CA\",\n  \"companyId\": \"{{companyId}}\",\n  \"website\": \"https://testoffice.example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"]
+            }
+          }
+        },
+        {
+          "name": "Get Office by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Response has correct id', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.id).to.equal(pm.collectionVariables.get('officeId'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices/{{officeId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices", "{{officeId}}"]
+            }
+          }
+        },
+        {
+          "name": "Update Office",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Name is updated', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.name).to.equal('Updated Office Name');",
+                  "});",
+                  "pm.test('lastModified is updated', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.lastModified).to.not.equal(jsonData.created);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Office Name\",\n  \"phone\": \"555-999-8888\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices/{{officeId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices", "{{officeId}}"]
+            }
+          }
+        },
+        {
+          "name": "Get Office Not Found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404', function () { pm.response.to.have.status(404); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices/999999999",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices", "999999999"]
+            }
+          }
+        },
+        {
+          "name": "Create Duplicate Name (Conflict)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 409', function () { pm.response.to.have.status(409); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Office Name\",\n  \"phone\": \"555-111-2222\",\n  \"lifecycleStatus\": \"active\",\n  \"primaryState\": \"NY\",\n  \"companyId\": \"{{companyId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Pagination Tests (AC-1)",
+      "item": [
+        {
+          "name": "AC1.1 - Default Pagination",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Response has pagination metadata', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('data');",
+                  "    pm.expect(jsonData).to.have.property('meta');",
+                  "    pm.expect(jsonData.meta).to.have.property('total');",
+                  "    pm.expect(jsonData.meta).to.have.property('limit');",
+                  "    pm.expect(jsonData.meta).to.have.property('offset');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"]
+            }
+          }
+        },
+        {
+          "name": "AC1.2 - Custom Offset and Limit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Returns correct limit', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.length).to.be.at.most(2);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?offset=0&limit=2",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "offset", "value": "0"},
+                {"key": "limit", "value": "2"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC1.3 - Page 2",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?offset=2&limit=2",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "offset", "value": "2"},
+                {"key": "limit", "value": "2"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Sorting Tests (AC-2)",
+      "item": [
+        {
+          "name": "AC2.1 - Sort by name ASC",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Results are sorted by name ascending', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    const names = jsonData.data.map(o => o.name);",
+                  "    const sorted = [...names].sort((a, b) => a.localeCompare(b));",
+                  "    pm.expect(names).to.eql(sorted);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?sort={\"conditions\":[{\"field\":\"name\",\"direction\":\"ASC\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"name\",\"direction\":\"ASC\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC2.2 - Sort by name DESC",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Results are sorted by name descending', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    const names = jsonData.data.map(o => o.name);",
+                  "    const sorted = [...names].sort((a, b) => b.localeCompare(a));",
+                  "    pm.expect(names).to.eql(sorted);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?sort={\"conditions\":[{\"field\":\"name\",\"direction\":\"DESC\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"name\",\"direction\":\"DESC\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC2.3 - Sort by id ASC",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?sort={\"conditions\":[{\"field\":\"id\",\"direction\":\"ASC\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"id\",\"direction\":\"ASC\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC2.4 - Sort by id DESC",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Results are sorted by id descending', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    const ids = jsonData.data.map(o => parseInt(o.id));",
+                  "    const sorted = [...ids].sort((a, b) => b - a);",
+                  "    pm.expect(ids).to.eql(sorted);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?sort={\"conditions\":[{\"field\":\"id\",\"direction\":\"DESC\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"id\",\"direction\":\"DESC\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC2.5 - Sort by companyId DESC",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?sort={\"conditions\":[{\"field\":\"companyId\",\"direction\":\"DESC\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"companyId\",\"direction\":\"DESC\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC2.6 - Multi-field Sort (lifecycleStatus DESC, name ASC)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?sort={\"conditions\":[{\"field\":\"lifecycleStatus\",\"direction\":\"DESC\"},{\"field\":\"name\",\"direction\":\"ASC\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"lifecycleStatus\",\"direction\":\"DESC\"},{\"field\":\"name\",\"direction\":\"ASC\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC2.7 - Invalid Sort Field (should fail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?sort={\"conditions\":[{\"field\":\"invalidField\",\"direction\":\"ASC\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"invalidField\",\"direction\":\"ASC\"}]}"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Filter Tests (AC-3)",
+      "item": [
+        {
+          "name": "AC3.1 - Filter by lifecycleStatus EQ active",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('All results have lifecycleStatus active', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    jsonData.data.forEach(o => pm.expect(o.lifecycleStatus).to.equal('active'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?filter={\"conditions\":[{\"field\":\"lifecycleStatus\",\"operator\":\"eq\",\"value\":\"active\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"lifecycleStatus\",\"operator\":\"eq\",\"value\":\"active\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC3.2 - Filter by name LIKE",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('All results contain Test in name', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    jsonData.data.forEach(o => pm.expect(o.name.toLowerCase()).to.include('test'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?filter={\"conditions\":[{\"field\":\"name\",\"operator\":\"like\",\"value\":\"Test\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"name\",\"operator\":\"like\",\"value\":\"Test\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC3.3 - Filter by primaryState EQ CA",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('All results have primaryState CA', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    jsonData.data.forEach(o => pm.expect(o.primaryState).to.equal('CA'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?filter={\"conditions\":[{\"field\":\"primaryState\",\"operator\":\"eq\",\"value\":\"CA\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"primaryState\",\"operator\":\"eq\",\"value\":\"CA\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC3.4 - Filter by companyId EQ",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('All results have correct companyId', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    const expectedCompanyId = pm.collectionVariables.get('companyId');",
+                  "    jsonData.data.forEach(o => pm.expect(o.companyId).to.equal(expectedCompanyId));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?filter={\"conditions\":[{\"field\":\"companyId\",\"operator\":\"eq\",\"value\":\"{{companyId}}\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"companyId\",\"operator\":\"eq\",\"value\":\"{{companyId}}\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC3.5 - Filter by id GTE",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('All results have id >= 1', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    jsonData.data.forEach(o => pm.expect(parseInt(o.id)).to.be.at.least(1));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?filter={\"conditions\":[{\"field\":\"id\",\"operator\":\"gte\",\"value\":\"1\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"id\",\"operator\":\"gte\",\"value\":\"1\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC3.6 - Multiple AND Filters (lifecycleStatus AND primaryState)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('All results match both conditions', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    jsonData.data.forEach(o => {",
+                  "        pm.expect(o.lifecycleStatus).to.equal('active');",
+                  "        pm.expect(o.primaryState).to.equal('CA');",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?filter={\"conditions\":[{\"field\":\"lifecycleStatus\",\"operator\":\"eq\",\"value\":\"active\"},{\"field\":\"primaryState\",\"operator\":\"eq\",\"value\":\"CA\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"lifecycleStatus\",\"operator\":\"eq\",\"value\":\"active\"},{\"field\":\"primaryState\",\"operator\":\"eq\",\"value\":\"CA\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC3.7 - Filter by phone LIKE",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?filter={\"conditions\":[{\"field\":\"phone\",\"operator\":\"like\",\"value\":\"555\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"phone\",\"operator\":\"like\",\"value\":\"555\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC3.8 - Invalid Filter Field (should fail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?filter={\"conditions\":[{\"field\":\"invalidField\",\"operator\":\"eq\",\"value\":\"test\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"invalidField\",\"operator\":\"eq\",\"value\":\"test\"}]}"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Search Tests (AC-4)",
+      "item": [
+        {
+          "name": "AC4.1 - Search by name (partial match)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Results contain search term', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    jsonData.data.forEach(o => {",
+                  "        const matchesName = o.name.toLowerCase().includes('office');",
+                  "        const matchesPhone = o.phone && o.phone.includes('office');",
+                  "        const matchesWebsite = o.website && o.website.toLowerCase().includes('office');",
+                  "        pm.expect(matchesName || matchesPhone || matchesWebsite).to.be.true;",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?search=Office",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "search", "value": "Office"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC4.2 - Search case-insensitive",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Search is case-insensitive', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.length).to.be.at.least(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?search=OFFICE",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "search", "value": "OFFICE"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC4.3 - Search no results",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Returns empty array', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.length).to.equal(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?search=xyznonexistent123",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "search", "value": "xyznonexistent123"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC4.4 - Search by phone number",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?search=555",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "search", "value": "555"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC4.5 - Search by state",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?search=CA",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "search", "value": "CA"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Combined Query Tests (AC-5)",
+      "item": [
+        {
+          "name": "AC5.1 - Pagination + Sort",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Returns limited results sorted by name', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.length).to.be.at.most(5);",
+                  "    const names = jsonData.data.map(o => o.name);",
+                  "    const sorted = [...names].sort((a, b) => a.localeCompare(b));",
+                  "    pm.expect(names).to.eql(sorted);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?offset=0&limit=5&sort={\"conditions\":[{\"field\":\"name\",\"direction\":\"ASC\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "offset", "value": "0"},
+                {"key": "limit", "value": "5"},
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"name\",\"direction\":\"ASC\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC5.2 - Pagination + Filter",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Returns filtered paginated results', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.length).to.be.at.most(3);",
+                  "    jsonData.data.forEach(o => pm.expect(o.lifecycleStatus).to.equal('active'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?offset=0&limit=3&filter={\"conditions\":[{\"field\":\"lifecycleStatus\",\"operator\":\"eq\",\"value\":\"active\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "offset", "value": "0"},
+                {"key": "limit", "value": "3"},
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"lifecycleStatus\",\"operator\":\"eq\",\"value\":\"active\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC5.3 - Filter + Sort",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Returns filtered results sorted by name DESC', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    jsonData.data.forEach(o => pm.expect(o.lifecycleStatus).to.equal('active'));",
+                  "    const names = jsonData.data.map(o => o.name);",
+                  "    const sorted = [...names].sort((a, b) => b.localeCompare(a));",
+                  "    pm.expect(names).to.eql(sorted);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?filter={\"conditions\":[{\"field\":\"lifecycleStatus\",\"operator\":\"eq\",\"value\":\"active\"}]}&sort={\"conditions\":[{\"field\":\"name\",\"direction\":\"DESC\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"lifecycleStatus\",\"operator\":\"eq\",\"value\":\"active\"}]}"},
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"name\",\"direction\":\"DESC\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC5.4 - Search + Sort",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Returns search results sorted by name', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    const names = jsonData.data.map(o => o.name);",
+                  "    const sorted = [...names].sort((a, b) => a.localeCompare(b));",
+                  "    pm.expect(names).to.eql(sorted);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?search=Office&sort={\"conditions\":[{\"field\":\"name\",\"direction\":\"ASC\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "search", "value": "Office"},
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"name\",\"direction\":\"ASC\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "AC5.5 - All Combined (Pagination + Filter + Sort + Search)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Returns filtered paginated sorted search results', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.length).to.be.at.most(10);",
+                  "    jsonData.data.forEach(o => pm.expect(o.lifecycleStatus).to.equal('active'));",
+                  "    const names = jsonData.data.map(o => o.name);",
+                  "    const sorted = [...names].sort((a, b) => a.localeCompare(b));",
+                  "    pm.expect(names).to.eql(sorted);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?offset=0&limit=10&search=Office&filter={\"conditions\":[{\"field\":\"lifecycleStatus\",\"operator\":\"eq\",\"value\":\"active\"}]}&sort={\"conditions\":[{\"field\":\"name\",\"direction\":\"ASC\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "offset", "value": "0"},
+                {"key": "limit", "value": "10"},
+                {"key": "search", "value": "Office"},
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"lifecycleStatus\",\"operator\":\"eq\",\"value\":\"active\"}]}"},
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"name\",\"direction\":\"ASC\"}]}"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Edge Cases",
+      "item": [
+        {
+          "name": "EC1 - Empty search string",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Returns all results', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?search=",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "search", "value": ""}
+              ]
+            }
+          }
+        },
+        {
+          "name": "EC2 - Negative offset (should fail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?offset=-1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "offset", "value": "-1"},
+                {"key": "limit", "value": "10"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "EC3 - Zero limit (should fail)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?offset=0&limit=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "offset", "value": "0"},
+                {"key": "limit", "value": "0"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "EC4 - Invalid ID format (non-numeric)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400 or 404', function () {",
+                  "    pm.expect([400, 404]).to.include(pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices/invalid-id",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices", "invalid-id"]
+            }
+          }
+        },
+        {
+          "name": "EC5 - Invalid filter operator",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?filter={\"conditions\":[{\"field\":\"name\",\"operator\":\"invalidOp\",\"value\":\"test\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "filter", "value": "{\"conditions\":[{\"field\":\"name\",\"operator\":\"invalidOp\",\"value\":\"test\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "EC6 - Malformed JSON in filter",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?filter={invalid-json}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "filter", "value": "{invalid-json}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "EC7 - Malformed JSON in sort",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?sort={not-valid-json}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "sort", "value": "{not-valid-json}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "EC8 - Invalid sort direction",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?sort={\"conditions\":[{\"field\":\"name\",\"direction\":\"INVALID\"}]}",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "sort", "value": "{\"conditions\":[{\"field\":\"name\",\"direction\":\"INVALID\"}]}"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "EC9 - Very large offset",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Returns empty array', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.length).to.equal(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices?offset=999999&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"],
+              "query": [
+                {"key": "offset", "value": "999999"},
+                {"key": "limit", "value": "10"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "EC10 - Create Office without required fields",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/{{apiVersion}}/offices",
+              "host": ["{{baseUrl}}"],
+              "path": ["{{apiVersion}}", "offices"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

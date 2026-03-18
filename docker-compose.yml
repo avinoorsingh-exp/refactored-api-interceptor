@@ -1,0 +1,74 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-agent_database}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  agent-service:
+    build:
+      context: .
+      dockerfile: ./services/agent-service/Dockerfile
+    restart: unless-stopped
+    image: exprealty/agent-service:dev
+    container_name: agent-service
+    env_file:
+      - ./.env
+      - ./services/agent-service/.env.agentservice    
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - app_logs:/app/logs
+
+  agent-orchestrator:
+    build:
+      context: .
+      dockerfile: ./services/orchestrator/Dockerfile
+    image: exprealty/agent-orchestrator:dev
+    container_name: agent-orchestrator
+    ports:
+      - "3001:8081"
+    env_file:
+      - ./.env
+      - ./services/orchestrator/.env.orchestrator
+    depends_on:
+      - agent-service
+    volumes:
+      - app_logs:/app/logs
+
+volumes:
+  pgdata:
+  redisdata:
+  app_logs: 
