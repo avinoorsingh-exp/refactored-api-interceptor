@@ -39,7 +39,7 @@ describe('AgentServiceRestClient', () => {
         } as any;
 
         // Mock EcsHttpClient constructor by creating client directly
-        // We'll need to spy on EcsHttpClient constructor
+        // We'll need to spy on EcsHttpClient constructor.
         (EcsHttpClient as jest.Mock).mockImplementation(() => mockEcsHttpClient);
     });
 
