@@ -17,7 +17,7 @@ pipeline
       }
     }
 
-    stage('Test + Coverage') {
+    stage('Test ++ Coverage') {
       when {
         anyOf {
           branch 'dev'
