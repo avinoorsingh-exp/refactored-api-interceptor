@@ -8,6 +8,7 @@ pipeline
     stage('Build preparations') {
       steps {
         script {
+          loginHelpers.checkoutScm()
           def buildInfo = ecsDeployHelpers.prepareBuild([
             project: env.PROJECT,
             ecr: env.ECR
@@ -684,6 +685,7 @@ pipeline
     }
   }
   options {
+    skipDefaultCheckout()
     buildDiscarder(logRotator(numToKeepStr: '3'))
   }
 }
