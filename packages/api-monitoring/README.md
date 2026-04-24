@@ -1,5 +1,7 @@
 # `@exprealty/api-monitoring`
 
+**Package version (this line):** `0.2.0` — built for **NestJS 11** and **TypeORM 0.3** (`@nestjs/typeorm` 11). Bump `version` in `package.json` before each CodeArtifact publish.
+
 NestJS module for HTTP API monitoring: request logging, actor attribution, metrics, and read-only admin endpoints. This package is **self-contained** (no other `@exprealty/*` dependencies) so it can be published to **npm / AWS CodeArtifact** and used from any application that already uses **PostgreSQL** and **TypeORM`.
 
 Use this document to **install the package**, **point it at your app’s existing database**, **register the bundled entities**, and **wire your HTTP API** so traffic is recorded.
@@ -11,7 +13,7 @@ Use this document to **install the package**, **point it at your app’s existin
 ## Prerequisites
 
 - **Node.js** 20+
-- **NestJS** 10+ (align versions with the package’s `package.json` peers)
+- **NestJS** **11** (`@nestjs/common` / `@nestjs/core` `^11.0.1` — align consuming apps with this package’s `dependencies`)
 - **TypeORM** 0.3+ with **PostgreSQL**
 - Tables live in schema **`core`** (default entity metadata). You must create those tables in **your** database (see [Database setup](#2-database-setup-schema-and-migrations)).
 
