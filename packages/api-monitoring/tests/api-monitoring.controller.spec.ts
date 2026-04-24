@@ -1,4 +1,3 @@
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { Test } from '@nestjs/testing';
 import { ApiMonitoringController } from '../src/api-monitoring.controller.js';
 import { ApiMetricsService } from '../src/services/api-metrics.service.js';
@@ -8,14 +7,14 @@ import { ErrorSampleQueryDto } from '../src/dto/error-sample-query.dto.js';
 import { ActorActivityQueryDto } from '../src/dto/actor-activity-query.dto.js';
 import { TimeSeriesQueryDto } from '../src/dto/time-series-query.dto.js';
 import { TopCallersQueryDto } from '../src/dto/top-callers-query.dto.js';
-import { AvailableRoutesQueryDto } from '../src/dto/available-routes-query.dto.js';
 import { RouteBreakdownQueryDto } from '../src/dto/route-breakdown-query.dto.js';
 import { TrendsQueryDto, TrendsRange } from '../src/dto/trends-query.dto.js';
-import { TimeBucket } from '@exprealty/shared-domain';
+import { TimeBucket } from '../src/domain/api-monitoring.types.js';
 
 describe('ApiMonitoringController - Pagination', () => {
 	let controller: ApiMonitoringController;
-	let metricsService: jest.Mocked<ApiMetricsService>;
+	/** Nest `useValue` mock (loose typing so per-test `mockResolvedValue` works with `tsc`). */
+	let metricsService: any;
 	let logger: jest.Mocked<IApiMonitoringLogger>;
 
 	beforeEach(async () => {
@@ -85,6 +84,7 @@ describe('ApiMonitoringController - Pagination', () => {
 			const query = new ErrorSampleQueryDto();
 			query.startTime = new Date('2024-01-01T00:00:00Z');
 			query.endTime = new Date('2024-01-02T00:00:00Z');
+			// eslint-disable-next-line @typescript-eslint/no-deprecated -- exercising legacy query param
 			query.legacyLimit = 100;
 
 			metricsService.getErrorSamples = jest.fn().mockResolvedValue([]);
@@ -173,8 +173,8 @@ describe('ApiMonitoringController - Pagination', () => {
 
 	describe('getSummary', () => {
 		it('should call service with time window params', async () => {
-			const from = new Date('2024-01-01T00:00:00Z');
-			const to = new Date('2024-01-01T01:00:00Z');
+			const from = '2024-01-01T00:00:00.000Z';
+			const to = '2024-01-01T01:00:00.000Z';
 
 			metricsService.getSummary = jest.fn().mockResolvedValue({
 				totalRequests: 100,
@@ -186,7 +186,7 @@ describe('ApiMonitoringController - Pagination', () => {
 
 			const result = await controller.getSummary(from, to);
 
-			expect(metricsService.getSummary).toHaveBeenCalledWith(from, to);
+			expect(metricsService.getSummary).toHaveBeenCalledWith(new Date(from), new Date(to));
 			expect(result.totalRequests).toBe(100);
 			expect(result.errorRate).toBe(0.02);
 		});
@@ -559,7 +559,7 @@ describe('ApiMonitoringController - Pagination', () => {
 			metricsService.getTrendsMetrics = jest.fn().mockResolvedValue({
 				startDate: new Date(),
 				endDate: new Date(),
-				timeBucket: TimeBucket.WEEK,
+				timeBucket: TimeBucket.DAY,
 				data: [],
 				kpiSummary: {} as any,
 			});
@@ -597,7 +597,7 @@ describe('ApiMonitoringController - Pagination', () => {
 			metricsService.getTrendsMetrics = jest.fn().mockResolvedValue({
 				startDate: new Date(),
 				endDate: new Date(),
-				timeBucket: TimeBucket.WEEK,
+				timeBucket: TimeBucket.DAY,
 				data: [],
 				kpiSummary: {} as any,
 			});

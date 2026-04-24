@@ -5,7 +5,6 @@ import {
 	Param,
 	HttpCode,
 	HttpStatus,
-	UseGuards,
 	Inject,
 } from '@nestjs/common';
 import {
@@ -29,9 +28,23 @@ import { TrendsQueryDto, TrendsRange } from './dto/trends-query.dto.js';
 import { TrendsResponseDto } from './dto/trends-response.dto.js';
 import { AvailableRoutesQueryDto } from './dto/available-routes-query.dto.js';
 import { AvailableRoutesResponseDto } from './dto/available-routes-response.dto.js';
-import { TimeBucket, HttpMethod, ApiErrorClassification, type TimeSeriesQuery } from '@exprealty/shared-domain';
+import {
+	TimeBucket,
+	ApiErrorClassification,
+	type TimeSeriesQuery,
+} from './domain/api-monitoring.types.js';
 import type { IApiMonitoringLogger } from './interfaces/logger.interface.js';
 import { API_MONITORING_LOGGER_TOKEN } from './interfaces/logger.interface.js';
+import type { PaginatedResponse } from './utils/pagination.util.js';
+
+function paginationLimitFromQuery(query: {
+	limit?: number;
+	/** @deprecated Prefer `limit`. */
+	legacyLimit?: number;
+}): number | undefined {
+	// eslint-disable-next-line @typescript-eslint/no-deprecated -- backward-compatible `legacyLimit` query alias
+	return query.limit ?? query.legacyLimit;
+}
 
 /**
  * API Monitoring Controller
@@ -85,7 +98,7 @@ export class ApiMonitoringController {
 		status: HttpStatus.OK,
 		description: 'Time-series metrics',
 	})
-	async getTimeSeriesMetrics(@Query() query: TimeSeriesQueryDto) {
+	async getTimeSeriesMetrics(@Query() query: TimeSeriesQueryDto): Promise<unknown[]> {
 		// Convert string dates to Date objects if needed (query params come as strings)
 		const startTime = query.startTime instanceof Date 
 			? query.startTime 
@@ -96,10 +109,10 @@ export class ApiMonitoringController {
 
 		// Validate dates are valid
 		if (isNaN(startTime.getTime())) {
-			throw new Error(`Invalid startTime: ${query.startTime}`);
+			throw new Error(`Invalid startTime: ${String(query.startTime)}`);
 		}
 		if (isNaN(endTime.getTime())) {
-			throw new Error(`Invalid endTime: ${query.endTime}`);
+			throw new Error(`Invalid endTime: ${String(query.endTime)}`);
 		}
 
 		this.logger.debug('Fetching time-series metrics', {
@@ -202,10 +215,10 @@ export class ApiMonitoringController {
 
 		// Validate dates
 		if (isNaN(startTime.getTime())) {
-			throw new Error(`Invalid startTime: ${query.startTime}`);
+			throw new Error(`Invalid startTime: ${String(query.startTime)}`);
 		}
 		if (isNaN(endTime.getTime())) {
-			throw new Error(`Invalid endTime: ${query.endTime}`);
+			throw new Error(`Invalid endTime: ${String(query.endTime)}`);
 		}
 
 		// Parse debug mode (optional, non-breaking)
@@ -259,7 +272,7 @@ export class ApiMonitoringController {
 	async getActorActivity(
 		@Param('actorId') actorId: string,
 		@Query() query: ActorActivityQueryDto,
-	) {
+	): Promise<PaginatedResponse<unknown> | unknown[]> {
 		// Parse debug mode (optional, non-breaking)
 		const debug = query.debug === true;
 
@@ -267,7 +280,7 @@ export class ApiMonitoringController {
 			actorId,
 			startTime: query.startTime,
 			endTime: query.endTime,
-			limit: query.limit || query.legacyLimit,
+			limit: paginationLimitFromQuery(query),
 			cursor: query.cursor ? 'present' : 'none',
 			debug,
 		});
@@ -276,7 +289,7 @@ export class ApiMonitoringController {
 			actorId,
 			startTime: query.startTime,
 			endTime: query.endTime,
-			limit: query.limit || query.legacyLimit,
+			limit: paginationLimitFromQuery(query),
 			cursor: query.cursor,
 			route: query.route,
 			statusCode: query.statusCode,
@@ -306,7 +319,7 @@ export class ApiMonitoringController {
 		description: 'Error samples (paginated or array)',
 		type: PaginatedErrorSampleResponseDto,
 	})
-	async getErrorSamples(@Query() query: ErrorSampleQueryDto) {
+	async getErrorSamples(@Query() query: ErrorSampleQueryDto): Promise<PaginatedResponse<unknown> | unknown[]> {
 		// Parse debug mode (optional, non-breaking)
 		const debug = query.debug === true;
 
@@ -316,20 +329,23 @@ export class ApiMonitoringController {
 			classification: query.classification,
 			route: query.route,
 			statusCode: query.statusCode,
-			limit: query.limit || query.legacyLimit,
+			limit: paginationLimitFromQuery(query),
 			cursor: query.cursor ? 'present' : 'none',
 			debug,
 		});
+
+		// eslint-disable-next-line @typescript-eslint/no-deprecated -- forwarded to metrics for limit normalization parity
+		const legacyLimitParam = query.legacyLimit;
 
 		return this.metricsService.getErrorSamples({
 			startTime: query.startTime,
 			endTime: query.endTime,
 			classification: query.classification as ApiErrorClassification | ApiErrorClassification[] | undefined,
 			route: query.route as string | string[] | undefined,
-			limit: query.limit || query.legacyLimit || 50,
+			limit: paginationLimitFromQuery(query) ?? 50,
 			cursor: query.cursor,
 			statusCode: query.statusCode,
-			legacyLimit: query.legacyLimit,
+			legacyLimit: legacyLimitParam,
 			debug,
 		});
 	}
@@ -411,10 +427,10 @@ export class ApiMonitoringController {
 
 		// Validate dates are valid
 		if (isNaN(startTimeDate.getTime())) {
-			throw new Error(`Invalid startTime: ${startTime}`);
+			throw new Error(`Invalid startTime: ${String(startTime)}`);
 		}
 		if (isNaN(endTimeDate.getTime())) {
-			throw new Error(`Invalid endTime: ${endTime}`);
+			throw new Error(`Invalid endTime: ${String(endTime)}`);
 		}
 
 		// Convert string to TimeBucket enum, defaulting to HOUR

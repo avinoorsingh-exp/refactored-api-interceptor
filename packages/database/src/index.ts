@@ -396,24 +396,22 @@ export { FeatureFlagEntity, type FeatureFlagKeyEntity } from './entities/core/fe
 
 /**
  * TypeORM entity for ApiActor table.
- * Tracks external actors (users, API keys, service accounts) that make API requests.
+ * Re-exported from `@exprealty/api-monitoring` (canonical entity definitions for migrations and the agent service).
  * @public
  */
-export { ApiActorEntity } from './entities/core/api-actor.entity.js'
+export { ApiActorEntity } from '@exprealty/api-monitoring'
 
 /**
  * TypeORM entity for ApiRequestLog table.
- * High-volume, append-only log of all API requests.
  * @public
  */
-export { ApiRequestLogEntity } from './entities/core/api-request-log.entity.js'
+export { ApiRequestLogEntity } from '@exprealty/api-monitoring'
 
 /**
  * TypeORM entity for ApiRouteStats table.
- * Pre-aggregated statistics by route, method, and time bucket.
  * @public
  */
-export { ApiRouteStatsEntity } from './entities/core/api-route-stats.entity.js'
+export { ApiRouteStatsEntity } from '@exprealty/api-monitoring'
 
 // ============================================================================
 // Query Decorators

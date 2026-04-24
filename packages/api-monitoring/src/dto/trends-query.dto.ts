@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEnum, IsOptional, IsString, Matches, IsArray, IsNumber } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { HttpMethod } from '@exprealty/shared-domain';
+import { HttpMethod } from '../domain/api-monitoring.types.js';
 import { toArray } from '../utils/filter.util.js';
 
 /**
@@ -31,7 +31,7 @@ export class TrendsQueryDto {
 		example: '30d',
 		type: String,
 	})
-	@Transform(({ value }) => {
+	@Transform(({ value }: { value: unknown }): TrendsRange => {
 		// Parse "30d" -> 30, "60d" -> 60, etc.
 		if (typeof value === 'string') {
 			const num = parseInt(value.replace('d', ''), 10);
@@ -43,7 +43,7 @@ export class TrendsQueryDto {
 		if (typeof value === 'number' && (value === 30 || value === 60 || value === 90)) {
 			return value as TrendsRange;
 		}
-		return value;
+		return value as TrendsRange;
 	})
 	@Matches(/^(30|60|90)d?$/, {
 		message: 'Range must be 30d, 60d, 90d, 30, 60, or 90',
@@ -57,7 +57,11 @@ export class TrendsQueryDto {
 		isArray: true,
 		nullable: true,
 	})
-	@Transform(({ value }) => (value == null || (typeof value === 'string' && value.trim() === '')) ? [] : toArray(value))
+	@Transform(({ value }: { value: unknown }): string[] =>
+		value == null || (typeof value === 'string' && value.trim() === '')
+			? []
+			: toArray(value as string | string[]),
+	)
 	@IsOptional()
 	@IsArray()
 	@IsString({ each: true })

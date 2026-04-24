@@ -11,6 +11,7 @@ import { LoggerService } from './logger.service.js'
 			useFactory: (config: ConfigService, loggerService: LoggerService) => {
 				// Lazy proxy: _winston is null at factory time (before onModuleInit),
 				// but ioredis events fire asynchronously after bootstrap when it's ready.
+				/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call -- Winston surface proxied until LoggerService finishes init */
 				const lazyLogger = new Proxy({} as any, {
 					get: (_target, prop) => {
 						const winston = loggerService._winston
@@ -26,13 +27,15 @@ import { LoggerService } from './logger.service.js'
 					},
 				})
 				const redisUrl = config.get('REDIS_URL')
-				return new CacheService({
+				const service = new CacheService({
 					redisUrl,
 					redisTls: config.get('REDIS_TLS'),
 					keyPrefix: 'exprealty:agentdb',
 					logger: lazyLogger,
 					enabled: !!redisUrl,
 				})
+				/* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call */
+				return service
 			},
 			inject: [ConfigService, LoggerService],
 		},

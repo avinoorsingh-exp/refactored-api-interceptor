@@ -23,7 +23,12 @@ import { FeatureFlagModule } from './modules/admin/feature-flags/feature-flag.mo
 import { AgentCompanyAssociationModule } from './modules/agent-companies/agent-company-association.module.js'
 import { AgentTaxModule } from './modules/agent-taxes/agent-tax.module.js'
 import { LineOfBusinessModule } from './modules/line-of-business/line-of-business.module.js'
-import { ApiMonitoringModule, ApiActorMiddleware, API_MONITORING_LOGGER_TOKEN } from '@exprealty/api-monitoring'
+import {
+	ApiMonitoringModule,
+	ApiActorMiddleware,
+	API_MONITORING_LOGGER_TOKEN,
+} from '@exprealty/api-monitoring'
+import { ApiMonitoringCacheAsyncContextAdapter } from './core/api-monitoring-async-context.adapter.js'
 import { CorrelationIdMiddleware } from './common/correlation-id.middleware.js'
 import { SharedEncryptionModule } from './common/encryption/shared-encryption.module.js'
 import { CacheProviderModule } from './core/cache.module.js'
@@ -60,7 +65,8 @@ import { LoggerService } from './core/logger.service.js'
     LineOfBusinessModule,
     CacheAdminModule,
     ApiMonitoringModule.forRoot({
-      logger: LoggerService, // LoggerService class from LoggerModule (which is @Global())
+      logger: LoggerService,
+      asyncContext: ApiMonitoringCacheAsyncContextAdapter,
     }),
 	],
 	controllers: [AgentController, RootHealthController],

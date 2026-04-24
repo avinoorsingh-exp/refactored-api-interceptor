@@ -1,19 +1,25 @@
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { Test } from '@nestjs/testing';
 import { Request, Response, NextFunction } from 'express';
 import { ApiActorMiddleware } from '../../src/middleware/api-actor.middleware.js';
 import { ApiActorService } from '../../src/services/api-actor.service.js';
 import { ApiRequestContextService } from '../../src/services/api-request-context.service.js';
-import { ApiActorType } from '@exprealty/shared-domain';
+import { ApiActorType } from '../../src/domain/api-monitoring.types.js';
 import { API_MONITORING_LOGGER_TOKEN } from '../../src/interfaces/logger.interface.js';
 import type { IApiMonitoringLogger } from '../../src/interfaces/logger.interface.js';
+
+/** Express `Request` plus optional auth fields the middleware reads (same shape as production augmentations). */
+type MockActorRequest = Partial<Request> & {
+	user?: { id?: string; email?: string; username?: string };
+	apiKey?: { id?: string; name?: string };
+	serviceAccount?: { id?: string; name?: string };
+};
 
 describe('ApiActorMiddleware', () => {
 	let middleware: ApiActorMiddleware;
 	let actorService: jest.Mocked<ApiActorService>;
 	let contextService: jest.Mocked<ApiRequestContextService>;
 	let logger: jest.Mocked<IApiMonitoringLogger>;
-	let mockRequest: Partial<Request>;
+	let mockRequest: MockActorRequest;
 	let mockResponse: Partial<Response>;
 	let mockNext: NextFunction;
 
@@ -36,6 +42,7 @@ describe('ApiActorMiddleware', () => {
 
 		mockRequest = {
 			ip: '192.168.1.1',
+			get: jest.fn().mockReturnValue(undefined),
 		};
 
 		mockResponse = {};
@@ -157,7 +164,7 @@ describe('ApiActorMiddleware', () => {
 
 			expect(actorService.getOrCreateActor).toHaveBeenCalledWith(
 				ApiActorType.ANONYMOUS,
-				undefined,
+				'ANONYMOUS',
 				{ ip: '192.168.1.1' },
 			);
 			expect(contextService.updateActor).toHaveBeenCalledWith('actor-anon', ApiActorType.ANONYMOUS);

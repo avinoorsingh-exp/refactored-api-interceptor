@@ -103,9 +103,10 @@ class DatabaseWarmupService implements OnModuleInit {
   private async tryPgPrewarm(): Promise<boolean> {
     try {
       // Check if pg_prewarm extension is installed
-      const [ext] = await this.dataSource.query(
+      const extRows = (await this.dataSource.query(
         `SELECT 1 FROM pg_extension WHERE extname = 'pg_prewarm'`,
-      )
+      )) as unknown
+      const ext = Array.isArray(extRows) ? (extRows[0] as unknown) : undefined
       if (!ext) return false
 
       const prewarmStart = Date.now()
@@ -116,10 +117,19 @@ class DatabaseWarmupService implements OnModuleInit {
       for (const relation of PG_PREWARM_RELATIONS) {
         try {
           // Cast to regclass inline — parameterized $1 doesn't work with regclass
-          const [result] = await this.dataSource.query(
+          const rows = (await this.dataSource.query(
             `SELECT pg_prewarm('${relation}'::regclass, 'buffer', 'main') AS blocks`,
-          )
-          const blocks = parseInt(result?.blocks ?? '0', 10)
+          )) as unknown
+          const result = Array.isArray(rows) ? (rows[0] as unknown) : undefined
+          const blockRaw =
+            result != null &&
+            typeof result === 'object' &&
+            'blocks' in result &&
+            (typeof (result as { blocks: unknown }).blocks === 'string' ||
+              typeof (result as { blocks: unknown }).blocks === 'number')
+              ? String((result as { blocks: string | number }).blocks)
+              : '0'
+          const blocks = parseInt(blockRaw, 10)
           totalBlocks += blocks
           warmed.push(`${relation}(${blocks})`)
         } catch (err) {
@@ -193,7 +203,11 @@ class DatabaseWarmupService implements OnModuleInit {
           // Uses DB_SSL from config (loaded from AWS Secrets Manager or .env)
           // Explicitly check for true to avoid "false" string being coerced to true
           ssl: (() => {
-            const sslEnabled = cfg.DB_SSL === true || String(cfg.DB_SSL).toLowerCase() === 'true' || String(cfg.DB_SSL) === '1';
+            const rawSsl = cfg.DB_SSL
+            const sslEnabled =
+              typeof rawSsl === 'boolean'
+                ? rawSsl
+                : String(rawSsl).toLowerCase() === 'true' || String(rawSsl) === '1'
             const sslConfig = sslEnabled ? {
               rejectUnauthorized: false,
               checkServerIdentity: () => undefined,

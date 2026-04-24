@@ -23,6 +23,15 @@ const TIER_CHANNEL: Record<string, LogChannel> = {
   [LogTier.DEBUG]: 'diagnostic',
 }
 
+function metaEventToString(event: unknown): string {
+  if (event === undefined || event === null) return 'log'
+  if (typeof event === 'string') return event
+  if (typeof event === 'number' || typeof event === 'boolean' || typeof event === 'bigint') {
+    return String(event)
+  }
+  return 'log'
+}
+
 /**
  * Bootstrap-safe logger service.
  *
@@ -54,15 +63,23 @@ export class LoggerService implements OnModuleInit {
    */
   constructor() {
     // Use process.env directly - no ConfigService dependency
-    this.env = (process.env.NODE_ENV as z.infer<typeof EnvEnum>) || 'dev'
+    const parsed = EnvEnum.safeParse(process.env.NODE_ENV)
+    this.env = parsed.success ? parsed.data : 'dev'
     this.serviceVersion = process.env.SERVICE_VERSION || '0.1.0'
+  }
+
+  /** `createLogger` only accepts prod / test / dev; fold other NODE_ENV values into dev. */
+  private winstonEnv(): 'dev' | 'test' | 'prod' {
+    if (this.env === 'prod') return 'prod'
+    if (this.env === 'test') return 'test'
+    return 'dev'
   }
 
   /**
    * Initialize Winston logger and metrics after module bootstrap.
    * This runs after all modules are initialized, so dependencies are safe.
    */
-  async onModuleInit(): Promise<void> {
+  onModuleInit(): void {
     try {
       // Initialize Winston logger (may perform file I/O)
       const logLevel = process.env.LOG_LEVEL || 'info'
@@ -72,7 +89,7 @@ export class LoggerService implements OnModuleInit {
         service: this.service,
         level: logLevel,
         logDir: logDir,
-        env: this.env,
+        env: this.winstonEnv(),
       })
 
       // Initialize metrics (may perform network calls)
@@ -80,8 +97,8 @@ export class LoggerService implements OnModuleInit {
       let exporterHeaders: Record<string, string> = {}
       if (headersJson) {
         try {
-          exporterHeaders = JSON.parse(headersJson)
-        } catch (err) {
+          exporterHeaders = JSON.parse(headersJson) as Record<string, string>
+        } catch {
           // Fail silently - metrics headers are optional
         }
       }
@@ -255,8 +272,8 @@ export class LoggerService implements OnModuleInit {
       serviceVersion: this.serviceVersion,
       env: this.env,
       tier,
-      channel: (channel as LogChannel) ?? TIER_CHANNEL[tier],
-      event: (event as string) ?? 'log',
+      channel: channel !== undefined && channel !== null ? (channel as LogChannel) : TIER_CHANNEL[tier],
+      event: metaEventToString(event),
       ...(requestId && { requestId }),
       ...rest,
     })
@@ -443,8 +460,8 @@ export class ScopedLogger {
       serviceVersion: this.parent._serviceVersion,
       env: this.parent._env,
       tier,
-      channel: (channel as LogChannel) ?? TIER_CHANNEL[tier],
-      event: (event as string) ?? 'log',
+      channel: channel !== undefined && channel !== null ? (channel as LogChannel) : TIER_CHANNEL[tier],
+      event: metaEventToString(event),
       ...(requestId && { requestId }),
       ...rest,
     })

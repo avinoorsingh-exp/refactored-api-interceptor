@@ -65,9 +65,10 @@ export class ActorActivityQueryDto extends PaginationQueryDto {
 		nullable: true,
 	})
 	@IsOptional()
-	@Transform(({ value }) => {
+	@Transform(({ value }: { value: unknown }): string[] => {
 		if (value == null || (typeof value === 'string' && value.trim() === '')) return [];
-		return Array.isArray(value) ? value : [value];
+		const arr = Array.isArray(value) ? value : [value];
+		return arr.map((x) => String(x));
 	})
 	@IsArray()
 	@IsString({ each: true })
@@ -81,10 +82,10 @@ export class ActorActivityQueryDto extends PaginationQueryDto {
 		nullable: true,
 	})
 	@IsOptional()
-	@Transform(({ value }) => {
+	@Transform(({ value }: { value: unknown }): number[] => {
 		if (value == null || (typeof value === 'string' && value.trim() === '')) return [];
 		const arr = Array.isArray(value) ? value : [value];
-		return arr.map((v) => parseInt(v, 10));
+		return arr.map((v) => parseInt(String(v), 10)).filter((n) => !Number.isNaN(n));
 	})
 	@IsArray()
 	@IsInt({ each: true })
@@ -96,7 +97,7 @@ export class ActorActivityQueryDto extends PaginationQueryDto {
 		default: false,
 	})
 	@IsOptional()
-	@Transform(({ value }) => value === 'true' || value === true)
+	@Transform(({ value }: { value: unknown }): boolean => value === 'true' || value === true)
 	debug?: boolean;
 }
 

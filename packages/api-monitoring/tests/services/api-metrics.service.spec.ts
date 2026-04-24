@@ -1,17 +1,36 @@
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { Test } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import { ApiMetricsService } from '../../src/services/api-metrics.service.js';
-import { ApiRequestLogEntity, ApiRouteStatsEntity, ApiActorEntity } from '@exprealty/database';
 import { API_MONITORING_LOGGER_TOKEN } from '../../src/interfaces/logger.interface.js';
 import type { IApiMonitoringLogger } from '../../src/interfaces/logger.interface.js';
+import { API_MONITORING_ENTITY_CLASSES } from '../../src/tokens/entity-classes.token.js';
+import {
+	API_MONITORING_ACTOR_REPO,
+	API_MONITORING_REQUEST_LOG_REPO,
+	API_MONITORING_ROUTE_STATS_REPO,
+} from '../../src/tokens/repository.tokens.js';
+import { HttpMethod } from '../../src/domain/api-monitoring.types.js';
+
+// eslint-disable-next-line @typescript-eslint/no-extraneous-class -- minimal entity class token for repository wiring
+class MockRouteStatsEntity {}
+
+// eslint-disable-next-line @typescript-eslint/no-extraneous-class -- minimal entity class token for repository wiring
+class MockRequestLogEntity {}
+
+// eslint-disable-next-line @typescript-eslint/no-extraneous-class -- minimal entity class token for repository wiring
+class MockActorEntity {}
+
+const mockEntityClasses = {
+	ApiRequestLogEntity: MockRequestLogEntity,
+	ApiRouteStatsEntity: MockRouteStatsEntity,
+	ApiActorEntity: MockActorEntity,
+};
 
 describe('ApiMetricsService - Pagination', () => {
 	let service: ApiMetricsService;
-	let requestLogRepo: jest.Mocked<Repository<ApiRequestLogEntity>>;
-	let routeStatsRepo: jest.Mocked<Repository<ApiRouteStatsEntity>>;
-	let actorRepo: jest.Mocked<Repository<ApiActorEntity>>;
+	/** In-memory Nest provider mock (not a real `Repository`; uses `manager.query` etc.). */
+	let requestLogRepo: any;
+	let routeStatsRepo: any;
+	let actorRepo: any;
 	let logger: jest.Mocked<IApiMonitoringLogger>;
 
 	beforeEach(async () => {
@@ -45,20 +64,24 @@ describe('ApiMetricsService - Pagination', () => {
 			providers: [
 				ApiMetricsService,
 				{
-					provide: getRepositoryToken(ApiRequestLogEntity),
+					provide: API_MONITORING_REQUEST_LOG_REPO,
 					useValue: requestLogRepo,
 				},
 				{
-					provide: getRepositoryToken(ApiRouteStatsEntity),
+					provide: API_MONITORING_ROUTE_STATS_REPO,
 					useValue: routeStatsRepo,
 				},
 				{
-					provide: getRepositoryToken(ApiActorEntity),
+					provide: API_MONITORING_ACTOR_REPO,
 					useValue: actorRepo,
 				},
 				{
 					provide: API_MONITORING_LOGGER_TOKEN,
 					useValue: logger,
+				},
+				{
+					provide: API_MONITORING_ENTITY_CLASSES,
+					useValue: mockEntityClasses,
 				},
 			],
 		}).compile();
@@ -182,7 +205,7 @@ describe('ApiMetricsService - Pagination', () => {
 						createdAt: new Date('2024-01-01T02:00:00Z'),
 						hasError: true,
 					},
-				] as ApiRequestLogEntity[]),
+				] as Record<string, unknown>[]),
 			};
 
 			requestLogRepo.createQueryBuilder = jest.fn().mockReturnValue(mockQueryBuilder);
@@ -201,7 +224,7 @@ describe('ApiMetricsService - Pagination', () => {
 
 		it('should return paginated response when limit is provided', async () => {
 			const mockLogs = [
-				{ id: '1', createdAt: new Date(), hasError: true } as ApiRequestLogEntity,
+				{ id: '1', createdAt: new Date(), hasError: true } as Record<string, unknown>,
 			];
 
 			requestLogRepo.find = jest.fn().mockResolvedValue(mockLogs);
@@ -218,7 +241,7 @@ describe('ApiMetricsService - Pagination', () => {
 
 		it('should return array when no pagination params provided (backward compatibility)', async () => {
 			const mockLogs = [
-				{ id: '1', createdAt: new Date(), hasError: true } as ApiRequestLogEntity,
+				{ id: '1', createdAt: new Date(), hasError: true } as Record<string, unknown>,
 			];
 
 			requestLogRepo.find = jest.fn().mockResolvedValue(mockLogs);
@@ -262,7 +285,7 @@ describe('ApiMetricsService - Pagination', () => {
 				addOrderBy: jest.fn().mockReturnThis(),
 				take: jest.fn().mockReturnThis(),
 				getMany: jest.fn().mockResolvedValue([
-					{ id: '1', timestamp: new Date(), actorId: 'actor1' } as ApiRequestLogEntity,
+					{ id: '1', timestamp: new Date(), actorId: 'actor1' } as Record<string, unknown>,
 				]),
 			};
 
@@ -280,7 +303,7 @@ describe('ApiMetricsService - Pagination', () => {
 
 		it('should return paginated response when limit is provided', async () => {
 			const mockLogs = [
-				{ id: '1', timestamp: new Date(), actorId: 'actor1' } as ApiRequestLogEntity,
+				{ id: '1', timestamp: new Date(), actorId: 'actor1' } as Record<string, unknown>,
 			];
 
 			requestLogRepo.find = jest.fn().mockResolvedValue(mockLogs);
@@ -298,7 +321,7 @@ describe('ApiMetricsService - Pagination', () => {
 
 		it('should return array when no pagination params (backward compatibility)', async () => {
 			const mockLogs = [
-				{ id: '1', timestamp: new Date(), actorId: 'actor1' } as ApiRequestLogEntity,
+				{ id: '1', timestamp: new Date(), actorId: 'actor1' } as Record<string, unknown>,
 			];
 
 			requestLogRepo.find = jest.fn().mockResolvedValue(mockLogs);
@@ -321,12 +344,25 @@ describe('ApiMetricsService - Pagination', () => {
 				id: 'actor1',
 			})).toString('base64');
 
-			const mockLogs = [
-				{ id: '1', actorId: 'actor1', actorType: 'USER', hasError: false } as ApiRequestLogEntity,
-				{ id: '2', actorId: 'actor2', actorType: 'USER', hasError: false } as ApiRequestLogEntity,
+			// getTopCallers uses raw SQL via requestLogRepo.query (not .find)
+			const mockQueryResult = [
+				{
+					actorId: 'actor1',
+					actorType: 'USER',
+					displayName: 'User 1',
+					requestCount: '10',
+					errorCount: '0',
+				},
+				{
+					actorId: 'actor2',
+					actorType: 'USER',
+					displayName: 'User 2',
+					requestCount: '5',
+					errorCount: '0',
+				},
 			];
 
-			requestLogRepo.find = jest.fn().mockResolvedValue(mockLogs);
+			requestLogRepo.query = jest.fn().mockResolvedValue(mockQueryResult);
 
 			const result = await service.getTopCallers(
 				new Date('2024-01-01T00:00:00Z'),
@@ -611,7 +647,7 @@ describe('ApiMetricsService - Pagination', () => {
 			const startTime = new Date('2024-01-01T00:00:00Z');
 			const endTime = new Date('2024-01-01T00:30:00Z'); // 30 minutes
 
-			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockStats: Record<string, unknown>[] = [];
 			const mockQueryBuilder = {
 				select: jest.fn().mockReturnThis(),
 				where: jest.fn().mockReturnThis(),
@@ -642,7 +678,7 @@ describe('ApiMetricsService - Pagination', () => {
 			const startTime = new Date('2024-01-01T00:00:00Z');
 			const endTime = new Date('2024-01-01T12:00:00Z'); // 12 hours
 
-			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockStats: Record<string, unknown>[] = [];
 			const mockQueryBuilder = {
 				select: jest.fn().mockReturnThis(),
 				where: jest.fn().mockReturnThis(),
@@ -670,7 +706,7 @@ describe('ApiMetricsService - Pagination', () => {
 			const startTime = new Date('2024-01-01T00:00:00Z');
 			const endTime = new Date('2024-01-03T00:00:00Z'); // 48 hours
 
-			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockStats: Record<string, unknown>[] = [];
 			const mockQueryBuilder = {
 				select: jest.fn().mockReturnThis(),
 				where: jest.fn().mockReturnThis(),
@@ -698,7 +734,7 @@ describe('ApiMetricsService - Pagination', () => {
 			const startTime = new Date('2024-01-01T00:00:00Z');
 			const endTime = new Date('2024-01-01T12:00:00Z'); // 12 hours, but we want DAY
 
-			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockStats: Record<string, unknown>[] = [];
 			const mockQueryBuilder = {
 				select: jest.fn().mockReturnThis(),
 				where: jest.fn().mockReturnThis(),
@@ -726,7 +762,7 @@ describe('ApiMetricsService - Pagination', () => {
 			const startTime = new Date('2024-01-01T00:00:00Z');
 			const endTime = new Date('2024-01-01T01:00:00Z');
 
-			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockStats: Record<string, unknown>[] = [];
 			const mockQueryBuilder = {
 				select: jest.fn().mockReturnThis(),
 				where: jest.fn().mockReturnThis(),
@@ -754,7 +790,7 @@ describe('ApiMetricsService - Pagination', () => {
 			const startTime = new Date('2024-01-01T00:00:00Z');
 			const endTime = new Date('2024-01-01T01:00:00Z');
 
-			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockStats: Record<string, unknown>[] = [];
 			const mockQueryBuilder = {
 				select: jest.fn().mockReturnThis(),
 				where: jest.fn().mockReturnThis(),
@@ -782,7 +818,7 @@ describe('ApiMetricsService - Pagination', () => {
 			const startTime = new Date('2024-01-01T00:00:00Z');
 			const endTime = new Date('2024-01-01T01:00:00Z');
 
-			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockStats: Record<string, unknown>[] = [];
 			const mockQueryBuilder = {
 				select: jest.fn().mockReturnThis(),
 				where: jest.fn().mockReturnThis(),
@@ -975,7 +1011,7 @@ describe('ApiMetricsService - Pagination', () => {
 			const startTime = new Date('2024-01-01T00:00:00Z');
 			const endTime = new Date('2024-01-01T12:00:00Z'); // 12 hours
 
-			const mockStats: ApiRouteStatsEntity[] = [
+			const mockStats: Record<string, unknown>[] = [
 				{
 					id: '1',
 					route: '/v1/agents',
@@ -990,7 +1026,7 @@ describe('ApiMetricsService - Pagination', () => {
 					latencyMin: 10,
 					latencyMax: 200,
 					statusCodeCounts: { '200': 95, '500': 5 },
-				} as ApiRouteStatsEntity,
+				} as Record<string, unknown>,
 			];
 
 			const mockQueryBuilder = {
@@ -1020,7 +1056,7 @@ describe('ApiMetricsService - Pagination', () => {
 			const startTime = new Date('2024-01-01T00:00:00Z');
 			const endTime = new Date('2024-01-02T00:00:00Z'); // 24 hours (large range)
 
-			const mockStats: ApiRouteStatsEntity[] = []; // Empty but still return it
+			const mockStats: Record<string, unknown>[] = []; // Empty but still return it
 
 			const mockQueryBuilder = {
 				select: jest.fn().mockReturnThis(),
@@ -1048,7 +1084,7 @@ describe('ApiMetricsService - Pagination', () => {
 			const startTime = new Date('2024-01-01T00:00:00Z');
 			const endTime = new Date('2024-01-01T00:30:00Z'); // 30 minutes (small range)
 
-			const mockStats: ApiRouteStatsEntity[] = [
+			const mockStats: Record<string, unknown>[] = [
 				{
 					id: '1',
 					route: '/v1/agents',
@@ -1063,7 +1099,7 @@ describe('ApiMetricsService - Pagination', () => {
 					latencyMin: 5,
 					latencyMax: 150,
 					statusCodeCounts: { '200': 48, '500': 2 },
-				} as ApiRouteStatsEntity,
+				} as Record<string, unknown>,
 			];
 
 			const mockQueryBuilder = {
@@ -1092,7 +1128,7 @@ describe('ApiMetricsService - Pagination', () => {
 			const startTime = new Date('2024-01-01T00:00:00Z');
 			const endTime = new Date('2024-01-01T01:00:00Z');
 
-			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockStats: Record<string, unknown>[] = [];
 			const mockQueryBuilder = {
 				select: jest.fn().mockReturnThis(),
 				where: jest.fn().mockReturnThis(),
@@ -1122,7 +1158,7 @@ describe('ApiMetricsService - Pagination', () => {
 			const startTime = new Date('2024-01-01T00:00:00Z');
 			const endTime = new Date('2024-01-01T01:00:00Z');
 
-			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockStats: Record<string, unknown>[] = [];
 			const mockQueryBuilder = {
 				select: jest.fn().mockReturnThis(),
 				where: jest.fn().mockReturnThis(),
@@ -1152,7 +1188,7 @@ describe('ApiMetricsService - Pagination', () => {
 			const startTime = new Date('2024-01-01T00:00:00Z');
 			const endTime = new Date('2024-01-01T01:00:00Z');
 
-			const mockStats: ApiRouteStatsEntity[] = [];
+			const mockStats: Record<string, unknown>[] = [];
 			const mockQueryBuilder = {
 				select: jest.fn().mockReturnThis(),
 				where: jest.fn().mockReturnThis(),
@@ -1228,7 +1264,7 @@ describe('ApiMetricsService - Pagination', () => {
 			await service.getTimeSeriesMetrics({
 				startTime,
 				endTime,
-				method: ['GET'],
+				method: [HttpMethod.GET],
 				timeBucket: undefined,
 			});
 
@@ -1287,7 +1323,7 @@ describe('ApiMetricsService - Pagination', () => {
 				startTime,
 				endTime,
 				route: ['/v1/agents'],
-				method: ['GET'],
+				method: [HttpMethod.GET],
 				statusCode: [200],
 				timeBucket: undefined,
 			});

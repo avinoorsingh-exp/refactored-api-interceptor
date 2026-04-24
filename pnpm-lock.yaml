@@ -129,15 +129,6 @@ importers:
 
   packages/api-monitoring:
     dependencies:
-      '@exprealty/cache':
-        specifier: workspace:*
-        version: link:../cache
-      '@exprealty/database':
-        specifier: workspace:*
-        version: link:../database
-      '@exprealty/shared-domain':
-        specifier: workspace:*
-        version: link:../shared-domain
       '@nestjs/common':
         specifier: ^10.3.0
         version: 10.4.20(class-transformer@0.5.1)(class-validator@0.14.2)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -163,15 +154,21 @@ importers:
         specifier: ^0.3.28
         version: 0.3.28(babel-plugin-macros@3.1.0)(ioredis@5.8.1)(pg@8.16.3)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.9.1)(typescript@5.9.3))
     devDependencies:
-      '@exprealty/logger':
-        specifier: workspace:*
-        version: link:../logger
+      '@nestjs/testing':
+        specifier: ^10.3.0
+        version: 10.4.20(@nestjs/common@10.4.20(class-transformer@0.5.1)(class-validator@0.14.2)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@10.4.20)(@nestjs/platform-express@10.4.20)
       '@types/express':
         specifier: ^4.17.21
         version: 4.17.23
+      '@types/jest':
+        specifier: ^29.5.14
+        version: 29.5.14
       '@types/node':
         specifier: ^24.0.0
         version: 24.9.1
+      jest:
+        specifier: ^29.7.0
+        version: 29.7.0(@types/node@24.9.1)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.13.5(@swc/helpers@0.5.17))(@types/node@24.9.1)(typescript@5.9.3))
       tsup:
         specifier: ^8.3.0
         version: 8.5.0(@microsoft/api-extractor@7.53.1(@types/node@24.9.1))(@swc/core@1.13.5(@swc/helpers@0.5.17))(jiti@2.6.1)(postcss@8.5.6)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.1)
@@ -225,6 +222,9 @@ importers:
 
   packages/database:
     dependencies:
+      '@exprealty/api-monitoring':
+        specifier: workspace:*
+        version: link:../api-monitoring
       '@exprealty/config':
         specifier: workspace:*
         version: link:../config
@@ -9909,7 +9909,7 @@ snapshots:
   '@babel/generator@7.28.3':
     dependencies:
       '@babel/parser': 7.28.4
-      '@babel/types': 7.28.4
+      '@babel/types': 7.28.5
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
       jsesc: 3.1.0
@@ -9970,7 +9970,7 @@ snapshots:
   '@babel/helper-member-expression-to-functions@7.27.1':
     dependencies:
       '@babel/traverse': 7.28.4
-      '@babel/types': 7.28.4
+      '@babel/types': 7.28.5
     transitivePeerDependencies:
       - supports-color
 
@@ -9992,7 +9992,7 @@ snapshots:
 
   '@babel/helper-optimise-call-expression@7.27.1':
     dependencies:
-      '@babel/types': 7.28.4
+      '@babel/types': 7.28.5
 
   '@babel/helper-plugin-utils@7.27.1': {}
 
@@ -10033,7 +10033,7 @@ snapshots:
     dependencies:
       '@babel/template': 7.27.2
       '@babel/traverse': 7.28.4
-      '@babel/types': 7.28.4
+      '@babel/types': 7.28.5
     transitivePeerDependencies:
       - supports-color
 
@@ -16540,10 +16540,10 @@ snapshots:
   jest-snapshot@29.7.0:
     dependencies:
       '@babel/core': 7.28.5
-      '@babel/generator': 7.28.3
+      '@babel/generator': 7.28.5
       '@babel/plugin-syntax-jsx': 7.27.1(@babel/core@7.28.5)
       '@babel/plugin-syntax-typescript': 7.27.1(@babel/core@7.28.5)
-      '@babel/types': 7.28.4
+      '@babel/types': 7.28.5
       '@jest/expect-utils': 29.7.0
       '@jest/transform': 29.7.0
       '@jest/types': 29.6.3

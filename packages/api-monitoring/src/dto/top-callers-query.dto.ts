@@ -1,4 +1,4 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsDateString, IsOptional, IsString, IsInt, IsArray } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { PaginationQueryDto } from './pagination-query.dto.js';
@@ -38,9 +38,10 @@ export class TopCallersQueryDto extends PaginationQueryDto {
 		nullable: true,
 	})
 	@IsOptional()
-	@Transform(({ value }) => {
+	@Transform(({ value }: { value: unknown }): string[] => {
 		if (value == null || (typeof value === 'string' && value.trim() === '')) return [];
-		return Array.isArray(value) ? value : [value];
+		const arr = Array.isArray(value) ? value : [value];
+		return arr.map((x) => String(x));
 	})
 	@IsArray()
 	@IsString({ each: true })
@@ -54,12 +55,15 @@ export class TopCallersQueryDto extends PaginationQueryDto {
 		nullable: true,
 	})
 	@IsOptional()
-	@Transform(({ value }) => {
+	@Transform(({ value }: { value: unknown }): string[] => {
 		if (value == null || (typeof value === 'string' && value.trim() === '')) return [];
 		if (Array.isArray(value)) return value.filter((v): v is string => typeof v === 'string' && v.length > 0);
-		const s = String(value).trim();
-		if (!s) return [];
-		return s.split(',').map((r) => r.trim()).filter(Boolean);
+		if (typeof value === 'string') {
+			const s = value.trim();
+			if (!s) return [];
+			return s.split(',').map((r) => r.trim()).filter(Boolean);
+		}
+		return [];
 	})
 	@IsArray()
 	@IsString({ each: true })
@@ -73,12 +77,12 @@ export class TopCallersQueryDto extends PaginationQueryDto {
 		nullable: true,
 	})
 	@IsOptional()
-	@Transform(({ value }) => {
+	@Transform(({ value }: { value: unknown }): number[] => {
 		if (value == null || (typeof value === 'string' && value.trim() === '')) return [];
 		const raw = Array.isArray(value) ? value : [value];
 		const expanded = raw.flatMap((v) => String(v).split(',').map((s) => s.trim()).filter(Boolean));
 		if (expanded.length === 0) return [];
-		return expanded.map((v) => parseInt(v, 10));
+		return expanded.map((v) => parseInt(v, 10)).filter((n) => !Number.isNaN(n));
 	})
 	@IsArray()
 	@IsInt({ each: true })
@@ -90,7 +94,7 @@ export class TopCallersQueryDto extends PaginationQueryDto {
 		default: false,
 	})
 	@IsOptional()
-	@Transform(({ value }) => value === 'true' || value === true)
+	@Transform(({ value }: { value: unknown }): boolean => value === 'true' || value === true)
 	debug?: boolean;
 }
 

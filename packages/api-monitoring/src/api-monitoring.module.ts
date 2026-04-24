@@ -1,11 +1,7 @@
-import { Module, Global, DynamicModule } from '@nestjs/common';
+import { Global, DynamicModule } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import {
-	ApiActorEntity,
-	ApiRequestLogEntity,
-	ApiRouteStatsEntity,
-} from '@exprealty/database';
+import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
+import type { Repository } from 'typeorm';
 import { ApiMonitoringInterceptor } from './interceptors/api-monitoring.interceptor.js';
 import { ApiActorMiddleware } from './middleware/api-actor.middleware.js';
 import { ApiRequestContextService } from './services/api-request-context.service.js';
@@ -15,83 +11,75 @@ import { ApiMetricsService } from './services/api-metrics.service.js';
 import { ApiMonitoringController } from './api-monitoring.controller.js';
 import type { IApiMonitoringLogger } from './interfaces/logger.interface.js';
 import { API_MONITORING_LOGGER_TOKEN } from './interfaces/logger.interface.js';
+import { API_MONITORING_ASYNC_CONTEXT } from './interfaces/async-context.port.js';
+import { API_MONITORING_ENTITY_CLASSES } from './tokens/entity-classes.token.js';
+import { DEFAULT_API_MONITORING_ENTITIES } from './entities/default-entities.js';
+import type { ApiMonitoringForRootOptions } from './options/api-monitoring-for-root.options.js';
+import {
+	API_MONITORING_ACTOR_REPO,
+	API_MONITORING_REQUEST_LOG_REPO,
+	API_MONITORING_ROUTE_STATS_REPO,
+} from './tokens/repository.tokens.js';
 
 /**
- * API Monitoring Module
- * 
- * Provides comprehensive API request monitoring, metrics, and observability.
- * 
- * Architecture:
- * - ApiMonitoringInterceptor: Global interceptor for all HTTP requests
- * - ApiActorMiddleware: Attributes requests to actors (users, API keys, etc.)
- * - ApiMonitoringService: Logs requests asynchronously (non-blocking)
- * - ApiMetricsService: Aggregates and queries metrics
- * - ApiMonitoringController: Internal endpoints for dashboards
- * 
- * Features:
- * - High-volume, append-only request logging
- * - Actor attribution (users, API keys, service accounts)
- * - Error classification and PII-safe logging
- * - Time-series metrics aggregation
- * - Latency percentile tracking
- * - Security monitoring (suspicious behavior detection)
- * 
- * Performance:
- * - All logging is asynchronous and non-blocking
- * - Monitoring failures never break requests
- * - Supports sampling for high-throughput scenarios
- * - Background aggregation for fast dashboard queries
- * 
- * Configuration (Environment Variables):
- * - API_MONITORING_ENABLED: Enable/disable monitoring (default: true)
- * - API_MONITORING_SAMPLE_RATE: Sampling rate 0.0-1.0 (default: 1.0)
- * 
- * @example
- * ```typescript
- * @Module({
- *   imports: [
- *     ApiMonitoringModule.forRoot({
- *       logger: MyLoggerService, // Your logger implementation
- *     }),
- *   ],
- * })
- * export class MyModule {}
- * ```
- * 
+ * API Monitoring Module — register via {@link ApiMonitoringModule.forRoot}.
  * @public
  */
-@Global() // Global module so interceptor can be used app-wide
+@Global()
 export class ApiMonitoringModule {
-	/**
-	 * Register the API monitoring module with a logger provider.
-	 * 
-	 * @param options - Configuration options
-	 * @param options.logger - Logger service that implements IApiMonitoringLogger
-	 * @returns Dynamic module configuration
-	 */
-	static forRoot(options: { logger: any }): DynamicModule {
-		// LoggerService is now bootstrap-safe (no dependencies in constructor)
-		// Since LoggerModule is @Global() and imported first, we can use useExisting
-		// to reference the same instance that LoggerModule provides
+	static forRoot(options: ApiMonitoringForRootOptions): DynamicModule {
+		const entities = options.entities ?? DEFAULT_API_MONITORING_ENTITIES;
+		const { ApiRequestLogEntity, ApiRouteStatsEntity, ApiActorEntity } = entities;
+		const connection = options.dataSourceName;
+
+		const forFeature = connection
+			? TypeOrmModule.forFeature(
+					[ApiRequestLogEntity, ApiRouteStatsEntity, ApiActorEntity],
+					connection,
+				)
+			: TypeOrmModule.forFeature([ApiRequestLogEntity, ApiRouteStatsEntity, ApiActorEntity]);
+
+		const requestLogToken = connection
+			? getRepositoryToken(ApiRequestLogEntity, connection)
+			: getRepositoryToken(ApiRequestLogEntity);
+		const routeStatsToken = connection
+			? getRepositoryToken(ApiRouteStatsEntity, connection)
+			: getRepositoryToken(ApiRouteStatsEntity);
+		const actorToken = connection
+			? getRepositoryToken(ApiActorEntity, connection)
+			: getRepositoryToken(ApiActorEntity);
+
 		return {
 			module: ApiMonitoringModule,
-			imports: [
-				TypeOrmModule.forFeature([
-					ApiActorEntity,
-					ApiRequestLogEntity,
-					ApiRouteStatsEntity,
-				]),
-			],
+			imports: [forFeature],
 			providers: [
-				// Reference LoggerService from the global LoggerModule
-				// Since LoggerModule is @Global() and imported first, LoggerService is available
-				// We use useFactory to ensure LoggerService is resolved from the DI container
+				{ provide: API_MONITORING_ENTITY_CLASSES, useValue: entities },
+				{
+					provide: API_MONITORING_ASYNC_CONTEXT,
+					useClass: options.asyncContext,
+				},
 				{
 					provide: API_MONITORING_LOGGER_TOKEN,
-					useFactory: (loggerService: IApiMonitoringLogger) => {
-						return loggerService;
-					},
+					useFactory: (logger: IApiMonitoringLogger) => logger,
 					inject: [options.logger],
+				},
+				{
+					provide: API_MONITORING_REQUEST_LOG_REPO,
+					useFactory: (repo: Repository<Record<string, unknown>>): Repository<Record<string, unknown>> =>
+						repo,
+					inject: [requestLogToken],
+				},
+				{
+					provide: API_MONITORING_ROUTE_STATS_REPO,
+					useFactory: (repo: Repository<Record<string, unknown>>): Repository<Record<string, unknown>> =>
+						repo,
+					inject: [routeStatsToken],
+				},
+				{
+					provide: API_MONITORING_ACTOR_REPO,
+					useFactory: (repo: Repository<Record<string, unknown>>): Repository<Record<string, unknown>> =>
+						repo,
+					inject: [actorToken],
 				},
 				ApiRequestContextService,
 				ApiActorService,
@@ -114,4 +102,3 @@ export class ApiMonitoringModule {
 		};
 	}
 }
-

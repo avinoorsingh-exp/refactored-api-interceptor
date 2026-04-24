@@ -125,11 +125,11 @@ export function encodeCursor(timestamp: string, id: string): string {
  * @returns Normalized limit value, or null if limit is -1 (fetch all)
  */
 export function normalizeLimit(
-	limit?: number,
+	limit?: number | null,
 	defaultLimit = 50,
 	maxLimit = 200,
 ): number | null {
-	if (limit === undefined || limit === null) {
+	if (limit == null) {
 		return defaultLimit;
 	}
 	

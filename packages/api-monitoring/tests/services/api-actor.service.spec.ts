@@ -1,16 +1,14 @@
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { Test } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ApiActorService } from '../../src/services/api-actor.service.js';
-import { ApiActorEntity } from '@exprealty/database';
-import { ApiActorType } from '@exprealty/shared-domain';
+import { ApiActorService, type ApiActorRow } from '../../src/services/api-actor.service.js';
+import { ApiActorType } from '../../src/domain/api-monitoring.types.js';
 import { API_MONITORING_LOGGER_TOKEN } from '../../src/interfaces/logger.interface.js';
 import type { IApiMonitoringLogger } from '../../src/interfaces/logger.interface.js';
+import { API_MONITORING_ACTOR_REPO } from '../../src/tokens/repository.tokens.js';
 
 describe('ApiActorService', () => {
 	let service: ApiActorService;
-	let actorRepo: jest.Mocked<Repository<ApiActorEntity>>;
+	let actorRepo: jest.Mocked<Repository<ApiActorRow>>;
 	let logger: jest.Mocked<IApiMonitoringLogger>;
 
 	beforeEach(async () => {
@@ -33,7 +31,7 @@ describe('ApiActorService', () => {
 			providers: [
 				ApiActorService,
 				{
-					provide: getRepositoryToken(ApiActorEntity),
+					provide: API_MONITORING_ACTOR_REPO,
 					useValue: actorRepo,
 				},
 				{
@@ -53,7 +51,7 @@ describe('ApiActorService', () => {
 				type: ApiActorType.USER,
 				identifier: 'user@example.com',
 				active: true,
-			} as ApiActorEntity;
+			} as ApiActorRow;
 
 			actorRepo.findOne.mockResolvedValue(existingActor);
 
@@ -67,7 +65,6 @@ describe('ApiActorService', () => {
 				where: {
 					type: ApiActorType.USER,
 					identifier: 'user@example.com',
-					active: true,
 				},
 			});
 			expect(actorRepo.create).not.toHaveBeenCalled();
@@ -82,7 +79,7 @@ describe('ApiActorService', () => {
 				identifier: 'user@example.com',
 				displayName: 'user@example.com',
 				active: true,
-			} as ApiActorEntity;
+			} as ApiActorRow;
 
 			actorRepo.create.mockReturnValue(newActor);
 			actorRepo.save.mockResolvedValue(newActor);
@@ -110,7 +107,7 @@ describe('ApiActorService', () => {
 				identifier: 'user@example.com',
 				displayName: 'user@example.com',
 				active: true,
-			} as ApiActorEntity;
+			} as ApiActorRow;
 
 			actorRepo.create.mockReturnValue(newActor);
 			actorRepo.save.mockResolvedValue(newActor);
@@ -134,7 +131,7 @@ describe('ApiActorService', () => {
 				identifier: 'api-key-123',
 				displayName: 'API Key: My API Key',
 				active: true,
-			} as ApiActorEntity;
+			} as ApiActorRow;
 
 			actorRepo.create.mockReturnValue(newActor);
 			actorRepo.save.mockResolvedValue(newActor);
@@ -159,7 +156,7 @@ describe('ApiActorService', () => {
 				identifier: 'service-123',
 				displayName: 'Service: service-123',
 				active: true,
-			} as ApiActorEntity;
+			} as ApiActorRow;
 
 			actorRepo.create.mockReturnValue(newActor);
 			actorRepo.save.mockResolvedValue(newActor);
@@ -182,7 +179,7 @@ describe('ApiActorService', () => {
 				type: ApiActorType.SYSTEM,
 				displayName: 'System',
 				active: true,
-			} as ApiActorEntity;
+			} as ApiActorRow;
 
 			actorRepo.create.mockReturnValue(newActor);
 			actorRepo.save.mockResolvedValue(newActor);
@@ -202,7 +199,7 @@ describe('ApiActorService', () => {
 				type: ApiActorType.ANONYMOUS,
 				displayName: 'Anonymous (192.168.1.1)',
 				active: true,
-			} as ApiActorEntity;
+			} as ApiActorRow;
 
 			actorRepo.create.mockReturnValue(newActor);
 			actorRepo.save.mockResolvedValue(newActor);
@@ -226,7 +223,7 @@ describe('ApiActorService', () => {
 				type: ApiActorType.ANONYMOUS,
 				displayName: 'Anonymous (00000000)',
 				active: true,
-			} as ApiActorEntity;
+			} as ApiActorRow;
 
 			actorRepo.create.mockReturnValue(newActor);
 			actorRepo.save.mockResolvedValue(newActor);
@@ -245,7 +242,10 @@ describe('ApiActorService', () => {
 		it('should handle race condition by retrying find', async () => {
 			actorRepo.findOne
 				.mockResolvedValueOnce(null) // First find (not found)
-				.mockResolvedValueOnce({ id: 'actor-123' } as ApiActorEntity); // Second find after error
+				.mockResolvedValueOnce({
+					id: 'actor-123',
+					active: true,
+				} as ApiActorRow); // Second find after error (active so no extra find)
 
 			actorRepo.save.mockRejectedValue(new Error('Unique constraint violation'));
 
@@ -276,7 +276,7 @@ describe('ApiActorService', () => {
 				id: 'actor-123',
 				type: ApiActorType.USER,
 				active: true,
-			} as ApiActorEntity;
+			} as ApiActorRow;
 
 			actorRepo.findOne.mockResolvedValue(actor);
 

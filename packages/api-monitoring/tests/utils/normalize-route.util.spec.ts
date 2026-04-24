@@ -1,4 +1,3 @@
-import { describe, it, expect } from '@jest/globals';
 import { normalizeRoute } from '../../src/utils/normalize-route.util.js';
 
 describe('normalizeRoute', () => {

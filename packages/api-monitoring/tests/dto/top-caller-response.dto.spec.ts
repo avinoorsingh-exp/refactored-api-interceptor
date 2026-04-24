@@ -1,4 +1,3 @@
-import { describe, it, expect } from '@jest/globals';
 import { TopCallerResponseDto } from '../../src/dto/top-caller-response.dto.js';
 
 describe('TopCallerResponseDto', () => {

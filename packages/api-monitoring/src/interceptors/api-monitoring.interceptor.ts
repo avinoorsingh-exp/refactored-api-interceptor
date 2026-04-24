@@ -8,7 +8,9 @@ import { Observable } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
 import { throwError } from 'rxjs';
 import { Request, Response } from 'express';
-import { HttpMethod } from '@exprealty/shared-domain';
+
+type HttpRequest = Request & { route?: { path?: string } };
+import { HttpMethod } from '../domain/api-monitoring.types.js';
 import { ApiMonitoringService } from '../services/api-monitoring.service.js';
 import { ApiRequestContextService } from '../services/api-request-context.service.js';
 
@@ -32,7 +34,7 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 	) {}
 
 	intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-		const request = context.switchToHttp().getRequest<Request>();
+		const request = context.switchToHttp().getRequest<HttpRequest>();
 		const response = context.switchToHttp().getResponse<Response>();
 
 		// Skip monitoring for localhost/internal requests if configured
@@ -45,8 +47,8 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 		const startTime = Date.now();
 
 		// Extract request metadata
-		const route = request.route?.path || request.path;
-		const method = this.mapHttpMethod(request.method);
+		const route = this.resolveRequestRoute(request);
+		const method = this.mapHttpMethod(typeof request.method === 'string' ? request.method : 'GET');
 		const ipAddress = this.extractIpAddress(request);
 		const userAgent = request.get('user-agent');
 
@@ -55,15 +57,20 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 
 		return next.handle().pipe(
 			tap({
-				next: (data) => {
+				next: (data: unknown) => {
 					// Success case
 					const latencyMs = Date.now() - startTime;
 					const responseSizeBytes = this.calculateResponseSize(data);
 
+					const httpStatus =
+						typeof response.statusCode === 'number' && Number.isFinite(response.statusCode)
+							? response.statusCode
+							: 500;
+
 					const metadata = this.monitoringService.buildRequestMetadata(
 						route,
 						method,
-						response.statusCode,
+						httpStatus,
 						latencyMs,
 						ipAddress,
 						userAgent,
@@ -78,10 +85,19 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 					});
 				},
 			}),
-			catchError((error) => {
+			catchError((err: unknown) => {
 				// Error case
 				const latencyMs = Date.now() - startTime;
-				const statusCode = error?.status || response.statusCode || 500;
+				let statusCode =
+					typeof response.statusCode === 'number' && Number.isFinite(response.statusCode)
+						? response.statusCode
+						: 500;
+				if (typeof err === 'object' && err !== null && 'status' in err) {
+					const s = (err as { status?: unknown }).status;
+					if (typeof s === 'number') {
+						statusCode = s;
+					}
+				}
 
 				const metadata = this.monitoringService.buildRequestMetadata(
 					route,
@@ -90,7 +106,7 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 					latencyMs,
 					ipAddress,
 					userAgent,
-					error,
+					err,
 					requestSizeBytes,
 					undefined, // response size not available on error
 				);
@@ -101,9 +117,25 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 				});
 
 				// Re-throw error to maintain normal error handling
-				return throwError(() => error);
+				return throwError(() => err);
 			}),
 		);
+	}
+
+	private resolveRequestRoute(request: HttpRequest): string {
+		const layer: unknown = request.route;
+		const pathCandidate =
+			layer && typeof layer === 'object' && 'path' in layer
+				? (layer as { path: unknown }).path
+				: undefined;
+		if (typeof pathCandidate === 'string' && pathCandidate.length > 0) {
+			return pathCandidate;
+		}
+		const p = request.path;
+		if (typeof p === 'string' && p.length > 0) {
+			return p;
+		}
+		return '/';
 	}
 
 	/**

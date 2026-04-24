@@ -40,6 +40,7 @@
 		"api:report": "api-documenter markdown -i temp -o docs"
 	},
 	"dependencies": {
+		"@exprealty/api-monitoring": "workspace:*",
 		"@exprealty/config": "workspace:*",
 		"@exprealty/encryption": "workspace:*",
 		"@exprealty/shared-domain": "workspace:*",

@@ -18,12 +18,14 @@ export class AvailableRoutesQueryDto {
 	})
 	@IsOptional()
 	@IsDateString()
-	@Transform(({ value }) => {
-		// Ensure value is a string if provided
+	@Transform(({ value }: { value: unknown }): string | undefined => {
 		if (value instanceof Date) {
 			return value.toISOString();
 		}
-		return value;
+		if (typeof value === 'string') {
+			return value;
+		}
+		return undefined;
 	})
 	startDate?: string;
 
@@ -34,12 +36,14 @@ export class AvailableRoutesQueryDto {
 	})
 	@IsOptional()
 	@IsDateString()
-	@Transform(({ value }) => {
-		// Ensure value is a string if provided
+	@Transform(({ value }: { value: unknown }): string | undefined => {
 		if (value instanceof Date) {
 			return value.toISOString();
 		}
-		return value;
+		if (typeof value === 'string') {
+			return value;
+		}
+		return undefined;
 	})
 	endDate?: string;
 }

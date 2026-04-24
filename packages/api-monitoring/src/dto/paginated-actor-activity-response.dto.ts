@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { ApiRequestLogEntity } from '@exprealty/database';
 import { PageInfoDto } from './page-info.dto.js';
+import { ApiRequestLogRowDto } from './api-request-log-row.dto.js';
 
 /**
  * Paginated actor activity response DTO.
@@ -13,9 +13,9 @@ export class PaginatedActorActivityResponseDto {
 	 */
 	@ApiProperty({
 		description: 'Array of actor activity logs',
-		type: [ApiRequestLogEntity],
+		type: [ApiRequestLogRowDto],
 	})
-	data!: ApiRequestLogEntity[];
+	data!: ApiRequestLogRowDto[];
 
 	/**
 	 * Pagination metadata.

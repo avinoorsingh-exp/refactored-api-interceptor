@@ -1,4 +1,3 @@
-import { describe, it, expect } from '@jest/globals';
 import { SummaryResponseDto } from '../../src/dto/summary-response.dto.js';
 
 describe('SummaryResponseDto', () => {

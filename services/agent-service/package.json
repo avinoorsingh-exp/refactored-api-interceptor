@@ -8,6 +8,7 @@
 	"type": "module",
 	"repository": "https://bitbucket.org/exp-realty/agent-service/src/main/services/agent-service",
 	"scripts": {
+		"build:deps": "pnpm --dir ../.. --filter=\"@exprealty/agent-service^...\" -r run build",
 		"build": "nest build",
 		"format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
 		"start": "nest start",

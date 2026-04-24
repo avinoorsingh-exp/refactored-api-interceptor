@@ -1,4 +1,3 @@
-import { describe, it, expect } from '@jest/globals';
 import { toArray, hasValues } from '../../src/utils/filter.util.js';
 
 describe('filter.util', () => {

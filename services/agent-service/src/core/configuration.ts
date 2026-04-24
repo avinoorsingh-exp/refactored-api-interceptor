@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { BaseConfig, EncryptionEnvSchema, loadConfig } from '@exprealty/config'
+import { formatUnknownError } from './format-unknown-error.js'
 
 /**
  * Configuration schema for BatchData service
@@ -120,7 +121,7 @@ export default async () => {
 		console.error(`NODE_ENV: ${process.env.NODE_ENV || 'undefined'}`)
 		console.error(`AWS_SECRET_KEY: ${process.env.AWS_SECRET_KEY || 'undefined'}`)
 		console.error(`AWS_REGION: ${process.env.AWS_REGION || 'undefined'}`)
-		console.error('Error Details:', error)
+		console.error('Error Details:\n' + formatUnknownError(error))
 		console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 		
 		// Re-throw to prevent service startup with invalid configuration

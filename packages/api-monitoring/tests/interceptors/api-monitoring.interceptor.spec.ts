@@ -1,4 +1,3 @@
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { Test } from '@nestjs/testing';
 import { ExecutionContext, CallHandler } from '@nestjs/common';
 import { of, throwError, firstValueFrom } from 'rxjs';
@@ -6,7 +5,9 @@ import { Request, Response } from 'express';
 import { ApiMonitoringInterceptor } from '../../src/interceptors/api-monitoring.interceptor.js';
 import { ApiMonitoringService } from '../../src/services/api-monitoring.service.js';
 import { ApiRequestContextService } from '../../src/services/api-request-context.service.js';
-import { HttpMethod } from '@exprealty/shared-domain';
+import { HttpMethod } from '../../src/domain/api-monitoring.types.js';
+
+type AsyncTestDone = (reason?: string | Error) => void;
 
 describe('ApiMonitoringInterceptor', () => {
 	let interceptor: ApiMonitoringInterceptor;
@@ -70,7 +71,7 @@ describe('ApiMonitoringInterceptor', () => {
 	});
 
 	describe('intercept', () => {
-		it('should log successful request', (done) => {
+		it('should log successful request', (done: AsyncTestDone) => {
 			const metadata = {
 				route: '/v1/agents',
 				method: HttpMethod.GET,
@@ -86,7 +87,7 @@ describe('ApiMonitoringInterceptor', () => {
 			const result = interceptor.intercept(mockExecutionContext, mockCallHandler);
 
 			result.subscribe({
-				next: (data) => {
+				next: (data: unknown) => {
 					expect(data).toEqual({ data: 'test' });
 					expect(contextService.setStartTime).toHaveBeenCalled();
 					expect(monitoringService.buildRequestMetadata).toHaveBeenCalled();
@@ -96,7 +97,7 @@ describe('ApiMonitoringInterceptor', () => {
 			});
 		});
 
-		it('should log error request', (done) => {
+		it('should log error request', (done: AsyncTestDone) => {
 			const error = new Error('Test error');
 			(error as any).status = 500;
 
@@ -141,7 +142,7 @@ describe('ApiMonitoringInterceptor', () => {
 			});
 		});
 
-		it('should extract IP from X-Forwarded-For header', (done) => {
+		it('should extract IP from X-Forwarded-For header', (done: AsyncTestDone) => {
 			(mockRequest.get as jest.Mock).mockImplementation((header: string) => {
 				if (header === 'x-forwarded-for') {
 					return '203.0.113.1, 192.168.1.1';
@@ -180,7 +181,7 @@ describe('ApiMonitoringInterceptor', () => {
 			});
 		});
 
-		it('should extract IP from X-Real-IP header', (done) => {
+		it('should extract IP from X-Real-IP header', (done: AsyncTestDone) => {
 			(mockRequest.get as jest.Mock).mockImplementation((header: string) => {
 				if (header === 'x-real-ip') {
 					return '203.0.113.2';
@@ -268,7 +269,7 @@ describe('ApiMonitoringInterceptor', () => {
 			expect(callArgs[7]).toBe(1024); // requestSizeBytes from Content-Length
 		});
 
-		it('should handle logging errors gracefully', (done) => {
+		it('should handle logging errors gracefully', (done: AsyncTestDone) => {
 			monitoringService.logRequest.mockRejectedValue(new Error('Logging failed'));
 
 			const metadata = {
@@ -285,7 +286,7 @@ describe('ApiMonitoringInterceptor', () => {
 			const result = interceptor.intercept(mockExecutionContext, mockCallHandler);
 
 			result.subscribe({
-				next: (data) => {
+				next: (data: unknown) => {
 					// Should still return data even if logging fails
 					expect(data).toEqual({ data: 'test' });
 					done();

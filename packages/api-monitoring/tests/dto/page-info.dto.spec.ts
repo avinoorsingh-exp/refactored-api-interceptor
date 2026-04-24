@@ -1,4 +1,3 @@
-import { describe, it, expect } from '@jest/globals';
 import { PageInfoDto } from '../../src/dto/page-info.dto.js';
 
 describe('PageInfoDto', () => {

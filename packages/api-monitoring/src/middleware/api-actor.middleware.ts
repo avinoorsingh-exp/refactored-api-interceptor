@@ -1,10 +1,20 @@
 import { Inject, Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
-import { ApiActorType } from '@exprealty/shared-domain';
+import { ApiActorType } from '../domain/api-monitoring.types.js';
 import { ApiActorService } from '../services/api-actor.service.js';
 import { ApiRequestContextService } from '../services/api-request-context.service.js';
 import type { IApiMonitoringLogger } from '../interfaces/logger.interface.js';
 import { API_MONITORING_LOGGER_TOKEN } from '../interfaces/logger.interface.js';
+
+type ActorUserStub = { id?: string; email?: string; username?: string };
+type ApiKeyStub = { id?: string; name?: string };
+type ServiceAccountStub = { id?: string; name?: string };
+
+type RequestWithActorSources = Request & {
+	user?: ActorUserStub;
+	apiKey?: ApiKeyStub;
+	serviceAccount?: ServiceAccountStub;
+};
 
 /**
  * Middleware for attributing API requests to actors.
@@ -95,9 +105,10 @@ export class ApiActorMiddleware implements NestMiddleware {
 		identifier?: string;
 		metadata?: Record<string, unknown>;
 	} | null {
+		const r = req as RequestWithActorSources;
+
 		// Check for authenticated user (adjust based on your auth implementation)
-		// @ts-expect-error - user may be set by auth middleware
-		const user = req.user;
+		const user = r.user;
 		if (user?.id) {
 			return {
 				type: ApiActorType.USER,
@@ -140,8 +151,7 @@ export class ApiActorMiddleware implements NestMiddleware {
 		}
 
 		// Check for API key (adjust based on your API key implementation)
-		// @ts-expect-error - apiKey may be set by auth middleware
-		const apiKey = req.apiKey;
+		const apiKey = r.apiKey;
 		if (apiKey?.id) {
 			return {
 				type: ApiActorType.API_KEY,
@@ -154,8 +164,7 @@ export class ApiActorMiddleware implements NestMiddleware {
 		}
 
 		// Check for service account
-		// @ts-expect-error - serviceAccount may be set by auth middleware
-		const serviceAccount = req.serviceAccount;
+		const serviceAccount = r.serviceAccount;
 		if (serviceAccount?.id) {
 			return {
 				type: ApiActorType.SERVICE_ACCOUNT,
@@ -265,7 +274,7 @@ export class ApiActorMiddleware implements NestMiddleware {
 					(claims.preferred_username as string) ||
 					undefined,
 			};
-		} catch (error) {
+		} catch {
 			// If JWT decoding fails, return undefined
 			return undefined;
 		}

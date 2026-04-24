@@ -10,10 +10,6 @@ export default defineConfig({
   treeshake: true,
   target: 'node20',
   external: [
-    '@exprealty/logger',
-    '@exprealty/cache',
-    '@exprealty/database',
-    '@exprealty/shared-domain',
     '@nestjs/common',
     '@nestjs/core',
     '@nestjs/swagger',
@@ -25,5 +21,3 @@ export default defineConfig({
     'express'
   ]
 })
-
-

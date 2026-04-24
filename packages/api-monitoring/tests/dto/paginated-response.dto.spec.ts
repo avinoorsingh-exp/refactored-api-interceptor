@@ -1,4 +1,3 @@
-import { describe, it, expect } from '@jest/globals';
 import { PaginatedErrorSampleResponseDto } from '../../src/dto/paginated-error-sample-response.dto.js';
 import { PaginatedActorActivityResponseDto } from '../../src/dto/paginated-actor-activity-response.dto.js';
 import { PaginatedTopCallersResponseDto } from '../../src/dto/paginated-top-callers-response.dto.js';

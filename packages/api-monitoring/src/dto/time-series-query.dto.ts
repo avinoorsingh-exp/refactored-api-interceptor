@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsDate, IsEnum, IsInt, IsOptional, IsString, IsArray } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
-import { HttpMethod, TimeBucket } from '@exprealty/shared-domain';
+import { HttpMethod, TimeBucket } from '../domain/api-monitoring.types.js';
 
 /**
  * DTO for time-series metrics query.
@@ -14,11 +14,14 @@ export class TimeSeriesQueryDto {
 	})
 	@IsDate()
 	@Type(() => Date)
-	@Transform(({ value }) => {
+	@Transform(({ value }: { value: unknown }): Date => {
 		if (typeof value === 'string') {
 			return new Date(value);
 		}
-		return value;
+		if (value instanceof Date) {
+			return value;
+		}
+		return value as Date;
 	})
 	startTime!: Date;
 
@@ -28,11 +31,14 @@ export class TimeSeriesQueryDto {
 	})
 	@IsDate()
 	@Type(() => Date)
-	@Transform(({ value }) => {
+	@Transform(({ value }: { value: unknown }): Date => {
 		if (typeof value === 'string') {
 			return new Date(value);
 		}
-		return value;
+		if (value instanceof Date) {
+			return value;
+		}
+		return value as Date;
 	})
 	endTime!: Date;
 

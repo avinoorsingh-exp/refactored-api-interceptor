@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsDate, IsEnum, IsInt, IsOptional, IsString, IsArray, Max, Min } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
-import { ApiErrorClassification } from '@exprealty/shared-domain';
+import { ApiErrorClassification } from '../domain/api-monitoring.types.js';
 import { PaginationQueryDto } from './pagination-query.dto.js';
 
 /**

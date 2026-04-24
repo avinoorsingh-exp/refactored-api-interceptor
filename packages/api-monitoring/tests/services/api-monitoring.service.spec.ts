@@ -1,9 +1,6 @@
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { Test } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ApiMonitoringService } from '../../src/services/api-monitoring.service.js';
-import { ApiRequestLogEntity, ApiActorEntity } from '@exprealty/database';
 import { ApiRequestContextService } from '../../src/services/api-request-context.service.js';
 import { API_MONITORING_LOGGER_TOKEN } from '../../src/interfaces/logger.interface.js';
 import type { IApiMonitoringLogger } from '../../src/interfaces/logger.interface.js';
@@ -11,12 +8,13 @@ import {
 	HttpMethod,
 	ApiErrorClassification,
 	ApiActorType,
-} from '@exprealty/shared-domain';
+	type ApiRequestMetadata,
+} from '../../src/domain/api-monitoring.types.js';
+import { API_MONITORING_REQUEST_LOG_REPO } from '../../src/tokens/repository.tokens.js';
 
 describe('ApiMonitoringService', () => {
 	let service: ApiMonitoringService;
-	let requestLogRepo: jest.Mocked<Repository<ApiRequestLogEntity>>;
-	let actorRepo: jest.Mocked<Repository<ApiActorEntity>>;
+	let requestLogRepo: jest.Mocked<Repository<Record<string, unknown>>>;
 	let contextService: jest.Mocked<ApiRequestContextService>;
 	let logger: jest.Mocked<IApiMonitoringLogger>;
 
@@ -44,8 +42,6 @@ describe('ApiMonitoringService', () => {
 			save: jest.fn(),
 		} as any;
 
-		actorRepo = {} as any;
-
 		// Reset environment variables
 		delete process.env.API_MONITORING_ENABLED;
 		delete process.env.API_MONITORING_SAMPLE_RATE;
@@ -54,12 +50,8 @@ describe('ApiMonitoringService', () => {
 			providers: [
 				ApiMonitoringService,
 				{
-					provide: getRepositoryToken(ApiRequestLogEntity),
+					provide: API_MONITORING_REQUEST_LOG_REPO,
 					useValue: requestLogRepo,
-				},
-				{
-					provide: getRepositoryToken(ApiActorEntity),
-					useValue: actorRepo,
 				},
 				{
 					provide: ApiRequestContextService,
@@ -77,7 +69,7 @@ describe('ApiMonitoringService', () => {
 
 	describe('logRequest', () => {
 		it('should log request when enabled', async () => {
-			const metadata = {
+			const metadata: ApiRequestMetadata = {
 				route: '/v1/agents',
 				method: HttpMethod.GET,
 				statusCode: 200,
@@ -86,9 +78,10 @@ describe('ApiMonitoringService', () => {
 				actorType: ApiActorType.USER,
 				correlationId: 'corr-123',
 				timestamp: new Date(),
+				hasError: false,
 			};
 
-			const mockLog = { id: 'log-123', ...metadata } as ApiRequestLogEntity;
+			const mockLog = { id: 'log-123', ...metadata } as Record<string, unknown>;
 			requestLogRepo.create.mockReturnValue(mockLog);
 			requestLogRepo.save.mockResolvedValue(mockLog);
 
@@ -109,12 +102,8 @@ describe('ApiMonitoringService', () => {
 				providers: [
 					ApiMonitoringService,
 					{
-						provide: getRepositoryToken(ApiRequestLogEntity),
+						provide: API_MONITORING_REQUEST_LOG_REPO,
 						useValue: requestLogRepo,
-					},
-					{
-						provide: getRepositoryToken(ApiActorEntity),
-						useValue: actorRepo,
 					},
 					{
 						provide: ApiRequestContextService,
@@ -140,15 +129,19 @@ describe('ApiMonitoringService', () => {
 		});
 
 		it('should handle save errors gracefully', async () => {
-			const metadata = {
+			const metadata: ApiRequestMetadata = {
 				route: '/v1/agents',
 				method: HttpMethod.GET,
 				statusCode: 200,
 				latencyMs: 100,
 				correlationId: 'corr-123',
+				actorId: 'actor-1',
+				actorType: ApiActorType.USER,
+				hasError: false,
+				timestamp: new Date(),
 			};
 
-			const mockLog = { id: 'log-123' } as ApiRequestLogEntity;
+			const mockLog = { id: 'log-123' } as Record<string, unknown>;
 			requestLogRepo.create.mockReturnValue(mockLog);
 			requestLogRepo.save.mockRejectedValue(new Error('Database error'));
 
@@ -170,12 +163,8 @@ describe('ApiMonitoringService', () => {
 				providers: [
 					ApiMonitoringService,
 					{
-						provide: getRepositoryToken(ApiRequestLogEntity),
+						provide: API_MONITORING_REQUEST_LOG_REPO,
 						useValue: requestLogRepo,
-					},
-					{
-						provide: getRepositoryToken(ApiActorEntity),
-						useValue: actorRepo,
 					},
 					{
 						provide: ApiRequestContextService,

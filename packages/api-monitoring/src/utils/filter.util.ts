@@ -32,7 +32,7 @@ export function toArray<T>(value: T | T[] | undefined | null): T[] {
  * @param arr - Array to check
  * @returns True if array has at least one element
  */
-export function hasValues<T>(arr: T[]): boolean {
+export function hasValues(arr: readonly unknown[]): boolean {
 	return arr.length > 0;
 }
 
@@ -50,7 +50,8 @@ export function normalizeStatusCodes(
 	const raw = Array.isArray(value) ? value : [value];
 	const expanded = raw.flatMap((v) => {
 		if (typeof v === 'number') return [v];
-		return String(v)
+		const asText = typeof v === 'string' ? v : String(v);
+		return asText
 			.split(',')
 			.map((s) => parseInt(s.trim(), 10))
 			.filter((n) => !Number.isNaN(n));
@@ -70,7 +71,7 @@ export function normalizeStringArray(
 	if (value === undefined || value === null) return [];
 	const raw = Array.isArray(value) ? value : [value];
 	const expanded = raw.flatMap((v) => {
-		const s = String(v).trim();
+		const s = (typeof v === 'string' ? v : String(v)).trim();
 		if (!s) return [];
 		return s.split(',').map((r) => r.trim()).filter(Boolean);
 	});

@@ -1,4 +1,3 @@
-import { describe, it, expect } from '@jest/globals';
 import {
 	decodeCursor,
 	encodeCursor,
@@ -176,9 +175,13 @@ describe('Pagination Utilities', () => {
 				timestamp: item.timestamp,
 				id: item.id,
 			}));
-			
-			// Verify cursor can be decoded and matches last item
-			const decoded = decodeCursor(result.pageInfo.nextCursor!);
+
+			expect(result.pageInfo.nextCursor).toBeDefined();
+			const nextCursor = result.pageInfo.nextCursor;
+			if (nextCursor === undefined || nextCursor === null) {
+				throw new Error('expected nextCursor when hasMore');
+			}
+			const decoded = decodeCursor(nextCursor);
 			expect(decoded).toEqual({
 				timestamp: '2024-01-02T00:00:00.000Z',
 				id: '2',

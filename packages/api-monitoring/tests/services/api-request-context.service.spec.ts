@@ -1,36 +1,41 @@
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { Test } from '@nestjs/testing';
 import { ApiRequestContextService } from '../../src/services/api-request-context.service.js';
-import { ApiActorType } from '@exprealty/shared-domain';
-import { AsyncContextStorage } from '@exprealty/cache';
+import { ApiActorType } from '../../src/domain/api-monitoring.types.js';
+import {
+	API_MONITORING_ASYNC_CONTEXT,
+	type IApiMonitoringAsyncContext,
+} from '../../src/interfaces/async-context.port.js';
 
 describe('ApiRequestContextService', () => {
 	let service: ApiRequestContextService;
-	let mockGetStore: jest.Mock;
-	let mockGetCorrelationId: jest.Mock;
+	let mockAsyncContext: jest.Mocked<IApiMonitoringAsyncContext>;
 
 	beforeEach(async () => {
-		mockGetStore = AsyncContextStorage.getStore as jest.Mock;
-		mockGetCorrelationId = AsyncContextStorage.getCorrelationId as jest.Mock;
-		mockGetStore.mockReset();
-		mockGetCorrelationId.mockReset();
+		mockAsyncContext = {
+			getStore: jest.fn(),
+			getCorrelationId: jest.fn(),
+		};
 
 		const module = await Test.createTestingModule({
-			providers: [ApiRequestContextService],
+			providers: [
+				{ provide: API_MONITORING_ASYNC_CONTEXT, useValue: mockAsyncContext },
+				ApiRequestContextService,
+			],
 		}).compile();
 
 		service = module.get<ApiRequestContextService>(ApiRequestContextService);
 	});
 
 	describe('getContext', () => {
-		it('should return context from AsyncContextStorage', () => {
+		it('should return context from async context port', () => {
 			const mockContext = {
 				correlationId: 'corr-123',
+				timestamp: Date.now(),
 				actorId: 'actor-123',
 				actorType: ApiActorType.USER,
 			};
 
-			mockGetStore.mockReturnValue(mockContext);
+			mockAsyncContext.getStore.mockReturnValue(mockContext);
 
 			const result = service.getContext();
 
@@ -38,7 +43,7 @@ describe('ApiRequestContextService', () => {
 		});
 
 		it('should return undefined when context is not available', () => {
-			mockGetStore.mockReturnValue(undefined);
+			mockAsyncContext.getStore.mockReturnValue(undefined);
 
 			const result = service.getContext();
 
@@ -47,8 +52,8 @@ describe('ApiRequestContextService', () => {
 	});
 
 	describe('getCorrelationId', () => {
-		it('should return correlation ID from AsyncContextStorage', () => {
-			mockGetCorrelationId.mockReturnValue('corr-123');
+		it('should return correlation ID from async context port', () => {
+			mockAsyncContext.getCorrelationId.mockReturnValue('corr-123');
 
 			const result = service.getCorrelationId();
 
@@ -56,7 +61,7 @@ describe('ApiRequestContextService', () => {
 		});
 
 		it('should return undefined when correlation ID is not available', () => {
-			mockGetCorrelationId.mockReturnValue(undefined);
+			mockAsyncContext.getCorrelationId.mockReturnValue(undefined);
 
 			const result = service.getCorrelationId();
 
@@ -66,7 +71,9 @@ describe('ApiRequestContextService', () => {
 
 	describe('getActorId', () => {
 		it('should return actor ID from context', () => {
-			mockGetStore.mockReturnValue({
+			mockAsyncContext.getStore.mockReturnValue({
+				correlationId: 'c',
+				timestamp: 1,
 				actorId: 'actor-123',
 			});
 
@@ -76,7 +83,7 @@ describe('ApiRequestContextService', () => {
 		});
 
 		it('should return undefined when context is not available', () => {
-			mockGetStore.mockReturnValue(undefined);
+			mockAsyncContext.getStore.mockReturnValue(undefined);
 
 			const result = service.getActorId();
 
@@ -84,7 +91,7 @@ describe('ApiRequestContextService', () => {
 		});
 
 		it('should return undefined when actorId is not in context', () => {
-			mockGetStore.mockReturnValue({});
+			mockAsyncContext.getStore.mockReturnValue({ correlationId: 'c', timestamp: 1 });
 
 			const result = service.getActorId();
 
@@ -94,7 +101,9 @@ describe('ApiRequestContextService', () => {
 
 	describe('getActorType', () => {
 		it('should return actor type from context', () => {
-			mockGetStore.mockReturnValue({
+			mockAsyncContext.getStore.mockReturnValue({
+				correlationId: 'c',
+				timestamp: 1,
 				actorType: ApiActorType.USER,
 			});
 
@@ -104,7 +113,7 @@ describe('ApiRequestContextService', () => {
 		});
 
 		it('should return undefined when context is not available', () => {
-			mockGetStore.mockReturnValue(undefined);
+			mockAsyncContext.getStore.mockReturnValue(undefined);
 
 			const result = service.getActorType();
 
@@ -114,11 +123,12 @@ describe('ApiRequestContextService', () => {
 
 	describe('updateActor', () => {
 		it('should update actor in context', () => {
-			const mockContext: any = {
+			const mockContext: Record<string, unknown> = {
 				correlationId: 'corr-123',
+				timestamp: 1,
 			};
 
-			mockGetStore.mockReturnValue(mockContext);
+			mockAsyncContext.getStore.mockReturnValue(mockContext as never);
 
 			service.updateActor('actor-123', ApiActorType.USER);
 
@@ -127,7 +137,7 @@ describe('ApiRequestContextService', () => {
 		});
 
 		it('should not throw when context is not available', () => {
-			mockGetStore.mockReturnValue(undefined);
+			mockAsyncContext.getStore.mockReturnValue(undefined);
 
 			expect(() => {
 				service.updateActor('actor-123', ApiActorType.USER);
@@ -137,11 +147,12 @@ describe('ApiRequestContextService', () => {
 
 	describe('setStartTime', () => {
 		it('should set start time in context', () => {
-			const mockContext: any = {
+			const mockContext: Record<string, unknown> = {
 				correlationId: 'corr-123',
+				timestamp: 1,
 			};
 
-			mockGetStore.mockReturnValue(mockContext);
+			mockAsyncContext.getStore.mockReturnValue(mockContext as never);
 
 			service.setStartTime();
 
@@ -150,7 +161,7 @@ describe('ApiRequestContextService', () => {
 		});
 
 		it('should not throw when context is not available', () => {
-			mockGetStore.mockReturnValue(undefined);
+			mockAsyncContext.getStore.mockReturnValue(undefined);
 
 			expect(() => {
 				service.setStartTime();
@@ -161,7 +172,9 @@ describe('ApiRequestContextService', () => {
 	describe('getStartTime', () => {
 		it('should return start time from context', () => {
 			const startTime = Date.now();
-			mockGetStore.mockReturnValue({
+			mockAsyncContext.getStore.mockReturnValue({
+				correlationId: 'c',
+				timestamp: 1,
 				startTime,
 			});
 
@@ -171,7 +184,7 @@ describe('ApiRequestContextService', () => {
 		});
 
 		it('should return undefined when context is not available', () => {
-			mockGetStore.mockReturnValue(undefined);
+			mockAsyncContext.getStore.mockReturnValue(undefined);
 
 			const result = service.getStartTime();
 
@@ -179,4 +192,3 @@ describe('ApiRequestContextService', () => {
 		});
 	});
 });
-

@@ -10,9 +10,37 @@
 // Module
 export { ApiMonitoringModule } from './api-monitoring.module.js';
 
+export type { ApiMonitoringForRootOptions } from './options/api-monitoring-for-root.options.js';
+export type { ApiMonitoringEntityClasses } from './tokens/entity-classes.token.js';
+export { API_MONITORING_ENTITY_CLASSES } from './tokens/entity-classes.token.js';
+export {
+	DEFAULT_API_MONITORING_ENTITIES,
+	API_MONITORING_TYPEORM_ENTITIES,
+} from './entities/default-entities.js';
+export { ApiActorEntity } from './entities/api-actor.entity.js';
+export { ApiRequestLogEntity } from './entities/api-request-log.entity.js';
+export { ApiRouteStatsEntity } from './entities/api-route-stats.entity.js';
+
 // Interfaces
 export type { IApiMonitoringLogger } from './interfaces/logger.interface.js';
 export { API_MONITORING_LOGGER_TOKEN } from './interfaces/logger.interface.js';
+export type {
+	IApiMonitoringAsyncContext,
+	ApiMonitoringRequestStore,
+} from './interfaces/async-context.port.js';
+export { API_MONITORING_ASYNC_CONTEXT } from './interfaces/async-context.port.js';
+
+// Domain (for consumers aligning types with persisted values)
+export {
+	HttpMethod,
+	TimeBucket,
+	ApiActorType,
+	ApiErrorClassification,
+	type ApiRequestMetadata,
+	type TimeSeriesQuery,
+	type ActorActivityQuery,
+	type ErrorSampleQuery,
+} from './domain/api-monitoring.types.js';
 
 // Services
 export { ApiRequestContextService } from './services/api-request-context.service.js';

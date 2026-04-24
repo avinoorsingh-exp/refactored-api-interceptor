@@ -62,6 +62,7 @@ import compression from 'compression'
 import { ProblemDetailsFilter } from './common/problem-details.filter.js'
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'
 import configuration from './core/configuration.js'
+import { formatUnknownError } from './core/format-unknown-error.js'
 import { QueryPerformanceInterceptor } from './common/interceptors/query-performance.interceptor.js'
 import { PerformanceInterceptor } from './common/interceptors/performance.interceptor.js'
 import { ResponseHeaderFixInterceptor } from './common/interceptors/response-header-fix.interceptor.js'
@@ -84,7 +85,7 @@ async function bootstrap() {
 			await configuration()
 			console.error('[BOOTSTRAP] Step 1: Configuration preloaded successfully')
 		} catch (configError) {
-			console.error('[BOOTSTRAP] Step 1: Configuration preload FAILED:', configError)
+			console.error('[BOOTSTRAP] Step 1: Configuration preload FAILED:\n' + formatUnknownError(configError))
 			if (configError instanceof Error) {
 				console.error('[BOOTSTRAP] Config error message:', configError.message)
 				console.error('[BOOTSTRAP] Config error stack:', configError.stack)
@@ -98,7 +99,7 @@ async function bootstrap() {
 			app = await NestFactory.create(AppModule)
 			console.error('[BOOTSTRAP] Step 2: NestJS application created successfully')
 		} catch (nestError) {
-			console.error('[BOOTSTRAP] Step 2: NestJS application creation FAILED:', nestError)
+			console.error('[BOOTSTRAP] Step 2: NestJS application creation FAILED:\n' + formatUnknownError(nestError))
 			if (nestError instanceof Error) {
 				console.error('[BOOTSTRAP] Nest error message:', nestError.message)
 				console.error('[BOOTSTRAP] Nest error stack:', nestError.stack)
@@ -119,7 +120,7 @@ async function bootstrap() {
 			logger = app.get(LoggerService)
 			console.error('[BOOTSTRAP] Step 3: Services retrieved successfully')
 		} catch (serviceError) {
-			console.error('[BOOTSTRAP] Step 3: Service retrieval FAILED:', serviceError)
+			console.error('[BOOTSTRAP] Step 3: Service retrieval FAILED:\n' + formatUnknownError(serviceError))
 			if (serviceError instanceof Error) {
 				console.error('[BOOTSTRAP] Service error message:', serviceError.message)
 				console.error('[BOOTSTRAP] Service error stack:', serviceError.stack)
@@ -281,7 +282,7 @@ async function bootstrap() {
 			
 			console.error('[BOOTSTRAP] Step 4: Middleware configured successfully')
 		} catch (middlewareError) {
-			console.error('[BOOTSTRAP] Step 4: Middleware configuration FAILED:', middlewareError)
+			console.error('[BOOTSTRAP] Step 4: Middleware configuration FAILED:\n' + formatUnknownError(middlewareError))
 			if (middlewareError instanceof Error) {
 				console.error('[BOOTSTRAP] Middleware error message:', middlewareError.message)
 				console.error('[BOOTSTRAP] Middleware error stack:', middlewareError.stack)
@@ -297,7 +298,7 @@ async function bootstrap() {
 			})
 			console.error('[BOOTSTRAP] Step 5: CORS enabled successfully')
 		} catch (corsError) {
-			console.error('[BOOTSTRAP] Step 5: CORS configuration FAILED:', corsError)
+			console.error('[BOOTSTRAP] Step 5: CORS configuration FAILED:\n' + formatUnknownError(corsError))
 			if (corsError instanceof Error) {
 				console.error('[BOOTSTRAP] CORS error message:', corsError.message)
 				console.error('[BOOTSTRAP] CORS error stack:', corsError.stack)
@@ -357,7 +358,7 @@ async function bootstrap() {
 			}
 			console.error('[BOOTSTRAP] Step 6: Interceptors configured successfully')
 		} catch (interceptorError) {
-			console.error('[BOOTSTRAP] Step 6: Interceptor configuration FAILED:', interceptorError)
+			console.error('[BOOTSTRAP] Step 6: Interceptor configuration FAILED:\n' + formatUnknownError(interceptorError))
 			if (interceptorError instanceof Error) {
 				console.error('[BOOTSTRAP] Interceptor error message:', interceptorError.message)
 				console.error('[BOOTSTRAP] Interceptor error stack:', interceptorError.stack)
@@ -417,7 +418,7 @@ async function bootstrap() {
 			})
 			console.error('[BOOTSTRAP] Step 8: Swagger setup completed successfully')
 		} catch (swaggerError) {
-			console.error('[BOOTSTRAP] Step 8: Swagger setup FAILED:', swaggerError)
+			console.error('[BOOTSTRAP] Step 8: Swagger setup FAILED:\n' + formatUnknownError(swaggerError))
 			if (swaggerError instanceof Error) {
 				console.error('[BOOTSTRAP] Swagger error message:', swaggerError.message)
 				console.error('[BOOTSTRAP] Swagger error stack:', swaggerError.stack)
@@ -433,7 +434,7 @@ async function bootstrap() {
 			// Use DataSource directly to avoid DI context issues
 			const isLocal = process.env.NODE_ENV === 'local'
 			if (isLocal) {
-				const { ApiActorEntity } = await import('@exprealty/database')
+				const { ApiActorEntity } = await import('@exprealty/api-monitoring')
 				const actorRepo = dataSource.getRepository(ApiActorEntity)
 				
 				// Step 1: Cleanup - deactivate all actors except LOCAL_DOCKER_ACTOR
@@ -501,7 +502,7 @@ async function bootstrap() {
 			}
 			console.error('[BOOTSTRAP] Step 9: Actor cardinality check passed')
 		} catch (assertionError) {
-			console.error('[BOOTSTRAP] Step 9: Actor cardinality assertion FAILED:', assertionError)
+			console.error('[BOOTSTRAP] Step 9: Actor cardinality assertion FAILED:\n' + formatUnknownError(assertionError))
 			if (assertionError instanceof Error) {
 				console.error('[BOOTSTRAP] Assertion error message:', assertionError.message)
 				console.error('[BOOTSTRAP] Assertion error stack:', assertionError.stack)
@@ -519,7 +520,7 @@ async function bootstrap() {
 				environment: config.NODE_ENV,
 			})
 		} catch (listenError) {
-			console.error('[BOOTSTRAP] Step 10: HTTP server startup FAILED:', listenError)
+			console.error('[BOOTSTRAP] Step 10: HTTP server startup FAILED:\n' + formatUnknownError(listenError))
 			if (listenError instanceof Error) {
 				console.error('[BOOTSTRAP] Listen error message:', listenError.message)
 				console.error('[BOOTSTRAP] Listen error stack:', listenError.stack)
@@ -532,7 +533,7 @@ async function bootstrap() {
 			app.enableShutdownHooks()
 			console.error('[BOOTSTRAP] Step 11: Shutdown hooks enabled successfully')
 		} catch (shutdownError) {
-			console.error('[BOOTSTRAP] Step 11: Shutdown hooks FAILED:', shutdownError)
+			console.error('[BOOTSTRAP] Step 11: Shutdown hooks FAILED:\n' + formatUnknownError(shutdownError))
 			if (shutdownError instanceof Error) {
 				console.error('[BOOTSTRAP] Shutdown error message:', shutdownError.message)
 				console.error('[BOOTSTRAP] Shutdown error stack:', shutdownError.stack)
@@ -551,7 +552,7 @@ async function bootstrap() {
 				logger.info('Application closed gracefully')
 				process.exit(0)
 			}).catch((error) => {
-				console.error('[SIGTERM] Error during graceful shutdown:', error)
+				console.error('[SIGTERM] Error during graceful shutdown:\n' + formatUnknownError(error))
 				logger.error('Error during graceful shutdown', {
 					error: error instanceof Error ? error.message : String(error),
 				})
@@ -567,7 +568,7 @@ async function bootstrap() {
 				logger.info('Application closed gracefully')
 				process.exit(0)
 			}).catch((error) => {
-				console.error('[SIGINT] Error during graceful shutdown:', error)
+				console.error('[SIGINT] Error during graceful shutdown:\n' + formatUnknownError(error))
 				logger.error('Error during graceful shutdown', {
 					error: error instanceof Error ? error.message : String(error),
 				})
@@ -576,7 +577,7 @@ async function bootstrap() {
 		})
 
 	} catch (bootstrapError) {
-		console.error('[BOOTSTRAP] Bootstrap function FAILED with error:', bootstrapError)
+		console.error('[BOOTSTRAP] Bootstrap function FAILED with error:\n' + formatUnknownError(bootstrapError))
 		if (bootstrapError instanceof Error) {
 			console.error('[BOOTSTRAP] Bootstrap error message:', bootstrapError.message)
 			console.error('[BOOTSTRAP] Bootstrap error stack:', bootstrapError.stack)
@@ -593,12 +594,10 @@ console.error('[MAIN] Calling bootstrap()...')
 
 // Ensure bootstrap doesn't exit silently
 const bootstrapPromise = bootstrap().catch((error) => {
-	console.error('[MAIN] Bootstrap promise rejected:', error)
+	console.error('[MAIN] Bootstrap promise rejected:\n' + formatUnknownError(error))
 	if (error instanceof Error) {
 		console.error('[MAIN] Error message:', error.message)
 		console.error('[MAIN] Error stack:', error.stack)
-	} else {
-		console.error('[MAIN] Error (non-Error object):', JSON.stringify(error, null, 2))
 	}
 	console.error('[MAIN] Process will exit with code 1')
 	

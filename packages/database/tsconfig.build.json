@@ -7,6 +7,8 @@
 
 		"rootDir": "./src",
 		"outDir": "./dist",
+		"baseUrl": ".",
+		"paths": {},
 
 		"module": "NodeNext",
 		"moduleResolution": "NodeNext",

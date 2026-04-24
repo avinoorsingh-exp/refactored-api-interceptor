@@ -29,6 +29,21 @@ export default [
         },
     },
     {
+        files: ['packages/api-monitoring/src/services/api-metrics.service.ts'],
+        rules: {
+            '@typescript-eslint/no-unsafe-assignment': 'off',
+            '@typescript-eslint/no-unsafe-return': 'off',
+            '@typescript-eslint/no-unsafe-call': 'off',
+            '@typescript-eslint/no-unsafe-member-access': 'off',
+            '@typescript-eslint/no-unsafe-argument': 'off',
+            '@typescript-eslint/no-base-to-string': 'off',
+            '@typescript-eslint/no-non-null-assertion': 'off',
+            '@typescript-eslint/no-unnecessary-condition': 'off',
+            '@typescript-eslint/return-await': 'off',
+            '@typescript-eslint/restrict-template-expressions': 'off',
+        },
+    },
+    {
         files: ['**/*.spec.ts', '**/*.test.ts', '**/tests/**/*.ts', 'test/**/*.ts'],
         rules: {
             '@typescript-eslint/no-unsafe-call': 'off',
@@ -58,6 +73,7 @@ export default [
             'packages/*/src/**/*.js',
             'packages/*/src/**/*.d.ts',
             '!packages/*/src/**/index.ts',
+            '**/jest.config.cjs',
         ],
     },
     {

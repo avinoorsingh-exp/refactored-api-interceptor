@@ -81,7 +81,8 @@ function extractIpAddress(request: Request): string | undefined {
 	}
 
 	// Fall back to request IP or socket remote address
-	const ip = request.ip || request.socket?.remoteAddress;
+	const socket = (request as { socket?: { remoteAddress?: string } }).socket;
+	const ip = request.ip || socket?.remoteAddress;
 	if (ip) {
 		return ip;
 	}
@@ -103,7 +104,7 @@ function isLocalhostOrInternal(ip: string): boolean {
 	}
 
 	// Remove IPv6 brackets if present
-	let cleanIp = ip.replace(/^\[|\]$/g, '').trim();
+	const cleanIp = ip.replace(/^\[|\]$/g, '').trim();
 	
 	// Check for localhost strings
 	if (cleanIp === 'localhost' || cleanIp === '127.0.0.1' || cleanIp === '::1') {

@@ -8,17 +8,19 @@ export class ConfigService {
 	
 	constructor(@Inject(NestConfigService) private configService: NestConfigService) {
 		// Get the full config object once and cache it
-		this.config = this.configService.get<Config>('') as Config || this.buildConfig()
+		const loaded = this.configService.get<Config | undefined>('')
+		this.config = loaded ?? this.buildConfig()
 	}
 
-	/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 	private buildConfig(): Config {
 		// Fallback: build config from individual keys
-		const get = (key: string) => this.configService.get(key)
+		const get = (key: string): unknown => this.configService.get(key)
 		const getBool = (key: string): boolean => {
 			const val = get(key)
 			if (typeof val === 'boolean') return val
-			return String(val).toLowerCase() === 'true' || val === '1'
+			if (val === 1 || val === '1') return true
+			if (typeof val === 'string') return val.toLowerCase() === 'true'
+			return false
 		}
 		return {
 			NODE_ENV: get('NODE_ENV'),

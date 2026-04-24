@@ -1,11 +1,9 @@
-import { describe, it, expect } from '@jest/globals';
 import {
 	TrendsResponseDto,
 	TrendBucketMetricsDto,
 	TrendsKpiSummaryDto,
 	PeriodDeltaDto,
 } from '../../src/dto/trends-response.dto.js';
-import { TimeBucket } from '@exprealty/shared-domain';
 
 describe('TrendsResponseDto', () => {
 	it('should create instance with buckets and kpiSummary', () => {

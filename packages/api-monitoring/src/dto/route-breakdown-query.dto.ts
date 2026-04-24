@@ -1,7 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsDate, IsEnum, IsInt, IsOptional, IsString, IsArray, Max, Min } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
-import { HttpMethod } from '@exprealty/shared-domain';
+import { HttpMethod } from '../domain/api-monitoring.types.js';
 
 /**
  * DTO for route breakdown query.
@@ -17,11 +17,14 @@ export class RouteBreakdownQueryDto {
 	@IsOptional()
 	@IsDate()
 	@Type(() => Date)
-	@Transform(({ value }) => {
+	@Transform(({ value }: { value: unknown }): Date | undefined => {
 		if (typeof value === 'string') {
 			return new Date(value);
 		}
-		return value;
+		if (value instanceof Date) {
+			return value;
+		}
+		return undefined;
 	})
 	startTime?: Date;
 
@@ -32,11 +35,14 @@ export class RouteBreakdownQueryDto {
 	@IsOptional()
 	@IsDate()
 	@Type(() => Date)
-	@Transform(({ value }) => {
+	@Transform(({ value }: { value: unknown }): Date | undefined => {
 		if (typeof value === 'string') {
 			return new Date(value);
 		}
-		return value;
+		if (value instanceof Date) {
+			return value;
+		}
+		return undefined;
 	})
 	endTime?: Date;
 

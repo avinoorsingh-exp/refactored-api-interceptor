@@ -1,19 +1,20 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, In } from 'typeorm';
-import {
-	ApiRequestLogEntity,
-	ApiRouteStatsEntity,
-	ApiActorEntity,
-} from '@exprealty/database';
+import type { FindOptionsWhere } from 'typeorm';
 import {
 	HttpMethod,
 	TimeBucket,
 	ApiErrorClassification,
 	type TimeSeriesQuery,
 	type ActorActivityQuery,
-	type ErrorSampleQuery,
-} from '@exprealty/shared-domain';
+} from '../domain/api-monitoring.types.js';
+import { API_MONITORING_ENTITY_CLASSES } from '../tokens/entity-classes.token.js';
+import type { ApiMonitoringEntityClasses } from '../tokens/entity-classes.token.js';
+import {
+	API_MONITORING_ACTOR_REPO,
+	API_MONITORING_REQUEST_LOG_REPO,
+	API_MONITORING_ROUTE_STATS_REPO,
+} from '../tokens/repository.tokens.js';
 import type { IApiMonitoringLogger } from '../interfaces/logger.interface.js';
 import { API_MONITORING_LOGGER_TOKEN } from '../interfaces/logger.interface.js';
 import {
@@ -47,19 +48,60 @@ import type {
  * 
  * @public
  */
+/** Log row shape used internally for aggregations (matches core.api_request_log). */
+interface RequestLogRow {
+	id: string;
+	route: string;
+	method: HttpMethod;
+	statusCode: number;
+	latencyMs: number;
+	hasError: boolean;
+	timestamp: Date;
+	createdAt: Date;
+	actorId?: string;
+	errorClassification?: string;
+	[key: string]: unknown;
+}
+/** Route stats row (matches core.api_route_stats). */
+interface RouteStatsRow {
+	id?: string;
+	route: string;
+	method: HttpMethod;
+	timeBucket: TimeBucket;
+	bucketStart: Date;
+	requestCount: number;
+	errorCount: number;
+	latencyP50?: number;
+	latencyP95?: number;
+	latencyP99?: number;
+	latencyMin?: number;
+	latencyMax?: number;
+	statusCodeCounts?: Record<string, number>;
+	[key: string]: unknown;
+}
+/** Actor row for metrics joins. */
+interface ActorRow {
+	id: string;
+	displayName?: string;
+	active?: boolean;
+	[key: string]: unknown;
+}
+
 @Injectable()
 export class ApiMetricsService {
 	private readonly logger: IApiMonitoringLogger;
 
 	constructor(
-		@InjectRepository(ApiRequestLogEntity)
-		private readonly requestLogRepo: Repository<ApiRequestLogEntity>,
-		@InjectRepository(ApiRouteStatsEntity)
-		private readonly routeStatsRepo: Repository<ApiRouteStatsEntity>,
-		@InjectRepository(ApiActorEntity)
-		private readonly actorRepo: Repository<ApiActorEntity>,
+		@Inject(API_MONITORING_REQUEST_LOG_REPO)
+		private readonly requestLogRepo: Repository<RequestLogRow>,
+		@Inject(API_MONITORING_ROUTE_STATS_REPO)
+		private readonly routeStatsRepo: Repository<RouteStatsRow>,
+		@Inject(API_MONITORING_ACTOR_REPO)
+		private readonly actorRepo: Repository<ActorRow>,
 		@Inject(API_MONITORING_LOGGER_TOKEN)
 		logger: IApiMonitoringLogger,
+		@Inject(API_MONITORING_ENTITY_CLASSES)
+		private readonly entityClasses: ApiMonitoringEntityClasses,
 	) {
 		this.logger = logger;
 		this.logger.setContext('ApiMetricsService');
@@ -91,7 +133,7 @@ export class ApiMetricsService {
 	 * Note: actorId filter is not supported for time-series as api_route_stats
 	 * doesn't include actor information (pre-aggregated data).
 	 */
-	async getTimeSeriesMetrics(query: TimeSeriesQuery): Promise<ApiRouteStatsEntity[]> {
+	async getTimeSeriesMetrics(query: TimeSeriesQuery): Promise<RouteStatsRow[]> {
 		const timeRangeMs = query.endTime.getTime() - query.startTime.getTime();
 		const oneHourMs = 60 * 60 * 1000;
 		const oneDayMs = 24 * 60 * 60 * 1000;
@@ -190,7 +232,7 @@ export class ApiMetricsService {
 		routes: string[],
 		methods: HttpMethod[],
 		statusCodes: number[],
-	): Promise<ApiRouteStatsEntity[]> {
+	): Promise<RouteStatsRow[]> {
 		// Build query builder with optimized column selection
 		// Only select necessary columns to reduce memory usage
 		const qb = this.routeStatsRepo
@@ -260,7 +302,7 @@ export class ApiMetricsService {
 		routes: string[],
 		methods: HttpMethod[],
 		statusCodes: number[],
-	): Promise<ApiRouteStatsEntity[]> {
+	): Promise<RouteStatsRow[]> {
 		// Build WHERE conditions with proper parameter placeholders ($1, $2, etc.)
 		const conditions: string[] = [];
 		const params: unknown[] = [];
@@ -358,23 +400,26 @@ export class ApiMetricsService {
 		// Execute raw SQL query with positional parameters
 		const rawResults = await this.requestLogRepo.manager.query(finalSql, params);
 
-		// Transform raw results to match ApiRouteStatsEntity structure
+		const StatsCtor = this.entityClasses.ApiRouteStatsEntity as new () => RouteStatsRow;
 		return rawResults.map((row: Record<string, unknown>) => {
-			const entity = new ApiRouteStatsEntity();
-			entity.bucketStart = new Date(row.bucket_start as string);
-			entity.route = row.route as string;
-			entity.method = row.method as HttpMethod;
-			entity.timeBucket = TimeBucket.MINUTE;
-			entity.requestCount = parseInt(String(row.request_count || '0'), 10);
-			entity.errorCount = parseInt(String(row.error_count || '0'), 10);
-			entity.latencyP50 = row.latency_p50 ? parseInt(String(row.latency_p50), 10) : undefined;
-			entity.latencyP95 = row.latency_p95 ? parseInt(String(row.latency_p95), 10) : undefined;
-			entity.latencyP99 = row.latency_p99 ? parseInt(String(row.latency_p99), 10) : undefined;
-			entity.latencyMin = row.latency_min ? parseInt(String(row.latency_min), 10) : undefined;
-			entity.latencyMax = row.latency_max ? parseInt(String(row.latency_max), 10) : undefined;
-			entity.statusCodeCounts = typeof row.status_code_counts === 'string' 
-				? JSON.parse(row.status_code_counts) 
-				: (row.status_code_counts as Record<string, number>);
+			const entity = new StatsCtor();
+			Object.assign(entity, {
+				bucketStart: new Date(row.bucket_start as string),
+				route: row.route as string,
+				method: row.method as HttpMethod,
+				timeBucket: TimeBucket.MINUTE,
+				requestCount: parseInt(String(row.request_count || '0'), 10),
+				errorCount: parseInt(String(row.error_count || '0'), 10),
+				latencyP50: row.latency_p50 ? parseInt(String(row.latency_p50), 10) : undefined,
+				latencyP95: row.latency_p95 ? parseInt(String(row.latency_p95), 10) : undefined,
+				latencyP99: row.latency_p99 ? parseInt(String(row.latency_p99), 10) : undefined,
+				latencyMin: row.latency_min ? parseInt(String(row.latency_min), 10) : undefined,
+				latencyMax: row.latency_max ? parseInt(String(row.latency_max), 10) : undefined,
+				statusCodeCounts:
+					typeof row.status_code_counts === 'string'
+						? JSON.parse(row.status_code_counts)
+						: (row.status_code_counts as Record<string, number>),
+			});
 			return entity;
 		});
 	}
@@ -470,7 +515,7 @@ export class ApiMetricsService {
 
 			// STEP 4: Fetch all matching logs (no limit on raw logs - we aggregate first)
 			const logs = await this.requestLogRepo.find({
-				where,
+				where: where as FindOptionsWhere<RequestLogRow>,
 				order: {
 					timestamp: 'DESC',
 				},
@@ -484,7 +529,7 @@ export class ApiMetricsService {
 
 			// STEP 5: Aggregate by normalized route and method (matches api_route_stats format)
 			const ROUTE_METHOD_SEP = '\x00';
-			const grouped = new Map<string, ApiRequestLogEntity[]>();
+			const grouped = new Map<string, RequestLogRow[]>();
 			for (const log of logs) {
 				const normalizedRoute = normalizeRoute(log.route);
 				const key = `${normalizedRoute}${ROUTE_METHOD_SEP}${log.method}`;
@@ -597,7 +642,7 @@ export class ApiMetricsService {
 			statusCode?: number | number[];
 			debug?: boolean;
 		},
-	): Promise<PaginatedResponse<ApiRequestLogEntity> | ApiRequestLogEntity[]> {
+	): Promise<PaginatedResponse<RequestLogRow> | RequestLogRow[]> {
 		try {
 			// STEP 1: Normalize limit (default 50, max 100)
 			const defaultLimit = 50;
@@ -711,7 +756,7 @@ export class ApiMetricsService {
 			// If no cursor, return array directly
 			const takeValue = limit >= 100000 ? undefined : limit;
 			const results = await this.requestLogRepo.find({
-				where,
+				where: where as FindOptionsWhere<RequestLogRow>,
 				order: {
 					timestamp: 'DESC',
 					id: 'DESC',
@@ -1091,7 +1136,7 @@ export class ApiMetricsService {
 			route?: string | string[];
 			debug?: boolean;
 		},
-	): Promise<PaginatedResponse<ApiRequestLogEntity> | ApiRequestLogEntity[]> {
+	): Promise<PaginatedResponse<RequestLogRow> | RequestLogRow[]> {
 		try {
 			// STEP 1: Normalize limit (default 50, max 100)
 			const defaultLimit = 50;
@@ -1216,7 +1261,7 @@ export class ApiMetricsService {
 			
 			// Non-paginated path (backward compatibility)
 			const results = await this.requestLogRepo.find({
-				where,
+				where: where as FindOptionsWhere<RequestLogRow>,
 				order: {
 					createdAt: 'DESC',
 					id: 'DESC',
@@ -1260,7 +1305,7 @@ export class ApiMetricsService {
 	/**
 	 * Calculate latency percentiles for a route.
 	 * 
-	 * This is used for aggregation into ApiRouteStatsEntity.
+	 * This is used for aggregation into RouteStatsRow.
 	 */
 	async calculateLatencyPercentiles(
 		route: string,
@@ -1366,7 +1411,7 @@ export class ApiMetricsService {
 				route,
 				method,
 				timestamp: Between(bucketStart, bucketEnd),
-			},
+			} as FindOptionsWhere<RequestLogRow>,
 		});
 		const findQueryDuration = Date.now() - findQueryStart;
 
@@ -1863,7 +1908,7 @@ export class ApiMetricsService {
 	 * @returns Aggregated bucket metrics
 	 */
 	private aggregateIntoBuckets(
-		dayStats: ApiRouteStatsEntity[],
+		dayStats: RouteStatsRow[],
 		bucketType: 'day' | 'week',
 		startTime: Date,
 		endTime: Date,
@@ -1871,7 +1916,7 @@ export class ApiMetricsService {
 	): TrendBucketMetricsDto[] {
 		if (bucketType === 'day') {
 			// For daily buckets, use DAY stats directly
-			const bucketMap = new Map<string, ApiRouteStatsEntity[]>();
+			const bucketMap = new Map<string, RouteStatsRow[]>();
 			
 		for (const stat of dayStats) {
 			// Skip invalid dates
@@ -1901,7 +1946,7 @@ export class ApiMetricsService {
 			return buckets;
 		} else {
 			// For weekly buckets, group DAY stats by week
-			const weekMap = new Map<string, ApiRouteStatsEntity[]>();
+			const weekMap = new Map<string, RouteStatsRow[]>();
 
 		for (const stat of dayStats) {
 			// Skip invalid dates
@@ -1941,13 +1986,13 @@ export class ApiMetricsService {
 	/**
 	 * Calculate metrics for a single bucket from aggregated stats.
 	 * 
-	 * @param stats - Array of ApiRouteStatsEntity for this bucket
+	 * @param stats - Array of RouteStatsRow for this bucket
 	 * @param bucketStart - Start time of the bucket
 	 * @param statusCodes - Optional status codes to filter by (extracts counts from statusCodeCounts)
 	 * @returns Bucket metrics
 	 */
 	private calculateBucketMetrics(
-		stats: ApiRouteStatsEntity[],
+		stats: RouteStatsRow[],
 		bucketStart: Date,
 		statusCodes?: number[],
 	): TrendBucketMetricsDto {

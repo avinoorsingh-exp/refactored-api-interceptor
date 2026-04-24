@@ -1,28 +1,17 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import {
-	ApiRequestLogEntity,
-	ApiActorEntity,
-} from '@exprealty/database';
+import { API_MONITORING_REQUEST_LOG_REPO } from '../tokens/repository.tokens.js';
 import {
 	HttpMethod,
 	ApiErrorClassification,
-	ApiActorType,
 	type ApiRequestMetadata,
-} from '@exprealty/shared-domain';
+} from '../domain/api-monitoring.types.js';
 import { ApiRequestContextService } from './api-request-context.service.js';
 import type { IApiMonitoringLogger } from '../interfaces/logger.interface.js';
 import { API_MONITORING_LOGGER_TOKEN } from '../interfaces/logger.interface.js';
 
 /**
  * Service for logging API requests and errors.
- * 
- * Handles high-volume, non-blocking request logging with:
- * - Async/background processing to avoid blocking requests
- * - Error classification and PII-safe logging
- * - Stack trace capture only for server errors
- * 
  * @public
  */
 @Injectable()
@@ -32,45 +21,28 @@ export class ApiMonitoringService {
 	private readonly sampleRate: number;
 
 	constructor(
-		@InjectRepository(ApiRequestLogEntity)
-		private readonly requestLogRepo: Repository<ApiRequestLogEntity>,
-		@InjectRepository(ApiActorEntity)
-		private readonly actorRepo: Repository<ApiActorEntity>,
+		@Inject(API_MONITORING_REQUEST_LOG_REPO)
+		private readonly requestLogRepo: Repository<Record<string, unknown>>,
 		private readonly contextService: ApiRequestContextService,
 		@Inject(API_MONITORING_LOGGER_TOKEN)
 		logger: IApiMonitoringLogger,
 	) {
 		this.logger = logger;
 		this.logger.setContext('ApiMonitoringService');
-		// Feature flags from environment
 		this.enabled = process.env.API_MONITORING_ENABLED !== 'false';
 		this.sampleRate = parseFloat(process.env.API_MONITORING_SAMPLE_RATE || '1.0');
-		// Verify logger is working by logging startup
 		this.logger.info('ApiMonitoringService initialized successfully', {
 			enabled: this.enabled,
 			sampleRate: this.sampleRate,
 		});
 	}
 
-	/**
-	 * Log an API request asynchronously.
-	 * 
-	 * This method is non-blocking and will not throw errors that could
-	 * affect the request lifecycle. Errors are logged but not propagated.
-	 * 
-	 * @param metadata - Request metadata to log
-	 */
 	async logRequest(metadata: ApiRequestMetadata): Promise<void> {
 		if (!this.enabled) {
 			return;
 		}
 
-		// CRITICAL: Do not log requests without an actor
-		// If there is no actor, there should be NO route requests logged
-		// This prevents NULL actor_id entries that won't show up in top callers
 		if (!metadata.actorId) {
-			// Silently skip - no actor means no logging
-			// This is expected for excluded origins, localhost, etc.
 			if (process.env.NODE_ENV !== 'production') {
 				this.logger.debug('Skipping API request log - no actor ID', {
 					route: metadata.route,
@@ -81,7 +53,6 @@ export class ApiMonitoringService {
 			return;
 		}
 
-		// Sampling: skip some requests if sample rate < 1.0
 		if (this.sampleRate < 1.0 && Math.random() > this.sampleRate) {
 			return;
 		}
@@ -104,33 +75,24 @@ export class ApiMonitoringService {
 				errorClassification: metadata.errorClassification,
 				errorMessage: metadata.errorMessage,
 				stackTrace: metadata.stackTrace,
-			});
+			} as Record<string, unknown>);
 
-			// Use save() with catch to ensure non-blocking
-			await this.requestLogRepo.save(log).catch((error) => {
-				// Log error but don't throw - monitoring should never break requests
+			await this.requestLogRepo.save(log).catch((err: unknown) => {
 				this.logger.error('Failed to save API request log', {
 					correlationId: metadata.correlationId,
 					route: metadata.route,
-					error: error instanceof Error ? error.message : String(error),
+					error: err instanceof Error ? err.message : String(err),
 				});
 			});
-		} catch (error) {
-			// Catch any unexpected errors
+		} catch (err: unknown) {
 			this.logger.error('Unexpected error in API monitoring', {
 				correlationId: metadata.correlationId,
-				error: error instanceof Error ? error.message : String(error),
+				error: err instanceof Error ? err.message : String(err),
 			});
 		}
 	}
 
-	/**
-	 * Classify an error based on status code and error type.
-	 */
-	classifyError(
-		statusCode: number,
-		error?: Error,
-	): ApiErrorClassification {
+	classifyError(statusCode: number, error?: Error): ApiErrorClassification {
 		if (statusCode >= 500) {
 			return ApiErrorClassification.SERVER_ERROR;
 		}
@@ -144,7 +106,6 @@ export class ApiMonitoringService {
 		}
 
 		if (statusCode >= 400) {
-			// Check if it's a validation error
 			if (error?.name === 'ValidationError' || error?.name === 'BadRequestException') {
 				return ApiErrorClassification.VALIDATION_ERROR;
 			}
@@ -154,32 +115,15 @@ export class ApiMonitoringService {
 		return ApiErrorClassification.UNKNOWN_ERROR;
 	}
 
-	/**
-	 * Sanitize error message to remove PII.
-	 * 
-	 * Removes potential PII like emails, phone numbers, SSNs, etc.
-	 */
 	sanitizeErrorMessage(message: string): string {
-		// Remove email addresses
 		let sanitized = message.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[EMAIL]');
-
-		// Remove phone numbers (US format)
 		sanitized = sanitized.replace(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, '[PHONE]');
-
-		// Remove SSNs
 		sanitized = sanitized.replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[SSN]');
-
-		// Remove credit card numbers
 		sanitized = sanitized.replace(/\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g, '[CARD]');
-
 		return sanitized;
 	}
 
-	/**
-	 * Extract stack trace from error (only for server errors).
-	 */
-	extractStackTrace(error: Error | unknown, statusCode: number): string | undefined {
-		// Only capture stack traces for server errors (5xx)
+	extractStackTrace(error: unknown, statusCode: number): string | undefined {
 		if (statusCode < 500) {
 			return undefined;
 		}
@@ -191,9 +135,6 @@ export class ApiMonitoringService {
 		return undefined;
 	}
 
-	/**
-	 * Get request metadata from context and Express request/response.
-	 */
 	buildRequestMetadata(
 		route: string,
 		method: HttpMethod,
@@ -201,7 +142,7 @@ export class ApiMonitoringService {
 		latencyMs: number,
 		ipAddress?: string,
 		userAgent?: string,
-		error?: Error | unknown,
+		error?: unknown,
 		requestSizeBytes?: number,
 		responseSizeBytes?: number,
 	): ApiRequestMetadata {
@@ -240,4 +181,3 @@ export class ApiMonitoringService {
 		};
 	}
 }
-

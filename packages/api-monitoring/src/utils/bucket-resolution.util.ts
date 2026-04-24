@@ -41,7 +41,7 @@ export function calculateBucketCount(days: number, bucketType: 'day' | 'week'): 
  * @returns Start of the week (Monday 00:00:00)
  */
 export function getWeekStart(date: Date): Date {
-	if (!date || isNaN(date.getTime())) {
+	if (isNaN(date.getTime())) {
 		throw new Error('Invalid date provided to getWeekStart');
 	}
 	const d = new Date(date);
