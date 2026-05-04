@@ -20,6 +20,10 @@ import {
 	API_MONITORING_REQUEST_LOG_REPO,
 	API_MONITORING_ROUTE_STATS_REPO,
 } from './tokens/repository.tokens.js';
+import {
+	API_MONITORING_MODULE_OPTIONS,
+	type ApiMonitoringModuleRuntimeOptions,
+} from './tokens/api-monitoring-module-options.token.js';
 
 /**
  * API Monitoring Module — register via {@link ApiMonitoringModule.forRoot}.
@@ -49,10 +53,17 @@ export class ApiMonitoringModule {
 			? getRepositoryToken(ApiActorEntity, connection)
 			: getRepositoryToken(ApiActorEntity);
 
+		const maxBytesRaw = options.requestBodyMaxBytes ?? 16_384;
+		const runtimeOptions: ApiMonitoringModuleRuntimeOptions = {
+			captureRequestBody: options.captureRequestBody === true,
+			requestBodyMaxBytes: Math.min(1_048_576, Math.max(256, maxBytesRaw)),
+		};
+
 		return {
 			module: ApiMonitoringModule,
 			imports: [forFeature],
 			providers: [
+				{ provide: API_MONITORING_MODULE_OPTIONS, useValue: runtimeOptions },
 				{ provide: API_MONITORING_ENTITY_CLASSES, useValue: entities },
 				{
 					provide: API_MONITORING_ASYNC_CONTEXT,

@@ -51,6 +51,16 @@ describe('API monitoring TypeORM entities (core schema)', () => {
 		);
 	});
 
+	it('api_request_log: request_body_snapshot column mapped for optional body capture', () => {
+		const storage = getMetadataArgsStorage() as {
+			filterColumns: (t: unknown) => { propertyName: string; options: { name?: string; type?: string } }[];
+		};
+		const cols = storage.filterColumns(ApiRequestLogEntity);
+		const snap = cols.find((c) => c.propertyName === 'requestBodySnapshot');
+		expect(snap?.options.name).toBe('request_body_snapshot');
+		expect(snap?.options.type).toBe('text');
+	});
+
 	it('api_route_stats: composite unique constraint on route, method, time bucket, bucket start', () => {
 		const row = tableFor(ApiRouteStatsEntity);
 		expect(row?.name).toBe('api_route_stats');

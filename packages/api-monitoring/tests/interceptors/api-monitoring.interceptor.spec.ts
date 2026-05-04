@@ -6,6 +6,7 @@ import { ApiMonitoringInterceptor } from '../../src/interceptors/api-monitoring.
 import { ApiMonitoringService } from '../../src/services/api-monitoring.service.js';
 import { ApiRequestContextService } from '../../src/services/api-request-context.service.js';
 import { HttpMethod } from '../../src/domain/api-monitoring.types.js';
+import { API_MONITORING_MODULE_OPTIONS } from '../../src/tokens/api-monitoring-module-options.token.js';
 
 type AsyncTestDone = (reason?: string | Error) => void;
 
@@ -63,6 +64,10 @@ describe('ApiMonitoringInterceptor', () => {
 				{
 					provide: ApiRequestContextService,
 					useValue: contextService,
+				},
+				{
+					provide: API_MONITORING_MODULE_OPTIONS,
+					useValue: { captureRequestBody: false, requestBodyMaxBytes: 16_384 },
 				},
 			],
 		}).compile();
@@ -135,6 +140,7 @@ describe('ApiMonitoringInterceptor', () => {
 						error,
 						expect.any(Number), // requestSizeBytes
 						undefined, // responseSizeBytes not available on error
+						undefined, // requestBodySnapshot (capture off)
 					);
 					expect(monitoringService.logRequest).toHaveBeenCalledWith(metadata);
 					done();
@@ -175,6 +181,7 @@ describe('ApiMonitoringInterceptor', () => {
 						undefined, // error
 						expect.any(Number), // requestSizeBytes
 						expect.any(Number), // responseSizeBytes
+						undefined,
 					);
 					done();
 				},
@@ -316,6 +323,146 @@ describe('ApiMonitoringInterceptor', () => {
 			expect(monitoringService.buildRequestMetadata).toHaveBeenCalled();
 			const callArgs = monitoringService.buildRequestMetadata.mock.calls[0];
 			expect(callArgs[1]).toBe(HttpMethod.POST); // method should be POST
+		});
+	});
+
+	describe('captureRequestBody', () => {
+		beforeEach(async () => {
+			const module = await Test.createTestingModule({
+				providers: [
+					ApiMonitoringInterceptor,
+					{ provide: ApiMonitoringService, useValue: monitoringService },
+					{ provide: ApiRequestContextService, useValue: contextService },
+					{
+						provide: API_MONITORING_MODULE_OPTIONS,
+						useValue: { captureRequestBody: true, requestBodyMaxBytes: 16_384 },
+					},
+				],
+			}).compile();
+			interceptor = module.get<ApiMonitoringInterceptor>(ApiMonitoringInterceptor);
+		});
+
+		it('passes JSON snapshot of req.body into buildRequestMetadata', async () => {
+			mockRequest.method = 'POST';
+			mockRequest.body = { hello: 'world' };
+
+			const metadata = {
+				route: '/v1/agents',
+				method: HttpMethod.POST,
+				statusCode: 200,
+				latencyMs: 1,
+			} as any;
+
+			monitoringService.buildRequestMetadata.mockReturnValue(metadata);
+			monitoringService.logRequest.mockResolvedValue(undefined);
+			(mockRequest.get as jest.Mock).mockReturnValue(undefined);
+
+			await firstValueFrom(interceptor.intercept(mockExecutionContext, mockCallHandler));
+
+			expect(monitoringService.buildRequestMetadata).toHaveBeenCalledWith(
+				expect.any(String),
+				HttpMethod.POST,
+				200,
+				expect.any(Number),
+				expect.any(String),
+				undefined,
+				undefined,
+				expect.any(Number),
+				expect.any(Number),
+				'{"hello":"world"}',
+			);
+		});
+
+		it('includes snapshot on error path when capture is enabled', (done: AsyncTestDone) => {
+			const error = new Error('bad');
+			(error as any).status = 400;
+			mockCallHandler.handle = jest.fn().mockReturnValue(throwError(() => error));
+			mockRequest.method = 'PUT';
+			mockRequest.body = { id: 'req-1' };
+
+			const metadata = {
+				route: '/v1/agents',
+				method: HttpMethod.PUT,
+				statusCode: 400,
+				latencyMs: 1,
+			} as any;
+
+			monitoringService.buildRequestMetadata.mockReturnValue(metadata);
+			monitoringService.logRequest.mockResolvedValue(undefined);
+			(mockRequest.get as jest.Mock).mockImplementation((h: string) =>
+				h === 'user-agent' ? 'Mozilla/5.0' : undefined,
+			);
+
+			interceptor.intercept(mockExecutionContext, mockCallHandler).subscribe({
+				error: (err) => {
+					expect(err).toBe(error);
+					expect(monitoringService.buildRequestMetadata).toHaveBeenCalledWith(
+						'/v1/agents',
+						HttpMethod.PUT,
+						400,
+						expect.any(Number),
+						'203.0.113.1',
+						'Mozilla/5.0',
+						error,
+						expect.any(Number),
+						undefined,
+						'{"id":"req-1"}',
+					);
+					done();
+				},
+			});
+		});
+
+		it('passes undefined snapshot when body is empty and capture is enabled', async () => {
+			mockRequest.body = undefined;
+			mockRequest.method = 'GET';
+			monitoringService.buildRequestMetadata.mockReturnValue({} as any);
+			monitoringService.logRequest.mockResolvedValue(undefined);
+			(mockRequest.get as jest.Mock).mockReturnValue(undefined);
+
+			await firstValueFrom(interceptor.intercept(mockExecutionContext, mockCallHandler));
+
+			expect(monitoringService.buildRequestMetadata.mock.calls[0][9]).toBeUndefined();
+		});
+
+		it('serializes numeric primitive body', async () => {
+			mockRequest.method = 'POST';
+			mockRequest.body = 99 as unknown as object;
+			monitoringService.buildRequestMetadata.mockReturnValue({} as any);
+			monitoringService.logRequest.mockResolvedValue(undefined);
+			(mockRequest.get as jest.Mock).mockReturnValue(undefined);
+
+			await firstValueFrom(interceptor.intercept(mockExecutionContext, mockCallHandler));
+
+			expect(monitoringService.buildRequestMetadata.mock.calls[0][9]).toBe('99');
+		});
+
+		it('truncates snapshot when over requestBodyMaxBytes', async () => {
+			const module = await Test.createTestingModule({
+				providers: [
+					ApiMonitoringInterceptor,
+					{ provide: ApiMonitoringService, useValue: monitoringService },
+					{ provide: ApiRequestContextService, useValue: contextService },
+					{
+						provide: API_MONITORING_MODULE_OPTIONS,
+						useValue: { captureRequestBody: true, requestBodyMaxBytes: 32 },
+					},
+				],
+			}).compile();
+			interceptor = module.get<ApiMonitoringInterceptor>(ApiMonitoringInterceptor);
+
+			mockRequest.method = 'POST';
+			mockRequest.body = { a: 'x'.repeat(100) };
+
+			monitoringService.buildRequestMetadata.mockReturnValue({} as any);
+			monitoringService.logRequest.mockResolvedValue(undefined);
+			(mockRequest.get as jest.Mock).mockReturnValue(undefined);
+
+			await firstValueFrom(interceptor.intercept(mockExecutionContext, mockCallHandler));
+
+			const snap = monitoringService.buildRequestMetadata.mock.calls[0][9] as string;
+			expect(Buffer.byteLength(snap, 'utf8')).toBeLessThanOrEqual(32);
+			expect(snap).toContain('…[truncated]');
 		});
 	});
 });

@@ -55,6 +55,8 @@ export interface ApiRequestMetadata {
 	hasError: boolean;
 	errorMessage?: string;
 	stackTrace?: string;
+	/** Snapshot of parsed request body when `captureRequestBody` is enabled in `ApiMonitoringModule.forRoot`. */
+	requestBodySnapshot?: string;
 }
 
 export interface TimeSeriesQuery {
