@@ -95,6 +95,31 @@ describe('ApiMonitoringService', () => {
 			expect(requestLogRepo.save).toHaveBeenCalledWith(mockLog);
 		});
 
+		it('persists requestBodySnapshot when present on metadata', async () => {
+			const metadata: ApiRequestMetadata = {
+				route: '/v1/agents',
+				method: HttpMethod.POST,
+				statusCode: 400,
+				latencyMs: 5,
+				actorId: 'actor-123',
+				actorType: ApiActorType.USER,
+				correlationId: 'corr-123',
+				timestamp: new Date(),
+				hasError: true,
+				requestBodySnapshot: '{"a":1}',
+			};
+
+			const mockLog = { id: 'log-456', ...metadata } as Record<string, unknown>;
+			requestLogRepo.create.mockReturnValue(mockLog);
+			requestLogRepo.save.mockResolvedValue(mockLog);
+
+			await service.logRequest(metadata);
+
+			expect(requestLogRepo.create).toHaveBeenCalledWith(
+				expect.objectContaining({ requestBodySnapshot: '{"a":1}' }),
+			);
+		});
+
 		it('should skip logging when disabled', async () => {
 			process.env.API_MONITORING_ENABLED = 'false';
 
@@ -407,6 +432,29 @@ describe('ApiMonitoringService', () => {
 
 			expect(result.requestSizeBytes).toBe(1024);
 			expect(result.responseSizeBytes).toBe(2048);
+		});
+
+		it('should include requestBodySnapshot when provided', () => {
+			contextService.getContext.mockReturnValue({
+				correlationId: 'corr-123',
+				actorId: 'actor-1',
+				actorType: ApiActorType.USER,
+			} as any);
+
+			const result = service.buildRequestMetadata(
+				'/v1/agents',
+				HttpMethod.POST,
+				400,
+				10,
+				undefined,
+				undefined,
+				new Error('bad'),
+				100,
+				undefined,
+				'{"id":"x"}',
+			);
+
+			expect(result.requestBodySnapshot).toBe('{"id":"x"}');
 		});
 	});
 });

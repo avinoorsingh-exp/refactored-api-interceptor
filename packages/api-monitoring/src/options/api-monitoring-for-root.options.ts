@@ -25,4 +25,16 @@ export interface ApiMonitoringForRootOptions {
 	 * Omit for the default connection.
 	 */
 	dataSourceName?: string;
+
+	/**
+	 * When `true`, persist a snapshot of `req.body` (after body-parser) on `api_request_log.request_body_snapshot`.
+	 * **Off by default** — bodies often contain PII/secrets; enable only with redaction or policy in place.
+	 */
+	captureRequestBody?: boolean;
+
+	/**
+	 * Max UTF-8 byte length stored when `captureRequestBody` is true (suffix `…[truncated]` may apply). Clamped to 256–1_048_576.
+	 * @default 16384
+	 */
+	requestBodyMaxBytes?: number;
 }

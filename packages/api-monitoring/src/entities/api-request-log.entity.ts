@@ -79,6 +79,10 @@ export class ApiRequestLogEntity {
 	@Column({ name: 'stack_trace', type: 'text', nullable: true })
 	stackTrace?: string;
 
+	/** Optional snapshot of parsed JSON/object body when capture is enabled in module options. */
+	@Column({ name: 'request_body_snapshot', type: 'text', nullable: true })
+	requestBodySnapshot?: string;
+
 	@CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
 	createdAt!: Date;
 }

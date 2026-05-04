@@ -3,6 +3,7 @@ import {
 	NestInterceptor,
 	ExecutionContext,
 	CallHandler,
+	Inject,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { tap, catchError } from 'rxjs/operators';
@@ -13,6 +14,11 @@ type HttpRequest = Request & { route?: { path?: string } };
 import { HttpMethod } from '../domain/api-monitoring.types.js';
 import { ApiMonitoringService } from '../services/api-monitoring.service.js';
 import { ApiRequestContextService } from '../services/api-request-context.service.js';
+import {
+	API_MONITORING_MODULE_OPTIONS,
+	type ApiMonitoringModuleRuntimeOptions,
+} from '../tokens/api-monitoring-module-options.token.js';
+import { serializeRequestBodySnapshot } from '../utils/serialize-request-body-snapshot.util.js';
 
 /**
  * HTTP Interceptor for API request monitoring.
@@ -31,6 +37,8 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 	constructor(
 		private readonly monitoringService: ApiMonitoringService,
 		private readonly contextService: ApiRequestContextService,
+		@Inject(API_MONITORING_MODULE_OPTIONS)
+		private readonly moduleOptions: ApiMonitoringModuleRuntimeOptions,
 	) {}
 
 	intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
@@ -55,6 +63,11 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 		// Calculate request size (if available)
 		const requestSizeBytes = this.calculateRequestSize(request);
 
+		const requestBodySnapshot =
+			this.moduleOptions.captureRequestBody === true
+				? serializeRequestBodySnapshot(request.body, this.moduleOptions.requestBodyMaxBytes)
+				: undefined;
+
 		return next.handle().pipe(
 			tap({
 				next: (data: unknown) => {
@@ -77,6 +90,7 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 						undefined, // no error
 						requestSizeBytes,
 						responseSizeBytes,
+						requestBodySnapshot,
 					);
 
 					// Log asynchronously (non-blocking)
@@ -109,6 +123,7 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 					err,
 					requestSizeBytes,
 					undefined, // response size not available on error
+					requestBodySnapshot,
 				);
 
 				// Log asynchronously (non-blocking)

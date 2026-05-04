@@ -15,6 +15,7 @@ import {
 import { API_MONITORING_ENTITY_CLASSES } from '../../src/tokens/entity-classes.token.js';
 import { ApiMonitoringController } from '../../src/api-monitoring.controller.js';
 import { ApiMonitoringInterceptor } from '../../src/interceptors/api-monitoring.interceptor.js';
+import { API_MONITORING_MODULE_OPTIONS } from '../../src/tokens/api-monitoring-module-options.token.js';
 
 class MockLogger implements IApiMonitoringLogger {
 	setContext = jest.fn();
@@ -25,9 +26,8 @@ class MockLogger implements IApiMonitoringLogger {
 }
 
 class MockAsyncContext implements IApiMonitoringAsyncContext {
-	get = jest.fn();
-	set = jest.fn();
-	run = jest.fn(<T,>(store: never, fn: () => T) => fn());
+	getStore = jest.fn().mockReturnValue(undefined);
+	getCorrelationId = jest.fn().mockReturnValue(undefined);
 }
 
 describe('ApiMonitoringModule.forRoot', () => {
@@ -50,6 +50,11 @@ describe('ApiMonitoringModule.forRoot', () => {
 		expect(findByToken(providers, API_MONITORING_ASYNC_CONTEXT)).toMatchObject({ useClass: MockAsyncContext });
 		const logTok = findByToken(providers, API_MONITORING_LOGGER_TOKEN);
 		expect(logTok).toMatchObject({ inject: [MockLogger] });
+		const modOpts = findByToken(providers, API_MONITORING_MODULE_OPTIONS);
+		expect(modOpts).toEqual({
+			provide: API_MONITORING_MODULE_OPTIONS,
+			useValue: { captureRequestBody: false, requestBodyMaxBytes: 16_384 },
+		});
 		const appInter = findByToken(providers, APP_INTERCEPTOR);
 		expect(appInter).toEqual({ provide: APP_INTERCEPTOR, useClass: ApiMonitoringInterceptor });
 
@@ -109,6 +114,27 @@ describe('ApiMonitoringModule.forRoot', () => {
 		);
 		const actorR = findBySymbol(providers, API_MONITORING_ACTOR_REPO) as { inject: unknown[] };
 		expect(actorR.inject[0]).toBe(getRepositoryToken(DEFAULT_API_MONITORING_ENTITIES.ApiActorEntity, conn));
+	});
+
+	it('clamps requestBodyMaxBytes and enables capture when configured', () => {
+		const mod = ApiMonitoringModule.forRoot({
+			logger: MockLogger,
+			asyncContext: MockAsyncContext,
+			captureRequestBody: true,
+			requestBodyMaxBytes: 99,
+		});
+		const modOpts = (mod.providers as any[]).find((p) => p && p.provide === API_MONITORING_MODULE_OPTIONS);
+		expect(modOpts.useValue).toEqual({ captureRequestBody: true, requestBodyMaxBytes: 256 });
+	});
+
+	it('clamps requestBodyMaxBytes to upper bound 1048576', () => {
+		const mod = ApiMonitoringModule.forRoot({
+			logger: MockLogger,
+			asyncContext: MockAsyncContext,
+			requestBodyMaxBytes: 9_999_999,
+		});
+		const modOpts = (mod.providers as any[]).find((p) => p && p.provide === API_MONITORING_MODULE_OPTIONS);
+		expect(modOpts.useValue).toEqual({ captureRequestBody: false, requestBodyMaxBytes: 1_048_576 });
 	});
 
 	it('exposes the services and actor middleware to host modules', () => {

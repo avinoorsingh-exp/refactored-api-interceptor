@@ -1,8 +1,8 @@
 # `@exprealty/api-monitoring`
 
-**Package version (this line):** `0.2.0` — built for **NestJS 11** and **TypeORM 0.3** (`@nestjs/typeorm` 11). Bump `version` in `package.json` before each CodeArtifact publish.
+**Package version (this line):** `0.2.1` — built for **NestJS 11** and **TypeORM 0.3** (`@nestjs/typeorm` 11). Bump `version` in `package.json` when you cut a release.
 
-NestJS module for HTTP API monitoring: request logging, actor attribution, metrics, and read-only admin endpoints. This package is **self-contained** (no other `@exprealty/*` dependencies) so it can be published to **npm / AWS CodeArtifact** and used from any application that already uses **PostgreSQL** and **TypeORM`.
+NestJS module for HTTP API monitoring: request logging, actor attribution, metrics, and read-only admin endpoints. This package is **self-contained** (no other `@exprealty/*` dependencies) so it can be published to an **npm-compatible registry** or consumed via **workspace** from any application that already uses **PostgreSQL** and **TypeORM**.
 
 Use this document to **install the package**, **point it at your app’s existing database**, **register the bundled entities**, and **wire your HTTP API** so traffic is recorded.
 
@@ -34,23 +34,9 @@ psql --version
 
 ## 1. Install the package
 
-### A. From your private registry (e.g. CodeArtifact) — in the *consumer* app
+### A. From a private or public npm registry — in the *consumer* app
 
-**1) Authenticate to your registry** (one-time; example is illustrative — follow your org’s docs).
-
-```bash
-# Example: AWS CodeArtifact (replace account, domain, and region)
-aws codeartifact login --tool npm --domain your-domain --domain-owner 123456789012 --repository npm-packages --region us-east-1
-```
-
-**2) Point the `@exprealty` scope to your registry** in the app’s project root, file `.npmrc` (or user-level `~/.npmrc`):
-
-```text
-@exprealty:registry=https://<your-codeartifact-or-registry-url>/
-# often required: //<host>/:_authToken=${NPM_TOKEN}
-```
-
-**3) Add the dependency and install:**
+Configure scope and auth the way your organization does (`.npmrc`, CI tokens, and so on), then:
 
 ```bash
 # npm
@@ -63,10 +49,9 @@ pnpm add @exprealty/api-monitoring
 yarn add @exprealty/api-monitoring
 ```
 
-**4) Verify it is listed:**
+Verify:
 
 ```bash
-# npm
 npm ls @exprealty/api-monitoring
 ```
 
@@ -209,6 +194,8 @@ export class AppModule {}
 | `asyncContext` | Yes | Class implementing `IApiMonitoringAsyncContext`. |
 | `entities` | No | Omit to use defaults from this package. |
 | `dataSourceName` | No | Only for a **named** TypeORM connection. |
+| `captureRequestBody` | No | Default `false`. If `true`, stores a UTF-8 snapshot of parsed `req.body` in `core.api_request_log.request_body_snapshot` (requires a DB migration that adds this column). **PII/secrets risk** — enable only with policy/redaction. |
+| `requestBodyMaxBytes` | No | Max stored bytes for the snapshot (default `16384`, clamped between `256` and `1048576`). Longer payloads are cut with a `…[truncated]` suffix. |
 
 **After code changes, same as any Nest app:**
 
@@ -236,11 +223,40 @@ import {
 export class AppModule {}
 ```
 
+**Example with request body capture** (substitute your logger and async-context classes; below matches the `agent-service` app pattern):
+
+```typescript
+ApiMonitoringModule.forRoot({
+  logger: LoggerService,
+  asyncContext: ApiMonitoringCacheAsyncContextAdapter,
+  // Request body snapshots (opt-in; run DB migration for `request_body_snapshot` first)
+  captureRequestBody: true,
+  requestBodyMaxBytes: 16_384, // optional; default 16384, clamped 256–1_048_576
+}),
+```
+
+**Notes:**
+
+- Apply the migration that adds `core.api_request_log.request_body_snapshot` **before** turning `captureRequestBody` on.
+- Only **parsed** `req.body` is captured (JSON, urlencoded, etc., as your Nest/Express pipeline configures).
+- `logRequest` **still skips** persisting a row when **`actorId`** is missing in context (see [Where `actorId` is set](#where-actorid-is-set-not-in-forroot)).
+- Treat stored bodies as **sensitive** (PII/secrets); use policy, redaction, and retention as required.
+
+### Where `actorId` is set (not in `forRoot`)
+
+You **do not** pass `actorId` into `ApiMonitoringModule.forRoot`.
+
+1. **`asyncContext`** — Your adapter (e.g. one backed by `AsyncLocalStorage` or `@exprealty/cache`’s `AsyncContextStorage`) must expose the **same** per-request store the app uses for correlation and monitoring metadata.
+2. **`ApiActorMiddleware`** — Register it in `AppModule.configure()` **after** middleware that creates that store (e.g. correlation ID). It resolves the caller (authenticated user, API key, etc.) or an anonymous actor, then calls `ApiRequestContextService.updateActor(actorId, actorType)`, which writes into that async store.
+3. **`ApiMonitoringService.logRequest`** — Reads `actorId` (and related fields) from context when the interceptor runs. If `actorId` is still missing, the request log row is **not** saved.
+
+To change *how* an actor is derived from `req` (headers, `req.user`, JWT, etc.), adjust **`ApiActorMiddleware`** / your auth order—not `forRoot` options.
+
 ---
 
 ## 5. HTTP pipeline: correlation → actor → interceptors
 
-**1) Order middleware in `AppModule.configure()`** (TypeScript; then `npm run start:dev`).
+**1) Order middleware in `AppModule.configure()`** (TypeScript; then `npm run start:dev`). Correlation first, then **`ApiActorMiddleware`**, so the async store and `actorId` exist before the global interceptor records the request.
 
 **2) If the middleware is registered in `AppModule`**, add the logger bridge:
 
@@ -319,6 +335,7 @@ curl -s "http://localhost:3000/v1/api-monitoring/metrics/routes?startTime=2024-0
 
 ```bash
 cd packages/api-monitoring
+pnpm run clean   # removes dist/ (ignore error if dist did not exist)
 pnpm run build
 pnpm test
 ```
@@ -346,79 +363,15 @@ npm run pack:check
 
 `package.json` only ships the `files` list (`dist/`) plus default metadata (README, `package.json`, etc.); source stays out of the tarball.
 
----
-
-## 9. Publish to AWS CodeArtifact
-
-`@exprealty/api-monitoring` is configured to publish to your **eXp CodeArtifact** npm repository via `publishConfig` in this package. The monorepo `.npmrc` also maps `@exprealty` to that registry.
-
-### 9.1 Prereqs
-
-- **AWS credentials** (SSO, env vars, or instance role) with permission: `codeartifact:PublishPackageVersion`, `GetAuthorizationToken`, and read on the `npm` repo.
-- **Version bump** before each publish: edit `version` in `packages/api-monitoring/package.json` (or use `npm version` / Changesets) so the registry accepts a new tarball.
-
-### 9.2 Log in to CodeArtifact (npm) — one-time per token lifetime
-
-**Replace** account, `domain`, `domain-owner`, `repository`, and `region` if your org’s names differ (this repo’s registry URL is in the root `.npmrc` and in `publishConfig`).
-
-```bash
-aws codeartifact login \
-  --tool npm \
-  --domain your-domain \
-  --domain-owner 123456789012 \
-  --repository npm-packages \
-  --region us-east-1
-```
-
-This writes the auth line into your user or project `npm` config. Ensure `@exprealty:registry=…` points at the same **CodeArtifact** `npm` endpoint as in `publishConfig`.
-
-### 9.3 Build and publish from the monorepo (recommended)
-
-From the **`agent-service/`** repo root:
-
-```bash
-# optional: run tests
-pnpm run test:full
-
-# build + publish this package (uses prepublishOnly → build)
-pnpm run publish:api-monitoring
-```
-
-Or from **`packages/api-monitoring/`** only:
-
-```bash
-cd packages/api-monitoring
-npm run build
-npm publish
-# or: pnpm publish
-```
-
-`prepublishOnly` runs `npm run build` so `dist/` is fresh. Do **not** commit secrets; CI should use **OIDC** or **aws codeartifact get-authorization-token** + `npm config set` in the pipeline.
-
-### 9.4 Consuming the published package in another app
-
-**`.npmrc`** in the app (or CI):
-
-```text
-@exprealty:registry=https://exprealty-125434132943.d.codeartifact.us-east-1.amazonaws.com/npm/npm-packages/
-```
-
-Then:
-
-```bash
-aws codeartifact login --tool npm --domain <domain> --domain-owner <account> --repository npm-packages --region <region>
-npm install @exprealty/api-monitoring
-```
-
-(Use the same login pattern your team already uses for other `@exprealty` packages.)
+Publishing (registry URL, auth, and CI) is owned by your **monorepo / platform docs** and `publishConfig` in `package.json`, not duplicated here.
 
 ---
 
-## 10. Architecture summary
+## 9. Architecture summary
 
 | Piece | Role |
 |-------|------|
-| `ApiMonitoringInterceptor` | Global interceptor: latency, status, metadata → `api_request_log` |
+| `ApiMonitoringInterceptor` | Global interceptor: latency, status, metadata → `api_request_log`; optional `request_body_snapshot` when `captureRequestBody` is true |
 | `ApiActorMiddleware` | Actors → `api_actor` |
 | `ApiMonitoringService` | Logging, classification, sampling |
 | `ApiMetricsService` | Aggregations, top callers, trends, … |
@@ -426,10 +379,35 @@ npm install @exprealty/api-monitoring
 
 ---
 
-## 11. Security notes
+## 10. Security notes
 
 - Error sanitization; stack traces for server errors only.  
 - **Do not** expose `/v1/api-monitoring` without auth.  
-- Request/response bodies are not logged by default.  
+- Request bodies are **not** stored unless you set `captureRequestBody: true` (and run the DB migration for `request_body_snapshot`). Treat captured bodies as **sensitive** (PII/secrets).  
 
 For details, see `src/` and `tests/`.
+
+---
+
+## 11. Operational blockers and how to resolve them
+
+### 11.1 Checklist (what can go wrong)
+
+| Topic | Blocker? |
+|-------|----------|
+| **Database** | Tables in `core` must exist (migrations). |
+| **`request_body_snapshot`** | Column only exists after the migration that adds it; enabling `captureRequestBody` before migrating can cause insert errors. |
+| **`req.body`** | Snapshots use **parsed** body only. Raw streams, wrong middleware order, or skipped parsers mean little or nothing to capture. |
+| **Actor ID** | `ApiMonitoringService.logRequest` skips persistence when `actorId` is missing (see service behavior). |
+| **PII / compliance** | Storing bodies may violate policy unless redacted or allowed by legal/security. |
+
+### 11.2 Resolutions (what to do)
+
+| Topic | How to resolve |
+|-------|----------------|
+| **Database / `core` schema** | Run your app’s TypeORM migrations against the same database as `TypeOrmModule.forRoot`. In this monorepo: `pnpm run migration:run` (or `migration:run:local`) from `agent-service/`. Ensure `CREATE SCHEMA IF NOT EXISTS core;` if your process requires it. |
+| **`request_body_snapshot` column** | Apply the migration that adds `request_body_snapshot` to `core.api_request_log` **before** setting `captureRequestBody: true` in `ApiMonitoringModule.forRoot`. If inserts fail, run pending migrations or turn off `captureRequestBody` until the column exists. |
+| **Empty or missing `req.body`** | Rely on Nest/Express body parsing so `req.body` is filled before the interceptor runs. Check `Content-Type`, body size limits, and route-specific parsers. Multipart/raw streams are not JSON snapshots unless you parse them into `req.body` yourself. |
+| **No rows / missing `actorId`** | Ensure correlation + `ApiActorMiddleware` run in the right order and that your auth/gateway provides headers (or logic) the middleware uses so async context includes `actorId`. If you need logs **without** an actor, that requires a **code/product change** (today the service skips save when `actorId` is absent). |
+| **PII / secrets in stored bodies** | Default is `captureRequestBody: false`. If enabled: lower `requestBodyMaxBytes`, redact in your own middleware before monitoring, define retention and access controls, and follow legal/security sign-off. |
+| **Where to set capture options** | In the consuming app: `ApiMonitoringModule.forRoot({ captureRequestBody, requestBodyMaxBytes, ... })` (same object as `logger` / `asyncContext`). There are no env vars in the package; map env → options in your `AppModule` if needed. |
