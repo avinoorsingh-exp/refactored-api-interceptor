@@ -6,6 +6,7 @@ import { ApiMonitoringUserService } from '../services/api-monitoring-user.servic
 import { ApiRequestContextService } from '../services/api-request-context.service.js';
 import type { IApiMonitoringLogger } from '../interfaces/logger.interface.js';
 import { API_MONITORING_LOGGER_TOKEN } from '../interfaces/logger.interface.js';
+import { parseSourceApplicationHeader } from '../utils/parse-source-application-header.util.js';
 
 type ActorUserStub = { id?: string; email?: string; username?: string };
 type ApiKeyStub = { id?: string; name?: string };
@@ -80,10 +81,12 @@ export class ApiActorMiddleware implements NestMiddleware {
 						(typeof actorInfo.metadata?.email === 'string' && actorInfo.metadata.email) ||
 						(req as RequestWithActorSources).user?.email;
 					if (ext) {
+						const sourceApplication = parseSourceApplicationHeader((name) => req.get(name));
 						const profile = await this.monitoringUserService.upsertForUserActor({
 							externalId: ext,
 							email,
 							actorId: actor.id,
+							sourceApplication,
 						});
 						if (profile?.id) {
 							this.contextService.updateMonitoringUser(profile.id);

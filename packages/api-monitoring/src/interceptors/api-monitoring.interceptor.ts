@@ -19,6 +19,7 @@ import {
 	type ApiMonitoringModuleRuntimeOptions,
 } from '../tokens/api-monitoring-module-options.token.js';
 import { serializeRequestBodySnapshot } from '../utils/serialize-request-body-snapshot.util.js';
+import { parseSourceApplicationHeader } from '../utils/parse-source-application-header.util.js';
 
 /**
  * HTTP Interceptor for API request monitoring.
@@ -68,6 +69,8 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 				? serializeRequestBodySnapshot(request.body, this.moduleOptions.requestBodyMaxBytes)
 				: undefined;
 
+		const sourceApplication = parseSourceApplicationHeader((name) => request.get(name));
+
 		return next.handle().pipe(
 			tap({
 				next: (data: unknown) => {
@@ -91,6 +94,7 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 						requestSizeBytes,
 						responseSizeBytes,
 						requestBodySnapshot,
+						sourceApplication,
 					);
 
 					// Log asynchronously (non-blocking)
@@ -124,6 +128,7 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 					requestSizeBytes,
 					undefined, // response size not available on error
 					requestBodySnapshot,
+					sourceApplication,
 				);
 
 				// Log asynchronously (non-blocking)

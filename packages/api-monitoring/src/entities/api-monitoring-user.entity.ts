@@ -44,6 +44,12 @@ export class ApiMonitoringUserEntity {
 	@Column({ name: 'email', type: 'text', nullable: true })
 	email?: string;
 
+	/**
+	 * Last non-empty `x-source-app` seen for this profile on upsert (informational; per-request app is on `api_request_log`).
+	 */
+	@Column({ name: 'last_source_application', type: 'text', nullable: true })
+	lastSourceApplication?: string;
+
 	@CreateDateColumn({ name: 'created_at', type: 'timestamp with time zone' })
 	createdAt!: Date;
 

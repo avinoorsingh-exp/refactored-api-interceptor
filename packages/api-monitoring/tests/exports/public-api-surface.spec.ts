@@ -24,5 +24,7 @@ describe('public package surface (index)', () => {
 		expect(Esm.API_MONITORING_LOGGER_TOKEN).toBeDefined();
 		expect(Esm.API_MONITORING_ASYNC_CONTEXT).toBeDefined();
 		expect(Esm.API_MONITORING_ENTITY_CLASSES).toBeDefined();
+		expect(Esm.API_MONITORING_SOURCE_APP_HEADER).toBe('x-source-app');
+		expect(Esm.parseSourceApplicationHeader).toBeInstanceOf(Function);
 	});
 });

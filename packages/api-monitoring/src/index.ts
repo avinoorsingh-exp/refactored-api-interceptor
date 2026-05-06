@@ -97,6 +97,10 @@ export {
 } from './utils/pagination.util.js';
 export { shouldLogApiRequest } from './utils/should-log-api-request.util.js';
 export {
+	API_MONITORING_SOURCE_APP_HEADER,
+	parseSourceApplicationHeader,
+} from './utils/parse-source-application-header.util.js';
+export {
 	resolveTrendBucketType,
 	calculateBucketCount,
 	getWeekStart,

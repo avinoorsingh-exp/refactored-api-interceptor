@@ -77,6 +77,7 @@ export class ApiMonitoringService {
 				stackTrace: metadata.stackTrace,
 				requestBodySnapshot: metadata.requestBodySnapshot,
 				monitoringUserId: metadata.monitoringUserId,
+				sourceApplication: metadata.sourceApplication,
 			} as Record<string, unknown>);
 
 			await this.requestLogRepo.save(log).catch((err: unknown) => {
@@ -148,6 +149,7 @@ export class ApiMonitoringService {
 		requestSizeBytes?: number,
 		responseSizeBytes?: number,
 		requestBodySnapshot?: string,
+		sourceApplication?: string,
 	): ApiRequestMetadata {
 		const context = this.contextService.getContext();
 		const correlationId = context?.correlationId || 'unknown';
@@ -183,6 +185,7 @@ export class ApiMonitoringService {
 			errorMessage,
 			stackTrace,
 			requestBodySnapshot,
+			sourceApplication,
 		};
 	}
 }

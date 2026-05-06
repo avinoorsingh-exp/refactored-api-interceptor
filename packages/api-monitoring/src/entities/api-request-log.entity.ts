@@ -24,6 +24,7 @@ import {
 @Index('idx_api_request_log_status', ['statusCode', 'timestamp'])
 @Index('idx_api_request_log_error', ['hasError', 'timestamp'])
 @Index('idx_api_request_log_monitoring_user', ['monitoringUserId', 'timestamp'])
+@Index('idx_api_request_log_source_app', ['sourceApplication', 'timestamp'])
 export class ApiRequestLogEntity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string;
@@ -67,6 +68,13 @@ export class ApiRequestLogEntity {
 	/** Logical FK to {@link ApiMonitoringUserEntity} when the caller is a resolved USER profile. */
 	@Column({ name: 'monitoring_user_id', type: 'uuid', nullable: true })
 	monitoringUserId?: string;
+
+	/**
+	 * Upstream client id from `x-source-app` (e.g. `IMS`, `TRX`). Nullable when the header is omitted.
+	 * Many users and many apps: each request row stores one user (`monitoring_user_id`) and one app label.
+	 */
+	@Column({ name: 'source_application', type: 'text', nullable: true })
+	sourceApplication?: string;
 
 	@Column({ name: 'has_error', type: 'boolean', default: false })
 	hasError!: boolean;

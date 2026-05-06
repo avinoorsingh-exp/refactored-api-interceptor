@@ -145,6 +145,31 @@ describe('ApiMonitoringService', () => {
 			);
 		});
 
+		it('persists sourceApplication when present on metadata', async () => {
+			const metadata: ApiRequestMetadata = {
+				route: '/v1/agents',
+				method: HttpMethod.POST,
+				statusCode: 201,
+				latencyMs: 2,
+				actorId: 'actor-123',
+				actorType: ApiActorType.USER,
+				correlationId: 'corr-123',
+				timestamp: new Date(),
+				hasError: false,
+				sourceApplication: 'IMS',
+			};
+
+			const mockLog = { id: 'log-src', ...metadata } as Record<string, unknown>;
+			requestLogRepo.create.mockReturnValue(mockLog);
+			requestLogRepo.save.mockResolvedValue(mockLog);
+
+			await service.logRequest(metadata);
+
+			expect(requestLogRepo.create).toHaveBeenCalledWith(
+				expect.objectContaining({ sourceApplication: 'IMS' }),
+			);
+		});
+
 		it('should skip logging when disabled', async () => {
 			process.env.API_MONITORING_ENABLED = 'false';
 
@@ -498,6 +523,30 @@ describe('ApiMonitoringService', () => {
 			);
 
 			expect(result.monitoringUserId).toBe('mu-99');
+		});
+
+		it('should include sourceApplication when provided', () => {
+			contextService.getContext.mockReturnValue({
+				correlationId: 'corr-123',
+				actorId: 'actor-1',
+				actorType: ApiActorType.USER,
+			} as any);
+
+			const result = service.buildRequestMetadata(
+				'/v1/agents',
+				HttpMethod.GET,
+				200,
+				1,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				'TRX',
+			);
+
+			expect(result.sourceApplication).toBe('TRX');
 		});
 	});
 });

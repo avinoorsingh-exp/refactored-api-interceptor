@@ -90,7 +90,7 @@ The module expects **four** tables:
 | `ApiRequestLogEntity` | `core.api_request_log` |
 | `ApiRouteStatsEntity` | `core.api_route_stats` |
 
-For **`ApiMonitoringUserEntity`**: stores **`external_id`** (stable user key from your IdP), optional **`email`**, optional **`user_uuid`** when the key is UUID-shaped, and **`actor_id`** pointing at the USER’s `api_actor` row. **`ApiActorMiddleware`** upserts this row for `ApiActorType.USER` and sets **`monitoring_user_id`** on each request log via async context. See [docs/api-monitoring.md](./docs/api-monitoring.md).
+For **`ApiMonitoringUserEntity`**: stores **`external_id`** (stable user key from your IdP), optional **`email`**, optional **`user_uuid`** when the key is UUID-shaped, optional **`last_source_application`** (last seen **`x-source-app`** on upsert), and **`actor_id`** pointing at the USER’s `api_actor` row. **`ApiActorMiddleware`** upserts this row for `ApiActorType.USER` and sets **`monitoring_user_id`** on each request log via async context. **`ApiMonitoringInterceptor`** also stores **`source_application`** on each **`api_request_log`** row from the same header. See [docs/api-monitoring.md](./docs/api-monitoring.md).
 
 **You must apply the same schema to the database your app uses.** This package does **not** run migrations; it only ships **entity** classes.
 
@@ -247,6 +247,44 @@ ApiMonitoringModule.forRoot({
 - `logRequest` **still skips** persisting a row when **`actorId`** is missing in context (see [Where `actorId` is set](#where-actorid-is-set-not-in-forroot)).
 - Treat stored bodies as **sensitive** (PII/secrets); use policy, redaction, and retention as required.
 
+### Source application header (`x-source-app`)
+
+When a **calling product** (IMS, TRX, an internal portal, etc.) invokes your API—directly or via a gateway—send a short, stable label on **`x-source-app`**. The package:
+
+- Persists **`source_application`** on each **`api_request_log`** row (with **`monitoring_user_id`** / **`actor_id`** when auth + middleware ran).
+- Passes the same value into **`ApiMonitoringUserService.upsertForUserActor`**, which updates **`last_source_application`** on **`api_monitoring_user`** (optional convenience; **per-request** truth is always the log row).
+
+Apply the database migration that adds **`source_application`** and **`last_source_application`** (see `packages/database/src/migrations/*AddSourceApplicationToApiMonitoring*.ts` in the monorepo).
+
+**Dummy request (HTTP)** — replace host, path, and auth; correlation header name must match how your app sets async context:
+
+```http
+POST /v1/example/resource HTTP/1.1
+Host: localhost:3000
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+x-source-app: IMS
+X-Correlation-Id: 550e8400-e29b-41d4-a716-446655440000
+
+{
+  "intent": "syncListing",
+  "listingId": "MLS-123456",
+  "metadata": { "region": "US-WEST" }
+}
+```
+
+**Minimal JSON body only** (headers as above):
+
+```json
+{
+  "intent": "syncListing",
+  "listingId": "MLS-123456",
+  "metadata": { "region": "US-WEST" }
+}
+```
+
+Exported helpers: **`API_MONITORING_SOURCE_APP_HEADER`** (`x-source-app`) and **`parseSourceApplicationHeader`**.
+
 ### Where `actorId` is set (not in `forRoot`)
 
 You **do not** pass `actorId` into `ApiMonitoringModule.forRoot`.
@@ -380,8 +418,8 @@ Publishing (registry URL, auth, and CI) is owned by your **monorepo / platform d
 |-------|------|
 | `ApiMonitoringInterceptor` | Global interceptor: latency, status, metadata → `api_request_log`; optional `request_body_snapshot` when `captureRequestBody` is true |
 | `ApiActorMiddleware` | Actors → `api_actor`; for **USER**, upserts `api_monitoring_user` and sets context `monitoringUserId` |
-| `ApiMonitoringUserService` | Upserts `core.api_monitoring_user` (`external_id`, `email`, `actor_id`) |
-| `ApiMonitoringService` | Logging, classification, sampling; persists `monitoring_user_id` on `api_request_log` when present |
+| `ApiMonitoringUserService` | Upserts `core.api_monitoring_user` (`external_id`, `email`, `actor_id`, optional `last_source_application` from `x-source-app`) |
+| `ApiMonitoringService` | Logging, classification, sampling; persists `monitoring_user_id` and `source_application` on `api_request_log` when present |
 | `ApiMetricsService` | Aggregations, top callers, trends, … |
 | `ApiMonitoringController` | Read-only / admin HTTP API |
 

@@ -7,6 +7,8 @@ Entity definitions match **`@exprealty/api-monitoring`** TypeORM entities (v0.2.
 - **`core.api_request_log.actor_id`** references **`core.api_actor.id`** (same UUID). The package stores this as a plain column; there is **no TypeORM `@ManyToOne` / DB `FOREIGN KEY`** in the published entity — enforce at the DB layer only if your org requires it.
 - **`core.api_monitoring_user.actor_id`** references **`core.api_actor.id`** (logical). One profile row per stable **`external_id`** (IdP subject / user key), linked to the USER actor created by middleware.
 - **`core.api_request_log.monitoring_user_id`** references **`core.api_monitoring_user.id`** (logical). Set when `ApiActorType.USER` was resolved and `ApiMonitoringUserService` upserted a profile for that request.
+- **`core.api_request_log.source_application`** stores the normalized HTTP header **`x-source-app`** when present (e.g. `IMS`, `TRX`, deal desk). This is a **per-request** dimension: many humans can call from many apps; each log row records **one** user (when `monitoring_user_id` is set) and **one** source-app label for that HTTP call. There is **no separate “applications” table** and **no many-to-many** between users and apps—analytics use `GROUP BY` on `source_application` and/or joins to `api_monitoring_user`.
+- **`core.api_monitoring_user.last_source_application`** is updated on profile upsert when `x-source-app` is sent (convenience only; authoritative per-call app is on each `api_request_log` row).
 - **`core.api_route_stats`** is **aggregated** from request logs (route + method + time bucket). There is **no foreign key** to `api_request_log` or `api_actor`.
 
 ### Association types (cardinality)
@@ -49,6 +51,7 @@ erDiagram
     text external_id "NOT NULL, unique IdP subject / stable user key"
     uuid user_uuid "NULL, when external_id is UUID-shaped"
     text email "NULL"
+    text last_source_application "NULL, last x-source-app on upsert"
     timestamptz created_at "NOT NULL"
     timestamptz updated_at "NOT NULL"
   }
@@ -68,6 +71,7 @@ erDiagram
     uuid actor_id "NULL, logical FK to api_actor.id"
     text actor_type "NULL, ApiActorType enum as text"
     uuid monitoring_user_id "NULL, logical FK to api_monitoring_user.id"
+    text source_application "NULL, x-source-app per request"
     boolean has_error "NOT NULL, default false"
     text error_classification "NULL, ApiErrorClassification as text"
     text error_message "NULL"
@@ -127,12 +131,13 @@ erDiagram
 | `external_id` | `text` | NO | Stable unique key (e.g. Cognito `sub`, internal user id). **UNIQUE** |
 | `user_uuid` | `uuid` | YES | Set when `external_id` parses as a UUID |
 | `email` | `text` | YES | From auth / headers when available |
+| `last_source_application` | `text` | YES | Last non-empty `x-source-app` seen when the profile is upserted |
 | `created_at` | `timestamptz` | NO | |
 | `updated_at` | `timestamptz` | NO | |
 
 **Indexes:** unique `external_id`; index `actor_id`.
 
-Populated by **`ApiMonitoringUserService.upsertForUserActor`** from **`ApiActorMiddleware`** when `ApiActorType.USER` is resolved (`metadata.userId` / identifier + email).
+Populated by **`ApiMonitoringUserService.upsertForUserActor`** from **`ApiActorMiddleware`** when `ApiActorType.USER` is resolved (`metadata.userId` / identifier + email). When the request includes **`x-source-app`**, that value is passed into the upsert and stored in **`last_source_application`** (and on each **`api_request_log`** row via the interceptor).
 
 ---
 
@@ -154,6 +159,7 @@ Populated by **`ApiMonitoringUserService.upsertForUserActor`** from **`ApiActorM
 | `actor_id` | `uuid` | YES | → `api_actor.id` (logical) |
 | `actor_type` | `text` | YES | Redundant type for queries |
 | `monitoring_user_id` | `uuid` | YES | → `api_monitoring_user.id` (logical), USER flows |
+| `source_application` | `text` | YES | Normalized **`x-source-app`** (client label: `IMS`, `TRX`, etc.) |
 | `has_error` | `boolean` | NO | Default `false` |
 | `error_classification` | `text` | YES | `ApiErrorClassification` |
 | `error_message` | `text` | YES | |
@@ -161,7 +167,9 @@ Populated by **`ApiMonitoringUserService.upsertForUserActor`** from **`ApiActorM
 | `request_body_snapshot` | `text` | YES | UTF-8 snapshot when `captureRequestBody` is enabled |
 | `created_at` | `timestamptz` | NO | Row insert time |
 
-**Indexes:** `timestamp`; `(route, method)`; `(actor_id, timestamp)`; `correlation_id`; `(status_code, timestamp)`; `(has_error, timestamp)`; `(monitoring_user_id, timestamp)`.
+**Indexes:** `timestamp`; `(route, method)`; `(actor_id, timestamp)`; `correlation_id`; `(status_code, timestamp)`; `(has_error, timestamp)`; `(monitoring_user_id, timestamp)`; `(source_application, timestamp)`.
+
+**Header contract:** Upstream gateways or apps should send **`x-source-app`**: a short stable name for the calling product. The package reads it in **`ApiMonitoringInterceptor`** (every logged request) and in **`ApiActorMiddleware`** when upserting **`api_monitoring_user`**. Values are trimmed and limited to **64** characters; see **`parseSourceApplicationHeader`** and **`API_MONITORING_SOURCE_APP_HEADER`** on the package entry.
 
 ---
 

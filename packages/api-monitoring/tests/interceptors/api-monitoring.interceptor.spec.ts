@@ -141,6 +141,7 @@ describe('ApiMonitoringInterceptor', () => {
 						expect.any(Number), // requestSizeBytes
 						undefined, // responseSizeBytes not available on error
 						undefined, // requestBodySnapshot (capture off)
+						undefined, // sourceApplication
 					);
 					expect(monitoringService.logRequest).toHaveBeenCalledWith(metadata);
 					done();
@@ -182,6 +183,7 @@ describe('ApiMonitoringInterceptor', () => {
 						expect.any(Number), // requestSizeBytes
 						expect.any(Number), // responseSizeBytes
 						undefined,
+						undefined, // sourceApplication
 					);
 					done();
 				},
@@ -324,6 +326,22 @@ describe('ApiMonitoringInterceptor', () => {
 			const callArgs = monitoringService.buildRequestMetadata.mock.calls[0];
 			expect(callArgs[1]).toBe(HttpMethod.POST); // method should be POST
 		});
+
+		it('passes x-source-app into buildRequestMetadata', async () => {
+			(mockRequest.get as jest.Mock).mockImplementation((header: string) => {
+				if (header === 'x-source-app') {
+					return 'IMS';
+				}
+				return undefined;
+			});
+
+			monitoringService.buildRequestMetadata.mockReturnValue({} as any);
+			monitoringService.logRequest.mockResolvedValue(undefined);
+
+			await firstValueFrom(interceptor.intercept(mockExecutionContext, mockCallHandler));
+
+			expect(monitoringService.buildRequestMetadata.mock.calls[0][10]).toBe('IMS');
+		});
 	});
 
 	describe('captureRequestBody', () => {
@@ -370,6 +388,7 @@ describe('ApiMonitoringInterceptor', () => {
 				expect.any(Number),
 				expect.any(Number),
 				'{"hello":"world"}',
+				undefined,
 			);
 		});
 
@@ -407,6 +426,7 @@ describe('ApiMonitoringInterceptor', () => {
 						expect.any(Number),
 						undefined,
 						'{"id":"req-1"}',
+						undefined,
 					);
 					done();
 				},
@@ -423,6 +443,7 @@ describe('ApiMonitoringInterceptor', () => {
 			await firstValueFrom(interceptor.intercept(mockExecutionContext, mockCallHandler));
 
 			expect(monitoringService.buildRequestMetadata.mock.calls[0][9]).toBeUndefined();
+			expect(monitoringService.buildRequestMetadata.mock.calls[0][10]).toBeUndefined();
 		});
 
 		it('serializes numeric primitive body', async () => {
@@ -435,6 +456,7 @@ describe('ApiMonitoringInterceptor', () => {
 			await firstValueFrom(interceptor.intercept(mockExecutionContext, mockCallHandler));
 
 			expect(monitoringService.buildRequestMetadata.mock.calls[0][9]).toBe('99');
+			expect(monitoringService.buildRequestMetadata.mock.calls[0][10]).toBeUndefined();
 		});
 
 		it('truncates snapshot when over requestBodyMaxBytes', async () => {
@@ -463,6 +485,7 @@ describe('ApiMonitoringInterceptor', () => {
 			const snap = monitoringService.buildRequestMetadata.mock.calls[0][9] as string;
 			expect(Buffer.byteLength(snap, 'utf8')).toBeLessThanOrEqual(32);
 			expect(snap).toContain('…[truncated]');
+			expect(monitoringService.buildRequestMetadata.mock.calls[0][10]).toBeUndefined();
 		});
 	});
 });

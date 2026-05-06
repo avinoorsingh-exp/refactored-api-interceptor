@@ -51,6 +51,7 @@ describe('API monitoring TypeORM entities (core schema)', () => {
 				'idx_api_request_log_correlation',
 				'idx_api_request_log_error',
 				'idx_api_request_log_monitoring_user',
+				'idx_api_request_log_source_app',
 			]),
 		);
 	});
@@ -69,6 +70,26 @@ describe('API monitoring TypeORM entities (core schema)', () => {
 		const snap = cols.find((c) => c.propertyName === 'requestBodySnapshot');
 		expect(snap?.options.name).toBe('request_body_snapshot');
 		expect(snap?.options.type).toBe('text');
+	});
+
+	it('api_request_log: source_application column for x-source-app', () => {
+		const storage = getMetadataArgsStorage() as {
+			filterColumns: (t: unknown) => { propertyName: string; options: { name?: string; type?: string } }[];
+		};
+		const cols = storage.filterColumns(ApiRequestLogEntity);
+		const col = cols.find((c) => c.propertyName === 'sourceApplication');
+		expect(col?.options.name).toBe('source_application');
+		expect(col?.options.type).toBe('text');
+	});
+
+	it('api_monitoring_user: last_source_application column', () => {
+		const storage = getMetadataArgsStorage() as {
+			filterColumns: (t: unknown) => { propertyName: string; options: { name?: string; type?: string } }[];
+		};
+		const cols = storage.filterColumns(ApiMonitoringUserEntity);
+		const col = cols.find((c) => c.propertyName === 'lastSourceApplication');
+		expect(col?.options.name).toBe('last_source_application');
+		expect(col?.options.type).toBe('text');
 	});
 
 	it('api_route_stats: composite unique constraint on route, method, time bucket, bucket start', () => {

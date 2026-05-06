@@ -59,6 +59,8 @@ export interface ApiRequestMetadata {
 	stackTrace?: string;
 	/** Snapshot of parsed request body when `captureRequestBody` is enabled in `ApiMonitoringModule.forRoot`. */
 	requestBodySnapshot?: string;
+	/** Normalized `x-source-app` when the caller sends it (e.g. `IMS`, `TRX`). */
+	sourceApplication?: string;
 }
 
 export interface TimeSeriesQuery {

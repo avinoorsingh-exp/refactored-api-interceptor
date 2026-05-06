@@ -12,6 +12,7 @@ export type ApiMonitoringUserRow = {
 	externalId: string;
 	userUuid?: string;
 	email?: string;
+	lastSourceApplication?: string;
 	createdAt?: Date;
 	updatedAt?: Date;
 };
@@ -41,6 +42,8 @@ export class ApiMonitoringUserService {
 		externalId: string;
 		email?: string;
 		actorId: string;
+		/** When set (e.g. from `x-source-app`), updates `last_source_application` on the profile. */
+		sourceApplication?: string;
 	}): Promise<ApiMonitoringUserRow | undefined> {
 		const externalId = params.externalId?.trim();
 		if (!externalId) {
@@ -66,6 +69,9 @@ export class ApiMonitoringUserService {
 				if (userUuid !== undefined) {
 					patch.userUuid = userUuid;
 				}
+				if (params.sourceApplication !== undefined) {
+					patch.lastSourceApplication = params.sourceApplication;
+				}
 				Object.assign(row, patch);
 				const saved = await this.userRepo.save(row);
 				return this.mapRow(saved as Record<string, unknown>);
@@ -76,6 +82,7 @@ export class ApiMonitoringUserService {
 				externalId,
 				userUuid,
 				email: params.email,
+				lastSourceApplication: params.sourceApplication,
 			} as Record<string, unknown>);
 			const saved = await this.userRepo.save(created);
 			return this.mapRow(saved as Record<string, unknown>);
@@ -95,6 +102,7 @@ export class ApiMonitoringUserService {
 			externalId: r.externalId as string,
 			userUuid: r.userUuid as string | undefined,
 			email: r.email as string | undefined,
+			lastSourceApplication: r.lastSourceApplication as string | undefined,
 			createdAt: r.createdAt as Date | undefined,
 			updatedAt: r.updatedAt as Date | undefined,
 		};
