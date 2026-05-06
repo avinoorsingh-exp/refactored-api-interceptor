@@ -1,11 +1,29 @@
 # ERD — `@exprealty/api-monitoring` (PostgreSQL `core` schema)
 
-Entity definitions match **`@exprealty/api-monitoring`** TypeORM entities (v0.2.x). All tables live in schema **`core`**.
+This document is the **schema reference** for API monitoring: **logical associations**, a **Mermaid ERD**, **column tables**, **HTTP header contracts**, **monorepo migrations**, and **enum values**. Entity definitions match **`@exprealty/api-monitoring`** TypeORM entities (v0.2.x). All tables live in schema **`core`**.
 
-**Logical relationships**
+## Contents
+
+- [Logical relationships](#logical-relationships)
+- [Association types and notes](#association-types-cardinality)
+- [Request lifecycle (USER)](#request-lifecycle-user)
+- [Monorepo migrations](#monorepo-migrations)
+- [Diagram (Mermaid)](#diagram-mermaid)
+- [Table: `core.api_actor`](#table-coreapi_actor)
+- [Table: `core.api_monitoring_user`](#table-coreapi_monitoring_user)
+- [Table: `core.api_request_log`](#table-coreapi_request_log)
+- [Table: `core.api_route_stats`](#table-coreapi_route_stats)
+- [Uniqueness quick reference](#uniqueness-quick-reference)
+- [Enum values stored as `text`](#enum-values-stored-as-text)
+- [Rendering the diagram](#rendering-the-diagram)
+
+---
+
+## Logical relationships
 
 - **`core.api_request_log.actor_id`** references **`core.api_actor.id`** (same UUID). The package stores this as a plain column; there is **no TypeORM `@ManyToOne` / DB `FOREIGN KEY`** in the published entity — enforce at the DB layer only if your org requires it.
-- **`core.api_monitoring_user.actor_id`** references **`core.api_actor.id`** (logical). One profile row per stable **`external_id`** (IdP subject / user key), linked to the USER actor created by middleware.
+- **`core.api_request_log.correlation_id`** identifies **one HTTP request** in logs (typically a new UUID per request from your async context). Replays may reuse the same value if your gateway does; otherwise each call gets a new id.
+- **`core.api_monitoring_user.actor_id`** references **`core.api_actor.id`** (logical). **`actor_id` is UNIQUE** on `api_monitoring_user`: **at most one profile row per actor** (no two profiles may share the same `actor_id`). One profile row per stable **`external_id`** (also UNIQUE), linked to the USER actor created by middleware.
 - **`core.api_request_log.monitoring_user_id`** references **`core.api_monitoring_user.id`** (logical). Set when `ApiActorType.USER` was resolved and `ApiMonitoringUserService` upserted a profile for that request.
 - **`core.api_request_log.source_application`** stores the normalized HTTP header **`x-source-app`** when present (e.g. `IMS`, `TRX`, deal desk). This is a **per-request** dimension: many humans can call from many apps; each log row records **one** user (when `monitoring_user_id` is set) and **one** source-app label for that HTTP call. There is **no separate “applications” table** and **no many-to-many** between users and apps—analytics use `GROUP BY` on `source_application` and/or joins to `api_monitoring_user`.
 - **`core.api_request_log.retry_count`** stores **`x-retry-count`**: **0** for the original attempt (default), **1** for the first replay after a failure, **2** for the second, and so on. Each replay is a **new** log row; correlate replays with the same **`correlation_id`** (or your own idempotency key) if your pipeline sets it consistently across attempts.
@@ -20,21 +38,51 @@ There are **no many-to-many** relationships between these four monitoring tables
 |------|-----|-------------|--------|
 | `api_request_log` | `api_actor` | **Many-to-one** | Many log rows can share the same `actor_id` (same caller over time). |
 | `api_request_log` | `api_monitoring_user` | **Many-to-one** | Many log rows can share the same `monitoring_user_id` (same human over time). Nullable when the caller has no USER profile row. |
-| `api_monitoring_user` | `api_actor` | **Many-to-one** | Each profile has one `actor_id`. `actor_id` is not `UNIQUE`, so the DB could hold multiple profiles per actor only if data were inconsistent. |
+| `api_monitoring_user` | `api_actor` | **Many-to-one** (each profile → one actor) **+ UNIQUE(`actor_id`)** | Each profile has exactly one `actor_id`. **`actor_id` is UNIQUE**, so each actor has **at most one** profile row (0 or 1 per actor — API keys and other non-USER actors typically have 0). |
 | `api_route_stats` | *(other monitoring tables)* | **None (no FK)** | Stats are **derived** aggregates; no row-level link in this schema. |
 
 **Note — how associations show up in practice**
 
 - **One HTTP request → one new `api_request_log` row** (always). The same person calling again adds **another** log row with the **same** `actor_id` / `monitoring_user_id` as before (when USER + profile exist).
 - **`source_application`** (e.g. `IMS` for many users) is **not** a foreign key: many unrelated log rows can repeat the same text. **Uniqueness of people** is **`api_actor (type, identifier)`** and **`api_monitoring_user.external_id`**, not the app label.
-- **`api_monitoring_user` → `api_actor`:** in normal operation this behaves like **one profile ↔ one USER actor** per human; the ERD still draws **many-to-one** from profile to actor because the schema does not enforce `UNIQUE(actor_id)` on the profile table.
+- **`api_monitoring_user` → `api_actor`:** each profile references one actor; **`UNIQUE(actor_id)`** enforces **at most one profile per actor**. Not every `api_actor` has a profile (e.g. `api_key`). For a USER with a profile, this is **one-to-one** between that actor row and that profile row.
 - **Replay / retry:** each replay should be a **new** `api_request_log` row; use **`retry_count`** (`x-retry-count`) and optionally the same **`correlation_id`** across attempts if your gateway sets it that way.
 
-**Intended pairing (not a separate many-to-many):** for `ApiActorType.USER`, the app normally maintains **one-to-one** between a human’s `api_actor` and their `api_monitoring_user` row (one stable `external_id` ↔ one profile ↔ one actor id from that flow). To **enforce** one profile per actor at the database level, add e.g. `UNIQUE (actor_id)` on `core.api_monitoring_user` in your own migration.
+**Migration note:** If your database was created before **`uq_api_monitoring_user_actor_id`**, run the platform migration **`UniqueApiMonitoringUserActorId1772320000000`** (drops `idx_api_monitoring_user_actor`, creates the unique index). **Resolve duplicate `actor_id` values first**, or the migration will fail.
 
 **TypeORM:** Entities use **plain `@Column` UUIDs**, not `@ManyToOne` / `@OneToMany` / `@ManyToMany` in the published package.
 
 **PostgreSQL:** Relationships are **logical** unless your team adds `FOREIGN KEY` constraints.
+
+---
+
+## Request lifecycle (USER)
+
+Typical order in a Nest app (see package README for wiring):
+
+1. **Correlation / async context** — e.g. generate or read **`correlation_id`** and store it for the request.
+2. **`ApiActorMiddleware`** (after auth) — **`getOrCreateActor`** → row in **`api_actor`**; for **`ApiActorType.USER`**, **`upsertForUserActor`** → row in **`api_monitoring_user`** (keyed by **`external_id`**, **`actor_id`** updated, subject to **`UNIQUE(actor_id)`** / **`UNIQUE(external_id)`**); **`ApiRequestContextService`** stores **`actor_id`**, **`monitoring_user_id`**, etc.
+3. **Controller / handler** — business logic.
+4. **`ApiMonitoringInterceptor`** — reads **`x-source-app`**, **`x-retry-count`**, optional body snapshot; **`buildRequestMetadata`** + **`logRequest`** → new row in **`api_request_log`** (skipped if **`actor_id`** missing in context).
+
+Anonymous or non-USER actors: steps differ (no **`api_monitoring_user`** upsert); **`monitoring_user_id`** on the log may be null.
+
+---
+
+## Monorepo migrations
+
+Relevant files under **`packages/database/src/migrations/`** (names may vary slightly; check the repo):
+
+| Topic | Typical migration (class name pattern) |
+|--------|----------------------------------------|
+| Base API monitoring tables (`api_actor`, `api_request_log`, `api_route_stats`, …) | `CreateApiMonitoringTables*`, `AddApiMonitoringIndexes*`, … |
+| **`api_monitoring_user`** + **`monitoring_user_id`** on logs | `CreateApiMonitoringUserTable1770100000000` |
+| **`request_body_snapshot`** | `AddApiRequestLogRequestBodySnapshot*` |
+| **`source_application`**, **`last_source_application`** | `AddSourceApplicationToApiMonitoring1772300000000` |
+| **`retry_count`** | `AddRetryCountToApiRequestLog1772310000000` |
+| **UNIQUE(`actor_id`)** on **`api_monitoring_user`** | `UniqueApiMonitoringUserActorId1772320000000` |
+
+Run via your platform’s TypeORM migration command (e.g. `pnpm run migration:run` from the monorepo root when using `@exprealty/database`).
 
 ---
 
@@ -57,7 +105,7 @@ erDiagram
 
   api_monitoring_user {
     uuid id PK
-    uuid actor_id "NOT NULL logical FK api_actor.id"
+    uuid actor_id "NOT NULL UNIQUE FK api_actor.id"
     text external_id "NOT NULL UNIQUE IdP subject"
     uuid user_uuid "NULL when external_id is uuid"
     text email "NULL"
@@ -109,7 +157,7 @@ erDiagram
     timestamptz updated_at "NOT NULL"
   }
 
-  api_actor ||--o{ api_monitoring_user : "monitoring_user.actor_id references actor.id"
+  api_actor ||--o| api_monitoring_user : "0..1 profile per actor unique actor_id"
   api_actor ||--o{ api_request_log : "request_log.actor_id references actor.id"
   api_monitoring_user ||--o{ api_request_log : "request_log.monitoring_user_id references monitoring_user.id"
 ```
@@ -138,7 +186,7 @@ erDiagram
 | DB column | Type | Nullable | Notes |
 |-----------|------|----------|--------|
 | `id` | `uuid` | NO | PK |
-| `actor_id` | `uuid` | NO | Logical → `api_actor.id` (USER actor) |
+| `actor_id` | `uuid` | NO | Logical → `api_actor.id` (USER actor). **UNIQUE** (`uq_api_monitoring_user_actor_id`) |
 | `external_id` | `text` | NO | Stable unique key (e.g. Cognito `sub`, internal user id). **UNIQUE** |
 | `user_uuid` | `uuid` | YES | Set when `external_id` parses as a UUID |
 | `email` | `text` | YES | From auth / headers when available |
@@ -146,7 +194,7 @@ erDiagram
 | `created_at` | `timestamptz` | NO | |
 | `updated_at` | `timestamptz` | NO | |
 
-**Indexes:** unique `external_id`; index `actor_id`.
+**Indexes:** unique `external_id` (`uq_api_monitoring_user_external_id`); **unique `actor_id`** (`uq_api_monitoring_user_actor_id`).
 
 Populated by **`ApiMonitoringUserService.upsertForUserActor`** from **`ApiActorMiddleware`** when `ApiActorType.USER` is resolved (`metadata.userId` / identifier + email). When the request includes **`x-source-app`**, that value is passed into the upsert and stored in **`last_source_application`** (and on each **`api_request_log`** row via the interceptor).
 
@@ -179,7 +227,7 @@ Populated by **`ApiMonitoringUserService.upsertForUserActor`** from **`ApiActorM
 | `request_body_snapshot` | `text` | YES | UTF-8 snapshot when `captureRequestBody` is enabled |
 | `created_at` | `timestamptz` | NO | Row insert time |
 
-**Indexes:** `timestamp`; `(route, method)`; `(actor_id, timestamp)`; `correlation_id`; `(status_code, timestamp)`; `(has_error, timestamp)`; `(monitoring_user_id, timestamp)`; `(source_application, timestamp)`.
+**Indexes (TypeORM / typical names):** `idx_api_request_log_timestamp` (`timestamp`); `idx_api_request_log_route_method` (`route`, `method`); `idx_api_request_log_actor` (`actor_id`, `timestamp`); `idx_api_request_log_correlation` (`correlation_id`); `idx_api_request_log_status` (`status_code`, `timestamp`); `idx_api_request_log_error` (`has_error`, `timestamp`); `idx_api_request_log_monitoring_user` (`monitoring_user_id`, `timestamp`); `idx_api_request_log_source_app` (`source_application`, `timestamp`).
 
 **Header contract — source app:** Upstream gateways or apps should send **`x-source-app`**: a short stable name for the calling product. The package reads it in **`ApiMonitoringInterceptor`** (every logged request) and in **`ApiActorMiddleware`** when upserting **`api_monitoring_user`**. Values are trimmed and limited to **64** characters; see **`parseSourceApplicationHeader`** and **`API_MONITORING_SOURCE_APP_HEADER`** on the package entry.
 
@@ -211,6 +259,17 @@ Populated by **`ApiMonitoringUserService.upsertForUserActor`** from **`ApiActorM
 
 ---
 
+## Uniqueness quick reference
+
+| Table | Constraint / index | Column(s) |
+|-------|-------------------|-----------|
+| `api_actor` | `idx_api_actor_type_identifier` (unique) | `(type, identifier)` |
+| `api_monitoring_user` | `uq_api_monitoring_user_external_id` | `external_id` |
+| `api_monitoring_user` | `uq_api_monitoring_user_actor_id` | `actor_id` |
+| `api_route_stats` | `uq_api_route_stats_route_method_bucket` | `(route, method, time_bucket, bucket_start)` |
+
+---
+
 ## Enum values stored as `text`
 
 **`HttpMethod`:** `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`
@@ -231,4 +290,4 @@ Populated by **`ApiMonitoringUserService.upsertForUserActor`** from **`ApiActorM
 
 ---
 
-*Generated from entity metadata in `@exprealty/api-monitoring`; verify against your installed version if types differ.*
+*This file tracks `@exprealty/api-monitoring` entities and related `packages/database` migrations; verify against your installed package version if types or migration names differ.*

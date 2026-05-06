@@ -62,6 +62,17 @@ describe('API monitoring TypeORM entities (core schema)', () => {
 		expect(row?.schema).toBe('core');
 	});
 
+	it('api_monitoring_user: unique index on actor_id', () => {
+		const storage = getMetadataArgsStorage() as {
+			indices: { target: unknown; name: string; unique: boolean; columns: string[] }[];
+		};
+		const idx = storage.indices.find(
+			(i) => i.target === ApiMonitoringUserEntity && i.name === 'uq_api_monitoring_user_actor_id',
+		);
+		expect(idx?.unique).toBe(true);
+		expect(idx?.columns).toEqual(['actorId']);
+	});
+
 	it('api_request_log: request_body_snapshot column mapped for optional body capture', () => {
 		const storage = getMetadataArgsStorage() as {
 			filterColumns: (t: unknown) => { propertyName: string; options: { name?: string; type?: string } }[];

@@ -97,16 +97,17 @@ The full **Mermaid ERD** (same attribute set as the entities) and per-column tab
 | Table | Role | Main attributes |
 |--------|------|-----------------|
 | **`core.api_actor`** | Caller identity (`user`, `api_key`, …) | `id`, `type`, `identifier` (unique with `type`), `display_name`, `metadata`, `active`, timestamps |
-| **`core.api_monitoring_user`** | Human profile for USER actors | `id`, `actor_id`, `external_id` (unique), `user_uuid`, `email`, `last_source_application`, timestamps |
+| **`core.api_monitoring_user`** | Human profile for USER actors | `id`, **`actor_id` (unique)** — at most one profile per actor, `external_id` (unique), `user_uuid`, `email`, `last_source_application`, timestamps |
 | **`core.api_request_log`** | One row per HTTP request | `route`, `method`, `status_code`, `latency_ms`, sizes, `ip_address`, `user_agent`, `correlation_id`, `timestamp`, `actor_id`, `actor_type`, `monitoring_user_id`, **`source_application`**, **`retry_count`**, error fields, optional `request_body_snapshot`, `created_at` |
 | **`core.api_route_stats`** | Pre-aggregated metrics | `route`, `method`, `time_bucket`, `bucket_start`, counts, latency stats, `status_code_counts`, timestamps |
 
 ### Associations (note)
 
-- Links are **logical UUID columns** only (no TypeORM relations, no required DB foreign keys in the published package). **`api_request_log.actor_id`** → **`api_actor.id`**; **`api_request_log.monitoring_user_id`** → **`api_monitoring_user.id`**; **`api_monitoring_user.actor_id`** → **`api_actor.id`**.
+- Links are **logical UUID columns** only (no TypeORM relations, no required DB foreign keys in the published package). **`api_request_log.actor_id`** → **`api_actor.id`**; **`api_request_log.monitoring_user_id`** → **`api_monitoring_user.id`**; **`api_monitoring_user.actor_id`** → **`api_actor.id`** (**UNIQUE** on `actor_id`: **at most one** monitoring profile per actor; not every actor has a profile).
 - **Many-to-one:** many **`api_request_log`** rows can share the same **`actor_id`** or **`monitoring_user_id`** (same person, many calls). **`api_route_stats`** has **no FK** to logs.
+- **`api_actor` ↔ `api_monitoring_user`:** with **`UNIQUE(actor_id)`**, each USER actor can have **0 or 1** profile row; two profiles cannot point at the same actor. See migration **`UniqueApiMonitoringUserActorId`** in `packages/database` (dedupe `actor_id` before applying if upgrading an old DB).
 - **`source_application`** (e.g. `IMS`) is **not** a separate entity: many users can share the same label on different log rows; identity is still **`actor_id`** / **`external_id`**.
-- Intended **one-to-one** in normal USER flows: one **`api_actor`** row per human identifier and one **`api_monitoring_user`** row per **`external_id`**; see the **Association note** in [docs/api-monitoring.md](./docs/api-monitoring.md) for retries and edge cases.
+- Intended shape for humans: one **`api_actor`** (USER) per distinct **`identifier`**, one **`api_monitoring_user`** per **`external_id`**, and **one profile per actor** when both exist; see [docs/api-monitoring.md](./docs/api-monitoring.md) for retries and notes.
 
 **Runtime wiring:** **`ApiActorMiddleware`** resolves the actor and upserts **`api_monitoring_user`** for USERs; **`ApiMonitoringInterceptor`** appends each call to **`api_request_log`** (including headers above). Details: [docs/api-monitoring.md](./docs/api-monitoring.md).
 
@@ -135,7 +136,7 @@ pnpm --filter @exprealty/database migration:show
 
 ### If the consumer is an external app (no monorepo)
 
-- Export SQL from your migration tool, **or** copy the relevant statements from the monorepo migrations under `packages/database/src/migrations/` (files related to `api_monitoring_user`, `api_request_log`, `api_actor`, `api_route_stats`), then apply with **your** process, for example:
+- Export SQL from your migration tool, **or** copy the relevant statements from the monorepo migrations under `packages/database/src/migrations/` (files related to `api_monitoring_user` including **`UniqueApiMonitoringUserActorId`** for unique `actor_id`, `api_request_log`, `api_actor`, `api_route_stats`), then apply with **your** process, for example:
 
 ```bash
 # After writing schema to a file schema-api-monitoring.sql
@@ -486,7 +487,7 @@ For details, see `src/`, `tests/`, and [docs/api-monitoring.md](./docs/api-monit
 |-------|----------|
 | **Database** | Tables in `core` must exist (migrations). |
 | **`request_body_snapshot`** | Column only exists after the migration that adds it; enabling `captureRequestBody` before migrating can cause insert errors. |
-| **`api_monitoring_user` / `monitoring_user_id`** | Table and `api_request_log.monitoring_user_id` must exist (migration `CreateApiMonitoringUserTable`). Without them, USER upserts / inserts can fail. |
+| **`api_monitoring_user` / `monitoring_user_id`** | Table and `api_request_log.monitoring_user_id` must exist (migration `CreateApiMonitoringUserTable`). **`actor_id`** must be **unique** on `api_monitoring_user` (migration `UniqueApiMonitoringUserActorId`); dedupe rows before migrating. Without them, USER upserts / inserts can fail. |
 | **`req.body`** | Snapshots use **parsed** body only. Raw streams, wrong middleware order, or skipped parsers mean little or nothing to capture. |
 | **Actor ID** | `ApiMonitoringService.logRequest` skips persistence when `actorId` is missing (see service behavior). |
 | **PII / compliance** | Storing bodies may violate policy unless redacted or allowed by legal/security. |
@@ -497,7 +498,7 @@ For details, see `src/`, `tests/`, and [docs/api-monitoring.md](./docs/api-monit
 |-------|----------------|
 | **Database / `core` schema** | Run your app’s TypeORM migrations against the same database as `TypeOrmModule.forRoot`. In this monorepo: `pnpm run migration:run` (or `migration:run:local`) from `agent-service/`. Ensure `CREATE SCHEMA IF NOT EXISTS core;` if your process requires it. |
 | **`request_body_snapshot` column** | Apply the migration that adds `request_body_snapshot` to `core.api_request_log` **before** setting `captureRequestBody: true` in `ApiMonitoringModule.forRoot`. If inserts fail, run pending migrations or turn off `captureRequestBody` until the column exists. |
-| **`api_monitoring_user`** | Run migrations that create `core.api_monitoring_user` and add `monitoring_user_id` to `api_request_log`. The middleware tolerates upsert failures (warns only), but missing columns will break inserts. |
+| **`api_monitoring_user`** | Run migrations that create `core.api_monitoring_user`, add **`UNIQUE(actor_id)`** (`UniqueApiMonitoringUserActorId`), and add `monitoring_user_id` to `api_request_log`. The middleware tolerates upsert failures (warns only), but missing columns or unique violations will break inserts. |
 | **Empty or missing `req.body`** | Rely on Nest/Express body parsing so `req.body` is filled before the interceptor runs. Check `Content-Type`, body size limits, and route-specific parsers. Multipart/raw streams are not JSON snapshots unless you parse them into `req.body` yourself. |
 | **No rows / missing `actorId`** | Ensure correlation + `ApiActorMiddleware` run in the right order and that your auth/gateway provides headers (or logic) the middleware uses so async context includes `actorId`. If you need logs **without** an actor, that requires a **code/product change** (today the service skips save when `actorId` is absent). |
 | **PII / secrets in stored bodies** | Default is `captureRequestBody: false`. If enabled: lower `requestBodyMaxBytes`, redact in your own middleware before monitoring, define retention and access controls, and follow legal/security sign-off. |

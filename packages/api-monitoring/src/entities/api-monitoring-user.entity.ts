@@ -11,13 +11,13 @@ import {
  * TypeORM entity for `api_monitoring_user` — one row per logical end-user (human) when
  * `ApiActorType.USER` is resolved, holding email and external id for reporting.
  *
- * `actor_id` is the related {@link ApiActorEntity} row for that user. `api_request_log.monitoring_user_id`
- * points here for each HTTP request (when a user profile exists).
+ * `actor_id` is the related {@link ApiActorEntity} row for that user (**UNIQUE**: at most one profile per actor).
+ * `api_request_log.monitoring_user_id` points here for each HTTP request (when a user profile exists).
  *
  * @public
  */
 @Entity({ name: 'api_monitoring_user', schema: 'core' })
-@Index('idx_api_monitoring_user_actor', ['actorId'])
+@Index('uq_api_monitoring_user_actor_id', ['actorId'], { unique: true })
 @Index('uq_api_monitoring_user_external_id', ['externalId'], { unique: true })
 export class ApiMonitoringUserEntity {
 	@PrimaryGeneratedColumn('uuid')
