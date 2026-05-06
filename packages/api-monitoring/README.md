@@ -90,7 +90,25 @@ The module expects **four** tables:
 | `ApiRequestLogEntity` | `core.api_request_log` |
 | `ApiRouteStatsEntity` | `core.api_route_stats` |
 
-For **`ApiMonitoringUserEntity`**: stores **`external_id`** (stable user key from your IdP), optional **`email`**, optional **`user_uuid`** when the key is UUID-shaped, optional **`last_source_application`** (last seen **`x-source-app`** on upsert), and **`actor_id`** pointing at the USER’s `api_actor` row. **`ApiActorMiddleware`** upserts this row for `ApiActorType.USER` and sets **`monitoring_user_id`** on each request log via async context. **`ApiMonitoringInterceptor`** also stores **`source_application`** on each **`api_request_log`** row from the same header. See [docs/api-monitoring.md](./docs/api-monitoring.md).
+### ERD and attributes (summary)
+
+The full **Mermaid ERD** (same attribute set as the entities) and per-column tables live in **[docs/api-monitoring.md](./docs/api-monitoring.md)**.
+
+| Table | Role | Main attributes |
+|--------|------|-----------------|
+| **`core.api_actor`** | Caller identity (`user`, `api_key`, …) | `id`, `type`, `identifier` (unique with `type`), `display_name`, `metadata`, `active`, timestamps |
+| **`core.api_monitoring_user`** | Human profile for USER actors | `id`, `actor_id`, `external_id` (unique), `user_uuid`, `email`, `last_source_application`, timestamps |
+| **`core.api_request_log`** | One row per HTTP request | `route`, `method`, `status_code`, `latency_ms`, sizes, `ip_address`, `user_agent`, `correlation_id`, `timestamp`, `actor_id`, `actor_type`, `monitoring_user_id`, **`source_application`**, **`retry_count`**, error fields, optional `request_body_snapshot`, `created_at` |
+| **`core.api_route_stats`** | Pre-aggregated metrics | `route`, `method`, `time_bucket`, `bucket_start`, counts, latency stats, `status_code_counts`, timestamps |
+
+### Associations (note)
+
+- Links are **logical UUID columns** only (no TypeORM relations, no required DB foreign keys in the published package). **`api_request_log.actor_id`** → **`api_actor.id`**; **`api_request_log.monitoring_user_id`** → **`api_monitoring_user.id`**; **`api_monitoring_user.actor_id`** → **`api_actor.id`**.
+- **Many-to-one:** many **`api_request_log`** rows can share the same **`actor_id`** or **`monitoring_user_id`** (same person, many calls). **`api_route_stats`** has **no FK** to logs.
+- **`source_application`** (e.g. `IMS`) is **not** a separate entity: many users can share the same label on different log rows; identity is still **`actor_id`** / **`external_id`**.
+- Intended **one-to-one** in normal USER flows: one **`api_actor`** row per human identifier and one **`api_monitoring_user`** row per **`external_id`**; see the **Association note** in [docs/api-monitoring.md](./docs/api-monitoring.md) for retries and edge cases.
+
+**Runtime wiring:** **`ApiActorMiddleware`** resolves the actor and upserts **`api_monitoring_user`** for USERs; **`ApiMonitoringInterceptor`** appends each call to **`api_request_log`** (including headers above). Details: [docs/api-monitoring.md](./docs/api-monitoring.md).
 
 **You must apply the same schema to the database your app uses.** This package does **not** run migrations; it only ships **entity** classes.
 
@@ -264,6 +282,7 @@ Host: localhost:3000
 Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 Content-Type: application/json
 x-source-app: IMS
+x-retry-count: 0
 X-Correlation-Id: 550e8400-e29b-41d4-a716-446655440000
 
 {
@@ -284,6 +303,29 @@ X-Correlation-Id: 550e8400-e29b-41d4-a716-446655440000
 ```
 
 Exported helpers: **`API_MONITORING_SOURCE_APP_HEADER`** (`x-source-app`) and **`parseSourceApplicationHeader`**.
+
+### Retry count header (`x-retry-count`)
+
+When you **replay** a failed API call (manual rerun, job worker, or gateway retry), send **`x-retry-count`** so each new log row records how many retries preceded this attempt:
+
+| Value | Meaning |
+|-------|--------|
+| Omit or **`0`** | Original / first attempt |
+| **`1`** | First replay after failure |
+| **`2`** | Second replay, etc. |
+
+The interceptor persists **`retry_count`** on **`core.api_request_log`**. Replays create **separate** rows; use the same **correlation id** (or your own trace id) across attempts if you need to stitch them in reporting.
+
+Apply the migration that adds **`retry_count`** (see `packages/database/src/migrations/*AddRetryCountToApiRequestLog*.ts`).
+
+**Example headers** (with source app):
+
+```http
+x-source-app: IMS
+x-retry-count: 1
+```
+
+Exported helpers: **`API_MONITORING_RETRY_COUNT_HEADER`** and **`parseRetryCountHeader`**.
 
 ### Where `actorId` is set (not in `forRoot`)
 
@@ -419,7 +461,7 @@ Publishing (registry URL, auth, and CI) is owned by your **monorepo / platform d
 | `ApiMonitoringInterceptor` | Global interceptor: latency, status, metadata → `api_request_log`; optional `request_body_snapshot` when `captureRequestBody` is true |
 | `ApiActorMiddleware` | Actors → `api_actor`; for **USER**, upserts `api_monitoring_user` and sets context `monitoringUserId` |
 | `ApiMonitoringUserService` | Upserts `core.api_monitoring_user` (`external_id`, `email`, `actor_id`, optional `last_source_application` from `x-source-app`) |
-| `ApiMonitoringService` | Logging, classification, sampling; persists `monitoring_user_id` and `source_application` on `api_request_log` when present |
+| `ApiMonitoringService` | Logging, classification, sampling; persists `monitoring_user_id`, `source_application`, and `retry_count` on `api_request_log` when present |
 | `ApiMetricsService` | Aggregations, top callers, trends, … |
 | `ApiMonitoringController` | Read-only / admin HTTP API |
 

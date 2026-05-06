@@ -48,6 +48,7 @@ Enterprise-grade API monitoring and observability system for tracking all inboun
 - Indexed for time-range queries
 - Optimized for aggregation queries
 - Supports retention policies (hot vs cold data)
+- Optional **`source_application`** (`x-source-app`) and **`retry_count`** (`x-retry-count`) for client/replay attribution
 
 #### ApiRouteStatsEntity
 - Pre-aggregated statistics by route, method, and time bucket

@@ -23,6 +23,13 @@ There are **no many-to-many** relationships between these four monitoring tables
 | `api_monitoring_user` | `api_actor` | **Many-to-one** | Each profile has one `actor_id`. `actor_id` is not `UNIQUE`, so the DB could hold multiple profiles per actor only if data were inconsistent. |
 | `api_route_stats` | *(other monitoring tables)* | **None (no FK)** | Stats are **derived** aggregates; no row-level link in this schema. |
 
+**Note — how associations show up in practice**
+
+- **One HTTP request → one new `api_request_log` row** (always). The same person calling again adds **another** log row with the **same** `actor_id` / `monitoring_user_id` as before (when USER + profile exist).
+- **`source_application`** (e.g. `IMS` for many users) is **not** a foreign key: many unrelated log rows can repeat the same text. **Uniqueness of people** is **`api_actor (type, identifier)`** and **`api_monitoring_user.external_id`**, not the app label.
+- **`api_monitoring_user` → `api_actor`:** in normal operation this behaves like **one profile ↔ one USER actor** per human; the ERD still draws **many-to-one** from profile to actor because the schema does not enforce `UNIQUE(actor_id)` on the profile table.
+- **Replay / retry:** each replay should be a **new** `api_request_log` row; use **`retry_count`** (`x-retry-count`) and optionally the same **`correlation_id`** across attempts if your gateway sets it that way.
+
 **Intended pairing (not a separate many-to-many):** for `ApiActorType.USER`, the app normally maintains **one-to-one** between a human’s `api_actor` and their `api_monitoring_user` row (one stable `external_id` ↔ one profile ↔ one actor id from that flow). To **enforce** one profile per actor at the database level, add e.g. `UNIQUE (actor_id)` on `core.api_monitoring_user` in your own migration.
 
 **TypeORM:** Entities use **plain `@Column` UUIDs**, not `@ManyToOne` / `@OneToMany` / `@ManyToMany` in the published package.
@@ -33,26 +40,28 @@ There are **no many-to-many** relationships between these four monitoring tables
 
 ## Diagram (Mermaid)
 
+Attributes below match the TypeORM entities (PostgreSQL `core`). **Indexes** are listed in the table sections after the diagram, not inside the entity blocks.
+
 ```mermaid
 erDiagram
   api_actor {
     uuid id PK
-    text type "NOT NULL, ApiActorType enum as text"
-    text identifier "NULL, unique with type"
-    text display_name "NOT NULL, maps displayName"
+    text type "NOT NULL ApiActorType as text"
+    text identifier "NULL unique with type idx"
+    text display_name "NOT NULL"
     jsonb metadata "NULL"
-    boolean active "NOT NULL, default true"
+    boolean active "NOT NULL default true"
     timestamptz created_at "NOT NULL"
     timestamptz updated_at "NOT NULL"
   }
 
   api_monitoring_user {
     uuid id PK
-    uuid actor_id "NOT NULL, logical FK to api_actor.id"
-    text external_id "NOT NULL, unique IdP subject / stable user key"
-    uuid user_uuid "NULL, when external_id is UUID-shaped"
+    uuid actor_id "NOT NULL logical FK api_actor.id"
+    text external_id "NOT NULL UNIQUE IdP subject"
+    uuid user_uuid "NULL when external_id is uuid"
     text email "NULL"
-    text last_source_application "NULL, last x-source-app on upsert"
+    text last_source_application "NULL last x-source-app on upsert"
     timestamptz created_at "NOT NULL"
     timestamptz updated_at "NOT NULL"
   }
@@ -60,7 +69,7 @@ erDiagram
   api_request_log {
     uuid id PK
     text route "NOT NULL"
-    text method "NOT NULL, HttpMethod enum as text"
+    text method "NOT NULL HttpMethod as text"
     integer status_code "NOT NULL"
     integer latency_ms "NOT NULL"
     integer request_size_bytes "NULL"
@@ -69,39 +78,40 @@ erDiagram
     text user_agent "NULL"
     uuid correlation_id "NOT NULL"
     timestamptz timestamp "NOT NULL"
-    uuid actor_id "NULL, logical FK to api_actor.id"
-    text actor_type "NULL, ApiActorType enum as text"
-    uuid monitoring_user_id "NULL, logical FK to api_monitoring_user.id"
-    text source_application "NULL, x-source-app per request"
-    boolean has_error "NOT NULL, default false"
-    text error_classification "NULL, ApiErrorClassification as text"
+    uuid actor_id "NULL logical FK api_actor.id"
+    text actor_type "NULL ApiActorType as text"
+    uuid monitoring_user_id "NULL logical FK api_monitoring_user.id"
+    text source_application "NULL normalized x-source-app"
+    integer retry_count "NOT NULL default 0 from x-retry-count"
+    boolean has_error "NOT NULL default false"
+    text error_classification "NULL ApiErrorClassification"
     text error_message "NULL"
     text stack_trace "NULL"
-    text request_body_snapshot "NULL, optional body capture"
+    text request_body_snapshot "NULL optional body capture"
     timestamptz created_at "NOT NULL"
   }
 
   api_route_stats {
     uuid id PK
     text route "NOT NULL"
-    text method "NOT NULL, HttpMethod as text"
-    text time_bucket "NOT NULL, TimeBucket as text"
+    text method "NOT NULL HttpMethod as text"
+    text time_bucket "NOT NULL TimeBucket as text"
     timestamptz bucket_start "NOT NULL"
-    integer request_count "NOT NULL, default 0"
-    integer error_count "NOT NULL, default 0"
-    integer latency_p50 "NULL"
-    integer latency_p95 "NULL"
-    integer latency_p99 "NULL"
-    integer latency_min "NULL"
-    integer latency_max "NULL"
+    integer request_count "NOT NULL default 0"
+    integer error_count "NOT NULL default 0"
+    integer latency_p50 "NULL ms"
+    integer latency_p95 "NULL ms"
+    integer latency_p99 "NULL ms"
+    integer latency_min "NULL ms"
+    integer latency_max "NULL ms"
     jsonb status_code_counts "NULL"
     timestamptz created_at "NOT NULL"
     timestamptz updated_at "NOT NULL"
   }
 
-  api_actor ||--o{ api_monitoring_user : "actor_id → id (logical)"
-  api_actor ||--o{ api_request_log : "actor_id → id (logical)"
-  api_monitoring_user ||--o{ api_request_log : "id ← monitoring_user_id (logical)"
+  api_actor ||--o{ api_monitoring_user : "monitoring_user.actor_id references actor.id"
+  api_actor ||--o{ api_request_log : "request_log.actor_id references actor.id"
+  api_monitoring_user ||--o{ api_request_log : "request_log.monitoring_user_id references monitoring_user.id"
 ```
 
 ---
@@ -161,6 +171,7 @@ Populated by **`ApiMonitoringUserService.upsertForUserActor`** from **`ApiActorM
 | `actor_type` | `text` | YES | Redundant type for queries |
 | `monitoring_user_id` | `uuid` | YES | → `api_monitoring_user.id` (logical), USER flows |
 | `source_application` | `text` | YES | Normalized **`x-source-app`** (client label: `IMS`, `TRX`, etc.) |
+| `retry_count` | `integer` | NO | Default **`0`**; **`x-retry-count`** — replay counter (0 = first attempt) |
 | `has_error` | `boolean` | NO | Default `false` |
 | `error_classification` | `text` | YES | `ApiErrorClassification` |
 | `error_message` | `text` | YES | |
@@ -170,7 +181,9 @@ Populated by **`ApiMonitoringUserService.upsertForUserActor`** from **`ApiActorM
 
 **Indexes:** `timestamp`; `(route, method)`; `(actor_id, timestamp)`; `correlation_id`; `(status_code, timestamp)`; `(has_error, timestamp)`; `(monitoring_user_id, timestamp)`; `(source_application, timestamp)`.
 
-**Header contract:** Upstream gateways or apps should send **`x-source-app`**: a short stable name for the calling product. The package reads it in **`ApiMonitoringInterceptor`** (every logged request) and in **`ApiActorMiddleware`** when upserting **`api_monitoring_user`**. Values are trimmed and limited to **64** characters; see **`parseSourceApplicationHeader`** and **`API_MONITORING_SOURCE_APP_HEADER`** on the package entry.
+**Header contract — source app:** Upstream gateways or apps should send **`x-source-app`**: a short stable name for the calling product. The package reads it in **`ApiMonitoringInterceptor`** (every logged request) and in **`ApiActorMiddleware`** when upserting **`api_monitoring_user`**. Values are trimmed and limited to **64** characters; see **`parseSourceApplicationHeader`** and **`API_MONITORING_SOURCE_APP_HEADER`** on the package entry.
+
+**Header contract — retries:** When **replaying** a failed call, send **`x-retry-count`** with a non-negative integer: **0** (or omit) for the first try, **1** for the first replay, etc. Parsed in **`ApiMonitoringInterceptor`** only; see **`parseRetryCountHeader`** and **`API_MONITORING_RETRY_COUNT_HEADER`**. Invalid values are stored as **0**; values above **10000** are clamped.
 
 ---
 
