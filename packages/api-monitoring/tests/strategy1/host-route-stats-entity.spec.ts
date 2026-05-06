@@ -44,7 +44,7 @@ describe('Host-provided ApiRouteStatsEntity (Strategy 1)', () => {
 			error: jest.fn(),
 			warn: jest.fn(),
 			debug: jest.fn(),
-		} as unknown as jest.Mocked<IApiMonitoringLogger>;
+		};
 
 		requestLogRepo = {
 			createQueryBuilder: jest.fn(),

@@ -36,12 +36,12 @@ export class TrendsQueryDto {
 		if (typeof value === 'string') {
 			const num = parseInt(value.replace('d', ''), 10);
 			if (num === 30 || num === 60 || num === 90) {
-				return num as TrendsRange;
+				return num;
 			}
 		}
 		// If already a number, return as-is
 		if (typeof value === 'number' && (value === 30 || value === 60 || value === 90)) {
-			return value as TrendsRange;
+			return value;
 		}
 		return value as TrendsRange;
 	})

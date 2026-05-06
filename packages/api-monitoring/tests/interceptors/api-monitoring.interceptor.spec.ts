@@ -470,7 +470,7 @@ describe('ApiMonitoringInterceptor', () => {
 
 		it('serializes numeric primitive body', async () => {
 			mockRequest.method = 'POST';
-			mockRequest.body = 99 as unknown as object;
+			mockRequest.body = 99;
 			monitoringService.buildRequestMetadata.mockReturnValue({} as any);
 			monitoringService.logRequest.mockResolvedValue(undefined);
 			(mockRequest.get as jest.Mock).mockReturnValue(undefined);

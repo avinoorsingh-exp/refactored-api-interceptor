@@ -66,7 +66,7 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 		const requestSizeBytes = this.calculateRequestSize(request);
 
 		const requestBodySnapshot =
-			this.moduleOptions.captureRequestBody === true
+			this.moduleOptions.captureRequestBody
 				? serializeRequestBodySnapshot(request.body, this.moduleOptions.requestBodyMaxBytes)
 				: undefined;
 
@@ -150,7 +150,7 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 		const layer: unknown = request.route;
 		const pathCandidate =
 			layer && typeof layer === 'object' && 'path' in layer
-				? (layer as { path: unknown }).path
+				? (layer).path
 				: undefined;
 		if (typeof pathCandidate === 'string' && pathCandidate.length > 0) {
 			return pathCandidate;

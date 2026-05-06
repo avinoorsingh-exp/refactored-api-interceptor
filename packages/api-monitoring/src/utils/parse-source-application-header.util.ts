@@ -18,10 +18,10 @@ export function parseSourceApplicationHeader(
 	getHeader: (name: string) => string | undefined,
 ): string | undefined {
 	const raw = getHeader(API_MONITORING_SOURCE_APP_HEADER);
-	if (raw === undefined || raw === null) {
+	if (raw === undefined) {
 		return undefined;
 	}
-	const trimmed = String(raw).trim();
+	const trimmed = raw.trim();
 	if (!trimmed) {
 		return undefined;
 	}

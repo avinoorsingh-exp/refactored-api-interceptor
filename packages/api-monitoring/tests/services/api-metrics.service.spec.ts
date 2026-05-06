@@ -250,7 +250,7 @@ describe('ApiMetricsService - Pagination', () => {
 				startTime: new Date('2024-01-01T00:00:00Z'),
 				endTime: new Date('2024-01-02T00:00:00Z'),
 				// No limit, no cursor - should return array
-			} as any);
+			});
 
 			expect(Array.isArray(result)).toBe(true);
 		});
@@ -331,7 +331,7 @@ describe('ApiMetricsService - Pagination', () => {
 				startTime: new Date('2024-01-01T00:00:00Z'),
 				endTime: new Date('2024-01-02T00:00:00Z'),
 				// No limit, no cursor - should return array
-			} as any);
+			});
 
 			expect(Array.isArray(result)).toBe(true);
 		});
@@ -1015,8 +1015,8 @@ describe('ApiMetricsService - Pagination', () => {
 				{
 					id: '1',
 					route: '/v1/agents',
-					method: 'GET' as any,
-					timeBucket: 'hour' as any,
+					method: 'GET',
+					timeBucket: 'hour',
 					bucketStart: new Date('2024-01-01T00:00:00Z'),
 					requestCount: 100,
 					errorCount: 5,
@@ -1026,7 +1026,7 @@ describe('ApiMetricsService - Pagination', () => {
 					latencyMin: 10,
 					latencyMax: 200,
 					statusCodeCounts: { '200': 95, '500': 5 },
-				} as Record<string, unknown>,
+				},
 			];
 
 			const mockQueryBuilder = {
@@ -1088,8 +1088,8 @@ describe('ApiMetricsService - Pagination', () => {
 				{
 					id: '1',
 					route: '/v1/agents',
-					method: 'GET' as any,
-					timeBucket: 'minute' as any,
+					method: 'GET',
+					timeBucket: 'minute',
 					bucketStart: new Date('2024-01-01T00:00:00Z'),
 					requestCount: 50,
 					errorCount: 2,
@@ -1099,7 +1099,7 @@ describe('ApiMetricsService - Pagination', () => {
 					latencyMin: 5,
 					latencyMax: 150,
 					statusCodeCounts: { '200': 48, '500': 2 },
-				} as Record<string, unknown>,
+				},
 			];
 
 			const mockQueryBuilder = {

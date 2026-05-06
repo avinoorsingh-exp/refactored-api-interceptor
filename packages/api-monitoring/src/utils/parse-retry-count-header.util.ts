@@ -16,10 +16,10 @@ const MAX_RETRY_COUNT = 10_000;
  */
 export function parseRetryCountHeader(getHeader: (name: string) => string | undefined): number {
 	const raw = getHeader(API_MONITORING_RETRY_COUNT_HEADER);
-	if (raw === undefined || raw === null) {
+	if (raw === undefined) {
 		return 0;
 	}
-	const trimmed = String(raw).trim();
+	const trimmed = raw.trim();
 	if (!trimmed) {
 		return 0;
 	}

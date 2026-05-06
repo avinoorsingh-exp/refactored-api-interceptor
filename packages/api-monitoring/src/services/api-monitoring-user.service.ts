@@ -1,6 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Repository } from 'typeorm';
-import type { FindOptionsWhere } from 'typeorm';
 import { API_MONITORING_USER_REPO } from '../tokens/repository.tokens.js';
 import { tryParseUuidString } from '../utils/try-parse-uuid-string.util.js';
 import type { IApiMonitoringLogger } from '../interfaces/logger.interface.js';
@@ -45,7 +44,7 @@ export class ApiMonitoringUserService {
 		/** When set (e.g. from `x-source-app`), updates `last_source_application` on the profile. */
 		sourceApplication?: string;
 	}): Promise<ApiMonitoringUserRow | undefined> {
-		const externalId = params.externalId?.trim();
+		const externalId = params.externalId.trim();
 		if (!externalId) {
 			return undefined;
 		}
@@ -54,11 +53,11 @@ export class ApiMonitoringUserService {
 
 		try {
 			const existing = await this.userRepo.findOne({
-				where: { externalId } as FindOptionsWhere<Record<string, unknown>>,
+				where: { externalId },
 			});
 
 			if (existing) {
-				const row = existing as Record<string, unknown>;
+				const row = existing;
 				const patch: Record<string, unknown> = {
 					actorId: params.actorId,
 					updatedAt: new Date(),
@@ -74,7 +73,7 @@ export class ApiMonitoringUserService {
 				}
 				Object.assign(row, patch);
 				const saved = await this.userRepo.save(row);
-				return this.mapRow(saved as Record<string, unknown>);
+				return this.mapRow(saved);
 			}
 
 			const created = this.userRepo.create({
@@ -85,7 +84,7 @@ export class ApiMonitoringUserService {
 				lastSourceApplication: params.sourceApplication,
 			} as Record<string, unknown>);
 			const saved = await this.userRepo.save(created);
-			return this.mapRow(saved as Record<string, unknown>);
+			return this.mapRow(saved);
 		} catch (err: unknown) {
 			this.logger.warn('Failed to upsert api_monitoring_user', {
 				externalId,

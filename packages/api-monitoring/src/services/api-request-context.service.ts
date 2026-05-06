@@ -28,7 +28,7 @@ export class ApiRequestContextService {
 	) {}
 
 	getContext(): ApiRequestContext | undefined {
-		return this.asyncContext.getStore() as ApiRequestContext | undefined;
+		return this.asyncContext.getStore();
 	}
 
 	getCorrelationId(): string | undefined {

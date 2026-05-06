@@ -151,7 +151,9 @@ describe('ApiMonitoringModule.forRoot', () => {
 			logger: MockLogger,
 			asyncContext: MockAsyncContext,
 		});
-		const names = (ex as (string | object)[]).map((c) => (typeof c === 'function' && c.name ? c.name : String(c)));
+		const names = (ex as (string | object)[]).map((c) =>
+			typeof c === 'function' && c.name ? c.name : typeof c === 'string' ? c : '[export]',
+		);
 		expect(names.some((n) => n.includes('ApiMonitoringService'))).toBe(true);
 		expect(names.some((n) => n.includes('ApiMetricsService'))).toBe(true);
 		expect(names.some((n) => n.includes('ApiMonitoringUserService'))).toBe(true);
