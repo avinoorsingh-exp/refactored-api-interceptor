@@ -18,7 +18,7 @@ export default [
         },
     },
     {
-        files: ['packages/*/src/**/*.ts', 'packages/*/tests/**/*.ts', 'services/*/src/**/*.ts', 'services/*/tests/**/*.ts'],
+        files: ['packages/api-monitoring/src/**/*.ts', 'packages/api-monitoring/tests/**/*.ts'],
         rules: {
             '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
             '@typescript-eslint/restrict-template-expressions': [

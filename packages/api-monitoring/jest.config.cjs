@@ -1,5 +1,4 @@
 const unitPreset = require('../../jest.preset.unit.cjs');
-const path = require('path');
 
 module.exports = {
   ...unitPreset,
@@ -10,10 +9,6 @@ module.exports = {
   ],
   moduleNameMapper: {
     ...unitPreset.moduleNameMapper,
-    '^@exprealty/database$': path.resolve(__dirname, '../database/src/index.ts'),
-    '^@exprealty/shared-domain$': path.resolve(__dirname, '../shared-domain/src/index.ts'),
-    '^@exprealty/logger$': path.resolve(__dirname, '../logger/src/index.ts'),
-    '^@exprealty/cache$': path.resolve(__dirname, '../cache/src/index.ts'),
   },
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   collectCoverageFrom: [

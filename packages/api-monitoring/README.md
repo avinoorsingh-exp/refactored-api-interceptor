@@ -360,6 +360,15 @@ To change *how* an actor is derived from `req` (headers, `req.user`, JWT, etc.),
 curl -i http://localhost:3000/health
 ```
 
+### `setupProxy.js` (Create React App) — not part of this package
+
+**`setupProxy.js` is not part of `@exprealty/api-monitoring` and is not required for the module to work.** It is an optional **Create React App** convention used in some repos only to:
+
+- Proxy **`/v1`** (or other paths) from the CRA **dev server** to your **Nest** backend, and  
+- Set **`X-Forwarded-For`** (or similar) so requests that originate in the browser are **not** seen by Nest as plain **localhost** only.
+
+That matters because **`ApiMonitoringInterceptor`** skips monitoring for **localhost / internal** client IPs by default; without a forwarded client IP, browser-driven dev traffic can be excluded from logs. A dev proxy is a **host-app** concern, not something this package ships or depends on.
+
 ---
 
 ## 6. Optional: environment-based tuning

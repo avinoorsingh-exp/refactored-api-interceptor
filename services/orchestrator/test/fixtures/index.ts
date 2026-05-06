@@ -1,3 +1,0 @@
-/**
- * Export all test fixtures
- */

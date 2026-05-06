@@ -11,27 +11,14 @@
 		"noUncheckedSideEffectImports": true,
 		"experimentalDecorators": true,
 		"emitDecoratorMetadata": true,
-
 		"baseUrl": ".",
 		"paths": {
-			"@exprealty/api-monitoring": ["packages/api-monitoring/src/index.ts"],
-			"@exprealty/cache": ["packages/cache/src/index.ts"],
-			"@exprealty/config": ["packages/config/src/index.ts"],
-			"@exprealty/database": ["packages/database/src/index.ts"],
-			"@exprealty/encryption": ["packages/encryption/src/index.ts"],
-			"@exprealty/logger": ["packages/logger/src/index.ts"],
-			"@exprealty/logger/metrics": ["packages/logger/src/metrics.ts"],
-			"@exprealty/logger/log-tier": ["packages/logger/src/log-tier.ts"],
-			"@exprealty/shared-domain": ["packages/shared-domain/src/index.ts"]
+			"@exprealty/api-monitoring": ["packages/api-monitoring/src/index.ts"]
 		}
 	},
 	"include": [
-		"packages/*/src/**/*.ts",
-		"packages/*/src/**/*.js",
-		"packages/*/tests/**/*.ts",
-		"packages/*/tests/**/*.js",
-		"services/*/src/**/*.ts",
-		"eslint.config.mts"
+		"packages/api-monitoring/src/**/*.ts",
+		"packages/api-monitoring/tests/**/*.ts"
 	],
-	"exclude": ["**/assets/**/*", "node_modules", "dist"]
+	"exclude": ["**/node_modules", "**/dist"]
 }
