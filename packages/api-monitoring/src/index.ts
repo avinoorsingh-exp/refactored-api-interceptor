@@ -42,6 +42,19 @@ export {
 	type ActorActivityQuery,
 	type ErrorSampleQuery,
 } from './domain/api-monitoring.types.js';
+export type {
+	ApiRequestLogOutcome,
+	ApiRequestLogSavedOutcome,
+	ApiRequestLogSkippedOutcome,
+	ApiRequestLogSkippedReason,
+	ApiRequestLogErrorOutcome,
+	ApiRequestLogErrorReason,
+} from './domain/api-request-log-outcome.js';
+export {
+	API_MONITORING_REQUEST_LOG_STATUS_HEADER,
+	API_MONITORING_REQUEST_LOG_REASON_HEADER,
+	API_MONITORING_REQUEST_LOG_MESSAGE_HEADER,
+} from './domain/api-request-log-outcome.js';
 
 // Services
 export { ApiRequestContextService } from './services/api-request-context.service.js';

@@ -6,6 +6,78 @@ This page shows **where one HTTP request goes** in `@exprealty/api-monitoring`, 
 
 ---
 
+## Files grouped by role (whole package)
+
+Paths are under **`src/`** inside `@exprealty/api-monitoring`. Similar jobs sit together; **sequence** within each group follows how the app normally runs.
+
+### 1. Composition & wiring (app bootstrap)
+
+| File | What it does |
+|------|----------------|
+| `api-monitoring.module.ts` | **`forRoot()`**: registers TypeORM entities, repo DI tokens, logger/async-context bridges, services, global interceptor, controller. |
+| `options/api-monitoring-for-root.options.ts` | Types for `forRoot` (entities, connection name, body capture, outcome headers). |
+| `tokens/repository.tokens.ts` | Symbols for injecting request-log, route-stats, actor, user repos. |
+| `tokens/entity-classes.token.ts` | Token + types for the entity class bundle (metrics queries need metadata). |
+| `tokens/api-monitoring-module-options.token.ts` | Runtime flags injected into the interceptor (capture limits, outcome headers). |
+| `entities/default-entities.ts` | Default export bundle of the four monitoring entities. |
+| `entities/api-request-log.entity.ts` | TypeORM model for **`core.api_request_log`**. |
+| `entities/api-route-stats.entity.ts` | TypeORM model for **`core.api_route_stats`** (rollups). |
+| `entities/api-actor.entity.ts` | TypeORM model for **`core.api_actor`**. |
+| `entities/api-monitoring-user.entity.ts` | TypeORM model for **`core.api_monitoring_user`**. |
+| `domain/api-monitoring.types.ts` | Shared enums/types (`HttpMethod`, `ApiActorType`, metadata shapes). |
+| `domain/api-request-log-outcome.ts` | Types + header names for save/skip/error outcomes. |
+| `index.ts` | Public exports for consumers. |
+
+### 2. Host contracts (you provide implementations)
+
+| File | What it does |
+|------|----------------|
+| `interfaces/async-context.port.ts` | **`IApiMonitoringAsyncContext`**: ALS/store + correlation id (middleware + interceptor read this). |
+| `interfaces/logger.interface.ts` | **`IApiMonitoringLogger`** + token for Nest injection. |
+
+### 3. Request write path — sequence (one inbound API call)
+
+_ORDER roughly follows execution._
+
+| # | File | What it does |
+|---|------|----------------|
+| A | *(your ALS middleware)* | Fill **`ApiMonitoringRequestStore`** (`correlationId`, `timestamp`, …). |
+| B | `middleware/api-actor.middleware.ts` | **`use()`**: infer USER / API key / service account / anonymous → DB actors → **`ApiRequestContextService`**. |
+| C | `services/api-actor.service.ts` | **`getOrCreateActor()`** → **`api_actor`**; optional **`getActorById`**, **`deactivateActor`**. |
+| D | `services/api-monitoring-user.service.ts` | **`upsertForUserActor()`** → **`api_monitoring_user`** (USER + external id path). |
+| E | `services/api-request-context.service.ts` | **`updateActor`**, **`updateMonitoringUser`**, **`setStartTime`**, getters — thin wrapper on async store. |
+| F | `interceptors/api-monitoring.interceptor.ts` | **`intercept()`**: wrap handler; read route/IP/headers; optional body snapshot; call **`logRequest`** after response. |
+| G | `utils/parse-source-application-header.util.ts` | Parse **`x-source-app`**. |
+| H | `utils/parse-retry-count-header.util.ts` | Parse **`x-retry-count`**. |
+| I | `utils/serialize-request-body-snapshot.util.ts` | Optional UTF-8 snapshot of `req.body` (size-capped). |
+| J | `services/api-monitoring.service.ts` | **`buildRequestMetadata()`**, **`logRequest()`** → insert **`api_request_log`**; **`classifyError`** / sanitizers for errors. |
+| K | `entities/api-request-log.entity.ts` | Column mapping for the row **`save()`** writes. |
+
+**Helpers used alongside policy (not always on every request):**
+
+| File | What it does |
+|------|----------------|
+| `utils/should-log-api-request.util.ts` | Optional policy helper (env / IP / internal skip) — distinct from interceptor skip rules. |
+| `utils/try-parse-uuid-string.util.ts` | Shape-check external ids for **`user_uuid`**. |
+
+### 4. Read path & dashboards (second HTTP request — admin client)
+
+| File | What it does |
+|------|----------------|
+| `api-monitoring.controller.ts` | **`GET /v1/api-monitoring/...`**: summary, time-series, routes, top callers, actor activity, errors, trends, available routes, **aggregate**. |
+| `services/api-metrics.service.ts` | Queries **`api_route_stats`** and **`api_request_log`**; **`aggregateRouteStats`** / **`aggregateAllRouteStats`** fill rollups. |
+| `dto/*.dto.ts` | Query/response shapes + validation/Swagger for the controller. |
+| `utils/pagination.util.ts` | Cursor encode/decode, limits, **`createPaginatedResponse`**. |
+| `utils/filter.util.ts` | **`toArray`**, status/route string normalization for filters. |
+| `utils/normalize-route.util.ts` | Path normalization (UUIDs → `:id`) for grouping like **`api_route_stats`**. |
+| `utils/bucket-resolution.util.ts` | Trend bucket math (day vs week). |
+
+### 5. How groups connect (one sentence)
+
+**Bootstrap (1)** loads entities and tokens; **host contracts (2)** supply context + logs; **write path (3)** attributes the caller and appends a log row; **read path (4)** serves analytics from logs + rollups. **`domain/`** types are shared everywhere.
+
+---
+
 ## Diagram (request in → row saved)
 
 ```mermaid

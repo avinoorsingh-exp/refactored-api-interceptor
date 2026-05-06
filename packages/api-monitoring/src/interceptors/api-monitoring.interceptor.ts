@@ -18,6 +18,12 @@ import {
 	API_MONITORING_MODULE_OPTIONS,
 	type ApiMonitoringModuleRuntimeOptions,
 } from '../tokens/api-monitoring-module-options.token.js';
+import type { ApiRequestLogOutcome } from '../domain/api-request-log-outcome.js';
+import {
+	API_MONITORING_REQUEST_LOG_MESSAGE_HEADER,
+	API_MONITORING_REQUEST_LOG_REASON_HEADER,
+	API_MONITORING_REQUEST_LOG_STATUS_HEADER,
+} from '../domain/api-request-log-outcome.js';
 import { serializeRequestBodySnapshot } from '../utils/serialize-request-body-snapshot.util.js';
 import { parseSourceApplicationHeader } from '../utils/parse-source-application-header.util.js';
 import { parseRetryCountHeader } from '../utils/parse-retry-count-header.util.js';
@@ -43,12 +49,19 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 		private readonly moduleOptions: ApiMonitoringModuleRuntimeOptions,
 	) {}
 
+	/** Wraps each HTTP handler: timing, optional body snapshot, async persist + outcome headers. */
 	intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
 		const request = context.switchToHttp().getRequest<HttpRequest>();
 		const response = context.switchToHttp().getResponse<Response>();
 
 		// Skip monitoring for localhost/internal requests if configured
 		if (this.shouldSkipMonitoring(request)) {
+			this.applyRequestLogOutcomeToResponse(response, {
+				status: 'skipped',
+				reason: 'interceptor_not_tracked',
+				message:
+					'Request log was not written: ApiMonitoringInterceptor skipped this request (localhost/private IP or API_MONITORING_EXCLUDE_ORIGINS match).',
+			});
 			return next.handle();
 		}
 
@@ -100,10 +113,19 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 						retryCount,
 					);
 
-					// Log asynchronously (non-blocking)
-					this.monitoringService.logRequest(metadata).catch(() => {
-						// Errors are already logged in the service
-					});
+					void this.monitoringService
+						.logRequest(metadata)
+						.then((outcome) => {
+							this.applyRequestLogOutcomeToResponse(response, outcome);
+						})
+						.catch((e: unknown) => {
+							const msg = e instanceof Error ? e.message : String(e);
+							this.applyRequestLogOutcomeToResponse(response, {
+								status: 'error',
+								reason: 'unexpected',
+								message: `Request log outcome failed: ${msg}`,
+							});
+						});
 				},
 			}),
 			catchError((err: unknown) => {
@@ -135,10 +157,19 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 					retryCount,
 				);
 
-				// Log asynchronously (non-blocking)
-				this.monitoringService.logRequest(metadata).catch(() => {
-					// Errors are already logged in the service
-				});
+				void this.monitoringService
+					.logRequest(metadata)
+					.then((outcome) => {
+						this.applyRequestLogOutcomeToResponse(response, outcome);
+					})
+					.catch((e: unknown) => {
+						const msg = e instanceof Error ? e.message : String(e);
+						this.applyRequestLogOutcomeToResponse(response, {
+							status: 'error',
+							reason: 'unexpected',
+							message: `Request log outcome failed: ${msg}`,
+						});
+					});
 
 				// Re-throw error to maintain normal error handling
 				return throwError(() => err);
@@ -146,6 +177,24 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 		);
 	}
 
+	/** Writes log outcome to response headers when enabled and headers not yet sent. */
+	private applyRequestLogOutcomeToResponse(response: Response, outcome: ApiRequestLogOutcome): void {
+		if (!this.moduleOptions.exposeRequestLogOutcomeHeaders || response.headersSent) {
+			return;
+		}
+		response.setHeader(API_MONITORING_REQUEST_LOG_STATUS_HEADER, outcome.status);
+		if (outcome.status === 'saved') {
+			response.setHeader(
+				API_MONITORING_REQUEST_LOG_MESSAGE_HEADER,
+				'Request log row was saved to api_request_log.',
+			);
+			return;
+		}
+		response.setHeader(API_MONITORING_REQUEST_LOG_REASON_HEADER, outcome.reason.replace(/_/g, '-'));
+		response.setHeader(API_MONITORING_REQUEST_LOG_MESSAGE_HEADER, outcome.message);
+	}
+
+	/** Express/Nest route template path or raw path. */
 	private resolveRequestRoute(request: HttpRequest): string {
 		const layer: unknown = request.route;
 		const pathCandidate =

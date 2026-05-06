@@ -85,7 +85,8 @@ describe('ApiMonitoringService', () => {
 			requestLogRepo.create.mockReturnValue(mockLog);
 			requestLogRepo.save.mockResolvedValue(mockLog);
 
-			await service.logRequest(metadata);
+			const outcome = await service.logRequest(metadata);
+			expect(outcome).toEqual({ status: 'saved' });
 
 			expect(requestLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({
 				route: '/v1/agents',
@@ -238,13 +239,19 @@ describe('ApiMonitoringService', () => {
 
 			const disabledService = module.get<ApiMonitoringService>(ApiMonitoringService);
 
-			await disabledService.logRequest({
+			const outcome = await disabledService.logRequest({
 				route: '/v1/agents',
 				method: HttpMethod.GET,
 				statusCode: 200,
 				latencyMs: 100,
-			} as any);
+				actorId: 'actor-1',
+				actorType: ApiActorType.USER,
+				correlationId: 'c',
+				timestamp: new Date(),
+				hasError: false,
+			});
 
+			expect(outcome).toMatchObject({ status: 'skipped', reason: 'monitoring_disabled' });
 			expect(requestLogRepo.create).not.toHaveBeenCalled();
 		});
 
@@ -265,8 +272,9 @@ describe('ApiMonitoringService', () => {
 			requestLogRepo.create.mockReturnValue(mockLog);
 			requestLogRepo.save.mockRejectedValue(new Error('Database error'));
 
-			await service.logRequest(metadata);
+			const outcome = await service.logRequest(metadata);
 
+			expect(outcome).toMatchObject({ status: 'error', reason: 'save_failed' });
 			expect(logger.error).toHaveBeenCalledWith(
 				'Failed to save API request log',
 				expect.objectContaining({
@@ -302,16 +310,38 @@ describe('ApiMonitoringService', () => {
 			// Mock Math.random to return 0.6 (above sample rate)
 			jest.spyOn(Math, 'random').mockReturnValue(0.6);
 
-			await sampledService.logRequest({
+			const outcome = await sampledService.logRequest({
 				route: '/v1/agents',
 				method: HttpMethod.GET,
 				statusCode: 200,
 				latencyMs: 100,
-			} as any);
+				actorId: 'actor-1',
+				actorType: ApiActorType.USER,
+				correlationId: 'c',
+				timestamp: new Date(),
+				hasError: false,
+			});
 
+			expect(outcome).toMatchObject({ status: 'skipped', reason: 'sampled' });
 			expect(requestLogRepo.create).not.toHaveBeenCalled();
 
 			jest.spyOn(Math, 'random').mockRestore();
+		});
+
+		it('returns skipped outcome when actor id is missing', async () => {
+			const outcome = await service.logRequest({
+				route: '/x',
+				method: HttpMethod.GET,
+				statusCode: 200,
+				latencyMs: 1,
+				correlationId: 'c1',
+				timestamp: new Date(),
+				hasError: false,
+			});
+
+			expect(outcome).toMatchObject({ status: 'skipped', reason: 'no_actor_id' });
+			expect(requestLogRepo.create).not.toHaveBeenCalled();
+			expect(logger.warn).toHaveBeenCalled();
 		});
 	});
 

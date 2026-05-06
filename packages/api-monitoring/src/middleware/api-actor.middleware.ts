@@ -48,6 +48,7 @@ export class ApiActorMiddleware implements NestMiddleware {
 		this.logger.info('ApiActorMiddleware initialized successfully');
 	}
 
+	/** Nest middleware entry: resolve actor + optional USER profile, then `next()`. */
 	async use(req: Request, res: Response, next: NextFunction): Promise<void> {
 		try {
 			// Policy: Skip actor creation for excluded origins (frontend UI, etc.)

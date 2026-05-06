@@ -55,7 +55,11 @@ describe('ApiMonitoringModule.forRoot', () => {
 		const modOpts = findByToken(providers, API_MONITORING_MODULE_OPTIONS);
 		expect(modOpts).toEqual({
 			provide: API_MONITORING_MODULE_OPTIONS,
-			useValue: { captureRequestBody: false, requestBodyMaxBytes: 16_384 },
+			useValue: {
+				captureRequestBody: false,
+				requestBodyMaxBytes: 16_384,
+				exposeRequestLogOutcomeHeaders: true,
+			},
 		});
 		const appInter = findByToken(providers, APP_INTERCEPTOR);
 		expect(appInter).toEqual({ provide: APP_INTERCEPTOR, useClass: ApiMonitoringInterceptor });
@@ -133,7 +137,11 @@ describe('ApiMonitoringModule.forRoot', () => {
 			requestBodyMaxBytes: 99,
 		});
 		const modOpts = (mod.providers as any[]).find((p) => p && p.provide === API_MONITORING_MODULE_OPTIONS);
-		expect(modOpts.useValue).toEqual({ captureRequestBody: true, requestBodyMaxBytes: 256 });
+		expect(modOpts.useValue).toEqual({
+			captureRequestBody: true,
+			requestBodyMaxBytes: 256,
+			exposeRequestLogOutcomeHeaders: true,
+		});
 	});
 
 	it('clamps requestBodyMaxBytes to upper bound 1048576', () => {
@@ -143,7 +151,21 @@ describe('ApiMonitoringModule.forRoot', () => {
 			requestBodyMaxBytes: 9_999_999,
 		});
 		const modOpts = (mod.providers as any[]).find((p) => p && p.provide === API_MONITORING_MODULE_OPTIONS);
-		expect(modOpts.useValue).toEqual({ captureRequestBody: false, requestBodyMaxBytes: 1_048_576 });
+		expect(modOpts.useValue).toEqual({
+			captureRequestBody: false,
+			requestBodyMaxBytes: 1_048_576,
+			exposeRequestLogOutcomeHeaders: true,
+		});
+	});
+
+	it('disables outcome headers when exposeRequestLogOutcomeHeaders is false', () => {
+		const mod = ApiMonitoringModule.forRoot({
+			logger: MockLogger,
+			asyncContext: MockAsyncContext,
+			exposeRequestLogOutcomeHeaders: false,
+		});
+		const modOpts = (mod.providers as any[]).find((p) => p && p.provide === API_MONITORING_MODULE_OPTIONS);
+		expect(modOpts.useValue.exposeRequestLogOutcomeHeaders).toBe(false);
 	});
 
 	it('exposes the services and actor middleware to host modules', () => {

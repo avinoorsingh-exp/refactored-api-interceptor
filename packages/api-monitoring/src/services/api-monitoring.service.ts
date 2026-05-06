@@ -6,6 +6,7 @@ import {
 	ApiErrorClassification,
 	type ApiRequestMetadata,
 } from '../domain/api-monitoring.types.js';
+import type { ApiRequestLogOutcome } from '../domain/api-request-log-outcome.js';
 import { ApiRequestContextService } from './api-request-context.service.js';
 import type { IApiMonitoringLogger } from '../interfaces/logger.interface.js';
 import { API_MONITORING_LOGGER_TOKEN } from '../interfaces/logger.interface.js';
@@ -37,24 +38,37 @@ export class ApiMonitoringService {
 		});
 	}
 
-	async logRequest(metadata: ApiRequestMetadata): Promise<void> {
+	/** Persists `api_request_log` when enabled; returns why skipped or if DB failed. */
+	async logRequest(metadata: ApiRequestMetadata): Promise<ApiRequestLogOutcome> {
 		if (!this.enabled) {
-			return;
+			return {
+				status: 'skipped',
+				reason: 'monitoring_disabled',
+				message:
+					'Request log was not saved: API monitoring is disabled (set API_MONITORING_ENABLED to a value other than false to enable).',
+			};
 		}
 
 		if (!metadata.actorId) {
-			if (process.env.NODE_ENV !== 'production') {
-				this.logger.debug('Skipping API request log - no actor ID', {
-					route: metadata.route,
-					method: metadata.method,
-					correlationId: metadata.correlationId,
-				});
-			}
-			return;
+			this.logger.warn('Request log not saved: actor id is required', {
+				route: metadata.route,
+				method: metadata.method,
+				correlationId: metadata.correlationId,
+			});
+			return {
+				status: 'skipped',
+				reason: 'no_actor_id',
+				message:
+					'Request log was not saved: actor id is required. Register ApiActorMiddleware after authentication so each request has an actor in context.',
+			};
 		}
 
 		if (this.sampleRate < 1.0 && Math.random() > this.sampleRate) {
-			return;
+			return {
+				status: 'skipped',
+				reason: 'sampled',
+				message: `Request log was not saved: random sampling excluded this request (API_MONITORING_SAMPLE_RATE=${this.sampleRate}).`,
+			};
 		}
 
 		try {
@@ -81,21 +95,37 @@ export class ApiMonitoringService {
 				retryCount: metadata.retryCount ?? 0,
 			} as Record<string, unknown>);
 
-			await this.requestLogRepo.save(log).catch((err: unknown) => {
+			try {
+				await this.requestLogRepo.save(log);
+				return { status: 'saved' };
+			} catch (err: unknown) {
+				const msg = err instanceof Error ? err.message : String(err);
 				this.logger.error('Failed to save API request log', {
 					correlationId: metadata.correlationId,
 					route: metadata.route,
-					error: err instanceof Error ? err.message : String(err),
+					error: msg,
 				});
-			});
+				return {
+					status: 'error',
+					reason: 'save_failed',
+					message: `Request log was not saved: database error (${msg}).`,
+				};
+			}
 		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : String(err);
 			this.logger.error('Unexpected error in API monitoring', {
 				correlationId: metadata.correlationId,
-				error: err instanceof Error ? err.message : String(err),
+				error: msg,
 			});
+			return {
+				status: 'error',
+				reason: 'unexpected',
+				message: `Request log was not saved: unexpected error (${msg}).`,
+			};
 		}
 	}
 
+	/** Maps HTTP status (+ optional error name) to stored classification enum. */
 	classifyError(statusCode: number, error?: Error): ApiErrorClassification {
 		if (statusCode >= 500) {
 			return ApiErrorClassification.SERVER_ERROR;
@@ -119,6 +149,7 @@ export class ApiMonitoringService {
 		return ApiErrorClassification.UNKNOWN_ERROR;
 	}
 
+	/** Redacts PII patterns from error text before persistence. */
 	sanitizeErrorMessage(message: string): string {
 		let sanitized = message.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '[EMAIL]');
 		sanitized = sanitized.replace(/\b\d{3}[-.]?\d{3}[-.]?\d{4}\b/g, '[PHONE]');
@@ -127,6 +158,7 @@ export class ApiMonitoringService {
 		return sanitized;
 	}
 
+	/** Keeps stacks for server errors only. */
 	extractStackTrace(error: unknown, statusCode: number): string | undefined {
 		if (statusCode < 500) {
 			return undefined;
@@ -139,6 +171,7 @@ export class ApiMonitoringService {
 		return undefined;
 	}
 
+	/** Merges HTTP facts + async context into one {@link ApiRequestMetadata} object. */
 	buildRequestMetadata(
 		route: string,
 		method: HttpMethod,

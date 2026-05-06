@@ -613,26 +613,8 @@ export class ApiMetricsService {
 	}
 
 	/**
-	 * Get activity for a specific actor.
-	 * 
-	 * Supports cursor-based pagination for stable ordering.
-	 * If no cursor is provided, returns results ordered by timestamp DESC.
-	 * 
-	 * Cursor is based on timestamp + id for deterministic ordering.
-	 */
-	/**
-	 * Get activity for a specific actor.
-	 * 
-	 * STANDARDIZED BEHAVIOR:
-	 * - Filters are applied FIRST (startDate/endDate, routes[], statusCodes[])
-	 * - Results are paginated (NEVER ranked)
-	 * - Ordered by timestamp DESC
-	 * 
-	 * This endpoint is a log stream, not analytics.
-	 * 
-	 * Pagination:
-	 * - Default page size: 50
-	 * - Max page size: 100
+	 * Request log stream for one actor (filters first; paginated; `timestamp` DESC).
+	 * Default page 50, max 100 — not a ranking/analytics endpoint.
 	 */
 	async getActorActivity(
 		query: (ActorActivityQuery | { actorId: string; startTime?: Date; endTime?: Date; limit?: number }) & { 
@@ -800,39 +782,8 @@ export class ApiMetricsService {
 	}
 
 	/**
-	 * Get top external callers by request count.
-	 * 
-	 * Supports pagination with hard max limit (default 25, max 100).
-	 * Sorting remains by request count or error rate.
-	 * 
-	 * Note: This endpoint aggregates data, so cursor-based pagination
-	 * is optional. If no cursor is provided, returns top N callers.
-	 */
-	/**
-	 * Get top external callers by request count.
-	 * 
-	 * Supports multi-select filters:
-	 * - actorIds[]: Filter by multiple actor IDs
-	 * - routes[]: Filter by multiple route paths
-	 * - statusCodes[]: Filter by multiple status codes
-	 * 
-	 * All filters apply BEFORE aggregation.
-	 */
-	/**
-	 * Get top external callers by request count.
-	 * 
-	 * STANDARDIZED BEHAVIOR:
-	 * - Filters are applied FIRST (startDate/endDate, routes[], statusCodes[], actorIds[])
-	 * - Aggregation happens SECOND (GROUP BY actor_id, actor_type)
-	 * - Caps are applied LAST (default 25, max 50)
-	 * 
-	 * Semantics: "Top callers WITHIN the filtered dataset"
-	 * Counts are EXPECTED to drop when filters are applied. This is correct behavior.
-	 * 
-	 * Supports multi-select filters:
-	 * - actorIds[]: Filter by multiple actor IDs
-	 * - routes[]: Filter by multiple route paths
-	 * - statusCodes[]: Filter by multiple status codes
+	 * Top actors by request count in the time window (filters first, then GROUP BY actor).
+	 * Cursor pagination optional; default limit 25, max 50.
 	 */
 	async getTopCallers(
 		startTime: Date,
@@ -1090,39 +1041,8 @@ export class ApiMetricsService {
 	}
 
 	/**
-	 * Get error samples for analysis.
-	 * 
-	 * Supports cursor-based pagination with filtering by:
-	 * - route
-	 * - classification (severity)
-	 * - statusCode
-	 * 
-	 * Order: createdAt DESC, id DESC (for stable cursor-based pagination).
-	 * Cursor is based on createdAt + id to ensure deterministic ordering.
-	 */
-	/**
-	 * Get error samples for analysis.
-	 * 
-	 * Supports multi-select filters:
-	 * - routes[]: Filter by multiple route paths
-	 * - statusCodes[]: Filter by multiple status codes
-	 * - classifications[]: Filter by multiple error classifications
-	 * 
-	 * Cursor pagination preserved.
-	 */
-	/**
-	 * Get error samples for analysis.
-	 * 
-	 * STANDARDIZED BEHAVIOR:
-	 * - Filters are applied FIRST (startDate/endDate, routes[], statusCodes[], classifications[])
-	 * - Results are paginated (NEVER ranked)
-	 * - Ordered by createdAt DESC, id DESC
-	 * 
-	 * This endpoint is NOT used for charts - it is a verification source.
-	 * 
-	 * Pagination:
-	 * - Default page size: 50
-	 * - Max page size: 100
+	 * Raw error rows from `api_request_log` for debugging (paginated; filters first).
+	 * Ordered by `createdAt` DESC; default page size 50, max 100.
 	 */
 	async getErrorSamples(
 		query: {

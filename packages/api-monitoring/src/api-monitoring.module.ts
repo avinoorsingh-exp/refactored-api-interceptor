@@ -28,17 +28,25 @@ import {
 } from './tokens/api-monitoring-module-options.token.js';
 
 /**
- * API Monitoring Module — register via {@link ApiMonitoringModule.forRoot}.
+ * Nest module that registers API monitoring (entities, repos, global interceptor, admin controller).
+ * Import once via {@link ApiMonitoringModule.forRoot}.
  * @public
  */
 @Global()
 export class ApiMonitoringModule {
+	/**
+	 * Builds the dynamic module: wires TypeORM feature entities, DI tokens for repositories,
+	 * logger + async context from the host, runtime options, services, global HTTP interceptor,
+	 * and read-only metrics routes.
+	 */
 	static forRoot(options: ApiMonitoringForRootOptions): DynamicModule {
+		// Entity bundle (defaults or host override for custom classes / same tables).
 		const entities = options.entities ?? DEFAULT_API_MONITORING_ENTITIES;
 		const { ApiRequestLogEntity, ApiRouteStatsEntity, ApiActorEntity, ApiMonitoringUserEntity } =
 			entities;
 		const connection = options.dataSourceName;
 
+		// Register monitoring entities on the default or named TypeORM connection.
 		const forFeature = connection
 			? TypeOrmModule.forFeature(
 					[ApiRequestLogEntity, ApiRouteStatsEntity, ApiActorEntity, ApiMonitoringUserEntity],
@@ -51,6 +59,7 @@ export class ApiMonitoringModule {
 					ApiMonitoringUserEntity,
 				]);
 
+		// Repository injection tokens for each entity (respect named connection when set).
 		const requestLogToken = connection
 			? getRepositoryToken(ApiRequestLogEntity, connection)
 			: getRepositoryToken(ApiRequestLogEntity);
@@ -64,29 +73,32 @@ export class ApiMonitoringModule {
 			? getRepositoryToken(ApiMonitoringUserEntity, connection)
 			: getRepositoryToken(ApiMonitoringUserEntity);
 
+		// Resolved flags passed to the interceptor (body capture limits, optional outcome headers).
 		const maxBytesRaw = options.requestBodyMaxBytes ?? 16_384;
 		const runtimeOptions: ApiMonitoringModuleRuntimeOptions = {
 			captureRequestBody: options.captureRequestBody === true,
 			requestBodyMaxBytes: Math.min(1_048_576, Math.max(256, maxBytesRaw)),
+			exposeRequestLogOutcomeHeaders: options.exposeRequestLogOutcomeHeaders !== false,
 		};
 
 		return {
 			module: ApiMonitoringModule,
 			imports: [forFeature],
 			providers: [
-				{ provide: API_MONITORING_MODULE_OPTIONS, useValue: runtimeOptions },
-				{ provide: API_MONITORING_ENTITY_CLASSES, useValue: entities },
+				{ provide: API_MONITORING_MODULE_OPTIONS, useValue: runtimeOptions }, // Interceptor reads capture + headers.
+				{ provide: API_MONITORING_ENTITY_CLASSES, useValue: entities }, // Metrics queries use entity metadata.
 				{
 					provide: API_MONITORING_ASYNC_CONTEXT,
-					useClass: options.asyncContext,
+					useClass: options.asyncContext, // Host ALS adapter: correlation id and request store.
 				},
 				{
 					provide: API_MONITORING_LOGGER_TOKEN,
-					useFactory: (logger: IApiMonitoringLogger) => logger,
+					useFactory: (logger: IApiMonitoringLogger) => logger, // Bridge host logger token into injectable token.
 					inject: [options.logger],
 				},
 				{
 					provide: API_MONITORING_REQUEST_LOG_REPO,
+					// Alias TypeORM repo → stable symbol for ApiMonitoringService.
 					useFactory: (repo: Repository<Record<string, unknown>>): Repository<Record<string, unknown>> =>
 						repo,
 					inject: [requestLogToken],
@@ -109,19 +121,20 @@ export class ApiMonitoringModule {
 						repo,
 					inject: [monitoringUserToken],
 				},
-				ApiRequestContextService,
-				ApiActorService,
-				ApiMonitoringUserService,
-				ApiMonitoringService,
-				ApiMetricsService,
-				ApiActorMiddleware,
+				ApiRequestContextService, // Reads/writes actor + correlation on async store.
+				ApiActorService, // getOrCreateActor → api_actor.
+				ApiMonitoringUserService, // USER profile upsert → api_monitoring_user.
+				ApiMonitoringService, // buildRequestMetadata + logRequest → api_request_log.
+				ApiMetricsService, // Dashboard queries + optional route_stats aggregation.
+				ApiActorMiddleware, // Apply on routes in host; attributes actors after auth.
 				{
 					provide: APP_INTERCEPTOR,
-					useClass: ApiMonitoringInterceptor,
+					useClass: ApiMonitoringInterceptor, // Global: measure + persist api_request_log after handlers.
 				},
 			],
-			controllers: [ApiMonitoringController],
+			controllers: [ApiMonitoringController], // Admin metrics GET routes (protect in host).
 			exports: [
+				// Let host modules inject middleware / services for ordering or extension.
 				ApiRequestContextService,
 				ApiActorService,
 				ApiMonitoringUserService,

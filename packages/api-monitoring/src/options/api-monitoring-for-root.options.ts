@@ -37,4 +37,10 @@ export interface ApiMonitoringForRootOptions {
 	 * @default 16384
 	 */
 	requestBodyMaxBytes?: number;
+
+	/**
+	 * When true (default), responses include headers explaining whether the request was saved to `api_request_log`.
+	 * Set to `false` if you do not want clients or gateways to see monitoring outcomes.
+	 */
+	exposeRequestLogOutcomeHeaders?: boolean;
 }

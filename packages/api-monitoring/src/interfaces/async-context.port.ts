@@ -23,7 +23,9 @@ export interface ApiMonitoringRequestStore {
  * @public
  */
 export interface IApiMonitoringAsyncContext {
+	/** Active request bag (ALS); monitoring reads actor/correlation from here. */
 	getStore(): ApiMonitoringRequestStore | undefined;
+	/** Shortcut when correlation lives outside the store shape. */
 	getCorrelationId(): string | undefined;
 }
 

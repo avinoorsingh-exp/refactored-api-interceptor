@@ -33,6 +33,7 @@ import type { IApiMonitoringLogger } from './interfaces/logger.interface.js';
 import { API_MONITORING_LOGGER_TOKEN } from './interfaces/logger.interface.js';
 import type { PaginatedResponse } from './utils/pagination.util.js';
 
+/** Reads `limit` from query DTOs (supports deprecated `legacyLimit`). */
 function paginationLimitFromQuery(query: {
 	limit?: number;
 	/** @deprecated Prefer `limit`. */

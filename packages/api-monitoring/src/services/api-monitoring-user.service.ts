@@ -94,6 +94,7 @@ export class ApiMonitoringUserService {
 		}
 	}
 
+	/** Maps a loose TypeORM row into {@link ApiMonitoringUserRow}. */
 	private mapRow(r: Record<string, unknown>): ApiMonitoringUserRow {
 		return {
 			id: r.id as string,

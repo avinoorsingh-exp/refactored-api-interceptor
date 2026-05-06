@@ -39,6 +39,7 @@ export function serializeRequestBodySnapshot(body: unknown, maxBytes: number): s
 	return truncateUtf8('[unknown]', maxBytes);
 }
 
+/** Truncates UTF-8 text so byte length ≤ maxBytes, appending a truncation marker when needed. */
 function truncateUtf8(s: string, maxBytes: number): string {
 	const suffixBytes = Buffer.byteLength(TRUNCATION_SUFFIX, 'utf8');
 	const budget = Math.max(0, maxBytes - suffixBytes);

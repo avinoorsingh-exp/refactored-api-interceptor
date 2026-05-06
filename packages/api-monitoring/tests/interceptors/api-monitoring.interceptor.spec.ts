@@ -7,6 +7,17 @@ import { ApiMonitoringService } from '../../src/services/api-monitoring.service.
 import { ApiRequestContextService } from '../../src/services/api-request-context.service.js';
 import { HttpMethod } from '../../src/domain/api-monitoring.types.js';
 import { API_MONITORING_MODULE_OPTIONS } from '../../src/tokens/api-monitoring-module-options.token.js';
+import {
+	API_MONITORING_REQUEST_LOG_MESSAGE_HEADER,
+	API_MONITORING_REQUEST_LOG_REASON_HEADER,
+	API_MONITORING_REQUEST_LOG_STATUS_HEADER,
+} from '../../src/domain/api-request-log-outcome.js';
+
+const defaultModuleOpts = {
+	captureRequestBody: false,
+	requestBodyMaxBytes: 16_384,
+	exposeRequestLogOutcomeHeaders: true,
+} as const;
 
 type AsyncTestDone = (reason?: string | Error) => void;
 
@@ -41,6 +52,8 @@ describe('ApiMonitoringInterceptor', () => {
 
 		mockResponse = {
 			statusCode: 200,
+			headersSent: false,
+			setHeader: jest.fn(),
 		};
 
 		mockExecutionContext = {
@@ -67,7 +80,7 @@ describe('ApiMonitoringInterceptor', () => {
 				},
 				{
 					provide: API_MONITORING_MODULE_OPTIONS,
-					useValue: { captureRequestBody: false, requestBodyMaxBytes: 16_384 },
+					useValue: { ...defaultModuleOpts },
 				},
 			],
 		}).compile();
@@ -85,7 +98,7 @@ describe('ApiMonitoringInterceptor', () => {
 			} as any;
 
 			monitoringService.buildRequestMetadata.mockReturnValue(metadata);
-			monitoringService.logRequest.mockResolvedValue(undefined);
+			monitoringService.logRequest.mockResolvedValue({ status: 'saved' });
 
 			(mockRequest.get as jest.Mock).mockReturnValue('Mozilla/5.0');
 
@@ -116,7 +129,7 @@ describe('ApiMonitoringInterceptor', () => {
 			} as any;
 
 			monitoringService.buildRequestMetadata.mockReturnValue(metadata);
-			monitoringService.logRequest.mockResolvedValue(undefined);
+			monitoringService.logRequest.mockResolvedValue({ status: 'saved' });
 
 			(mockRequest.get as jest.Mock).mockImplementation((header: string) => {
 				if (header === 'user-agent') {
@@ -167,7 +180,7 @@ describe('ApiMonitoringInterceptor', () => {
 			} as any;
 
 			monitoringService.buildRequestMetadata.mockReturnValue(metadata);
-			monitoringService.logRequest.mockResolvedValue(undefined);
+			monitoringService.logRequest.mockResolvedValue({ status: 'saved' });
 
 			const result = interceptor.intercept(mockExecutionContext, mockCallHandler);
 
@@ -209,7 +222,7 @@ describe('ApiMonitoringInterceptor', () => {
 			} as any;
 
 			monitoringService.buildRequestMetadata.mockReturnValue(metadata);
-			monitoringService.logRequest.mockResolvedValue(undefined);
+			monitoringService.logRequest.mockResolvedValue({ status: 'saved' });
 
 			const result = interceptor.intercept(mockExecutionContext, mockCallHandler);
 
@@ -235,7 +248,7 @@ describe('ApiMonitoringInterceptor', () => {
 			} as any;
 
 			monitoringService.buildRequestMetadata.mockReturnValue(metadata);
-			monitoringService.logRequest.mockResolvedValue(undefined);
+			monitoringService.logRequest.mockResolvedValue({ status: 'saved' });
 
 			(mockRequest.get as jest.Mock).mockReturnValue(undefined);
 
@@ -269,7 +282,7 @@ describe('ApiMonitoringInterceptor', () => {
 			} as any;
 
 			monitoringService.buildRequestMetadata.mockReturnValue(metadata);
-			monitoringService.logRequest.mockResolvedValue(undefined);
+			monitoringService.logRequest.mockResolvedValue({ status: 'saved' });
 
 			const result = interceptor.intercept(mockExecutionContext, mockCallHandler);
 
@@ -280,7 +293,7 @@ describe('ApiMonitoringInterceptor', () => {
 			expect(callArgs[7]).toBe(1024); // requestSizeBytes from Content-Length
 		});
 
-		it('should handle logging errors gracefully', (done: AsyncTestDone) => {
+		it('should handle logging errors gracefully', async () => {
 			monitoringService.logRequest.mockRejectedValue(new Error('Logging failed'));
 
 			const metadata = {
@@ -294,15 +307,51 @@ describe('ApiMonitoringInterceptor', () => {
 
 			(mockRequest.get as jest.Mock).mockReturnValue(undefined);
 
-			const result = interceptor.intercept(mockExecutionContext, mockCallHandler);
+			const data = await firstValueFrom(interceptor.intercept(mockExecutionContext, mockCallHandler));
+			expect(data).toEqual({ data: 'test' });
+			await new Promise<void>((r) => setImmediate(r));
+			expect(mockResponse.setHeader).toHaveBeenCalledWith(API_MONITORING_REQUEST_LOG_STATUS_HEADER, 'error');
+			expect(mockResponse.setHeader).toHaveBeenCalledWith(API_MONITORING_REQUEST_LOG_REASON_HEADER, 'unexpected');
+		});
 
-			result.subscribe({
-				next: (data: unknown) => {
-					// Should still return data even if logging fails
-					expect(data).toEqual({ data: 'test' });
-					done();
-				},
+		it('sets outcome headers when logRequest returns skipped (no actor)', async () => {
+			const metadata = {
+				route: '/v1/agents',
+				method: HttpMethod.GET,
+				statusCode: 200,
+				latencyMs: 1,
+			} as any;
+			monitoringService.buildRequestMetadata.mockReturnValue(metadata);
+			monitoringService.logRequest.mockResolvedValue({
+				status: 'skipped',
+				reason: 'no_actor_id',
+				message: 'No actor — not saved.',
 			});
+			(mockRequest.get as jest.Mock).mockReturnValue('Mozilla/5.0');
+
+			await firstValueFrom(interceptor.intercept(mockExecutionContext, mockCallHandler));
+			await new Promise<void>((r) => setImmediate(r));
+
+			expect(mockResponse.setHeader).toHaveBeenCalledWith(API_MONITORING_REQUEST_LOG_STATUS_HEADER, 'skipped');
+			expect(mockResponse.setHeader).toHaveBeenCalledWith(API_MONITORING_REQUEST_LOG_REASON_HEADER, 'no-actor-id');
+			expect(mockResponse.setHeader).toHaveBeenCalledWith(
+				API_MONITORING_REQUEST_LOG_MESSAGE_HEADER,
+				'No actor — not saved.',
+			);
+		});
+
+		it('sets skipped headers when interceptor bypasses monitoring (localhost)', async () => {
+			(mockRequest as { ip?: string }).ip = '127.0.0.1';
+			(mockRequest.socket as any).remoteAddress = '127.0.0.1';
+
+			const data = await firstValueFrom(interceptor.intercept(mockExecutionContext, mockCallHandler));
+			expect(data).toEqual({ data: 'test' });
+			expect(monitoringService.logRequest).not.toHaveBeenCalled();
+			expect(mockResponse.setHeader).toHaveBeenCalledWith(API_MONITORING_REQUEST_LOG_STATUS_HEADER, 'skipped');
+			expect(mockResponse.setHeader).toHaveBeenCalledWith(
+				API_MONITORING_REQUEST_LOG_REASON_HEADER,
+				'interceptor-not-tracked',
+			);
 		});
 
 		it('should map HTTP method correctly', async () => {
@@ -316,7 +365,7 @@ describe('ApiMonitoringInterceptor', () => {
 			} as any;
 
 			monitoringService.buildRequestMetadata.mockReturnValue(metadata);
-			monitoringService.logRequest.mockResolvedValue(undefined);
+			monitoringService.logRequest.mockResolvedValue({ status: 'saved' });
 
 			(mockRequest.get as jest.Mock).mockReturnValue(undefined);
 
@@ -338,7 +387,7 @@ describe('ApiMonitoringInterceptor', () => {
 			});
 
 			monitoringService.buildRequestMetadata.mockReturnValue({} as any);
-			monitoringService.logRequest.mockResolvedValue(undefined);
+			monitoringService.logRequest.mockResolvedValue({ status: 'saved' });
 
 			await firstValueFrom(interceptor.intercept(mockExecutionContext, mockCallHandler));
 
@@ -355,7 +404,7 @@ describe('ApiMonitoringInterceptor', () => {
 			});
 
 			monitoringService.buildRequestMetadata.mockReturnValue({} as any);
-			monitoringService.logRequest.mockResolvedValue(undefined);
+			monitoringService.logRequest.mockResolvedValue({ status: 'saved' });
 
 			await firstValueFrom(interceptor.intercept(mockExecutionContext, mockCallHandler));
 
@@ -372,7 +421,7 @@ describe('ApiMonitoringInterceptor', () => {
 					{ provide: ApiRequestContextService, useValue: contextService },
 					{
 						provide: API_MONITORING_MODULE_OPTIONS,
-						useValue: { captureRequestBody: true, requestBodyMaxBytes: 16_384 },
+						useValue: { ...defaultModuleOpts, captureRequestBody: true, requestBodyMaxBytes: 16_384 },
 					},
 				],
 			}).compile();
@@ -391,7 +440,7 @@ describe('ApiMonitoringInterceptor', () => {
 			} as any;
 
 			monitoringService.buildRequestMetadata.mockReturnValue(metadata);
-			monitoringService.logRequest.mockResolvedValue(undefined);
+			monitoringService.logRequest.mockResolvedValue({ status: 'saved' });
 			(mockRequest.get as jest.Mock).mockReturnValue(undefined);
 
 			await firstValueFrom(interceptor.intercept(mockExecutionContext, mockCallHandler));
@@ -427,7 +476,7 @@ describe('ApiMonitoringInterceptor', () => {
 			} as any;
 
 			monitoringService.buildRequestMetadata.mockReturnValue(metadata);
-			monitoringService.logRequest.mockResolvedValue(undefined);
+			monitoringService.logRequest.mockResolvedValue({ status: 'saved' });
 			(mockRequest.get as jest.Mock).mockImplementation((h: string) =>
 				h === 'user-agent' ? 'Mozilla/5.0' : undefined,
 			);
@@ -458,7 +507,7 @@ describe('ApiMonitoringInterceptor', () => {
 			mockRequest.body = undefined;
 			mockRequest.method = 'GET';
 			monitoringService.buildRequestMetadata.mockReturnValue({} as any);
-			monitoringService.logRequest.mockResolvedValue(undefined);
+			monitoringService.logRequest.mockResolvedValue({ status: 'saved' });
 			(mockRequest.get as jest.Mock).mockReturnValue(undefined);
 
 			await firstValueFrom(interceptor.intercept(mockExecutionContext, mockCallHandler));
@@ -472,7 +521,7 @@ describe('ApiMonitoringInterceptor', () => {
 			mockRequest.method = 'POST';
 			mockRequest.body = 99;
 			monitoringService.buildRequestMetadata.mockReturnValue({} as any);
-			monitoringService.logRequest.mockResolvedValue(undefined);
+			monitoringService.logRequest.mockResolvedValue({ status: 'saved' });
 			(mockRequest.get as jest.Mock).mockReturnValue(undefined);
 
 			await firstValueFrom(interceptor.intercept(mockExecutionContext, mockCallHandler));
@@ -490,7 +539,7 @@ describe('ApiMonitoringInterceptor', () => {
 					{ provide: ApiRequestContextService, useValue: contextService },
 					{
 						provide: API_MONITORING_MODULE_OPTIONS,
-						useValue: { captureRequestBody: true, requestBodyMaxBytes: 32 },
+						useValue: { ...defaultModuleOpts, captureRequestBody: true, requestBodyMaxBytes: 32 },
 					},
 				],
 			}).compile();
@@ -500,7 +549,7 @@ describe('ApiMonitoringInterceptor', () => {
 			mockRequest.body = { a: 'x'.repeat(100) };
 
 			monitoringService.buildRequestMetadata.mockReturnValue({} as any);
-			monitoringService.logRequest.mockResolvedValue(undefined);
+			monitoringService.logRequest.mockResolvedValue({ status: 'saved' });
 			(mockRequest.get as jest.Mock).mockReturnValue(undefined);
 
 			await firstValueFrom(interceptor.intercept(mockExecutionContext, mockCallHandler));

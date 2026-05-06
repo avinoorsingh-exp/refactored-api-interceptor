@@ -35,6 +35,7 @@ export class ApiActorService {
 		this.logger.info('ApiActorService initialized successfully');
 	}
 
+	/** Human-readable label for `api_actor.display_name` by actor type. */
 	private generateDisplayName(
 		type: ApiActorType,
 		identifier?: string,
@@ -72,6 +73,7 @@ export class ApiActorService {
 		}
 	}
 
+	/** Finds `(type, identifier)` or inserts a new actor; retries on race. */
 	async getOrCreateActor(
 		type: ApiActorType,
 		identifier?: string,
@@ -167,12 +169,14 @@ export class ApiActorService {
 		}
 	}
 
+	/** Loads one active actor by primary key. */
 	async getActorById(id: string): Promise<ApiActorRow | null> {
 		return this.actorRepo.findOne({
 			where: { id, active: true },
 		});
 	}
 
+	/** Soft-deactivate an actor row (`active = false`). */
 	async deactivateActor(id: string): Promise<void> {
 		await this.actorRepo.update(id, { active: false });
 		this.logger.info('Deactivated API actor', { actorId: id });

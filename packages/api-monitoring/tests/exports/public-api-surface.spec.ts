@@ -28,5 +28,8 @@ describe('public package surface (index)', () => {
 		expect(Esm.parseSourceApplicationHeader).toBeInstanceOf(Function);
 		expect(Esm.API_MONITORING_RETRY_COUNT_HEADER).toBe('x-retry-count');
 		expect(Esm.parseRetryCountHeader).toBeInstanceOf(Function);
+		expect(Esm.API_MONITORING_REQUEST_LOG_STATUS_HEADER).toBe('x-api-monitoring-request-log-status');
+		expect(Esm.API_MONITORING_REQUEST_LOG_REASON_HEADER).toBe('x-api-monitoring-request-log-reason');
+		expect(Esm.API_MONITORING_REQUEST_LOG_MESSAGE_HEADER).toBe('x-api-monitoring-request-log-message');
 	});
 });
