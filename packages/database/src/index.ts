@@ -402,6 +402,12 @@ export { FeatureFlagEntity, type FeatureFlagKeyEntity } from './entities/core/fe
 export { ApiActorEntity } from '@exprealty/api-monitoring'
 
 /**
+ * TypeORM entity for API monitoring end-user profile (`api_monitoring_user`).
+ * @public
+ */
+export { ApiMonitoringUserEntity } from '@exprealty/api-monitoring'
+
+/**
  * TypeORM entity for ApiRequestLog table.
  * @public
  */

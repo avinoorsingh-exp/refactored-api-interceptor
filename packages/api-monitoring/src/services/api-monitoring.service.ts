@@ -76,6 +76,7 @@ export class ApiMonitoringService {
 				errorMessage: metadata.errorMessage,
 				stackTrace: metadata.stackTrace,
 				requestBodySnapshot: metadata.requestBodySnapshot,
+				monitoringUserId: metadata.monitoringUserId,
 			} as Record<string, unknown>);
 
 			await this.requestLogRepo.save(log).catch((err: unknown) => {
@@ -176,6 +177,7 @@ export class ApiMonitoringService {
 			timestamp,
 			actorId: context?.actorId,
 			actorType: context?.actorType,
+			monitoringUserId: context?.monitoringUserId,
 			errorClassification,
 			hasError,
 			errorMessage,

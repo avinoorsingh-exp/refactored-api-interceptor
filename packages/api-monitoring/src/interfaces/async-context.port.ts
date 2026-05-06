@@ -13,6 +13,8 @@ export interface ApiMonitoringRequestStore {
 	timestamp: number;
 	actorId?: string;
 	actorType?: ApiActorType;
+	/** Set when {@link ApiMonitoringUserEntity} row exists for the current USER actor. */
+	monitoringUserId?: string;
 	startTime?: number;
 }
 

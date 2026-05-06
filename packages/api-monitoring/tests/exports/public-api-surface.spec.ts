@@ -14,6 +14,8 @@ describe('public package surface (index)', () => {
 		expect(Esm.ApiRequestLogEntity).toBeDefined();
 		expect(Esm.ApiRouteStatsEntity).toBeDefined();
 		expect(Esm.ApiActorEntity).toBeDefined();
+		expect(Esm.ApiMonitoringUserEntity).toBeDefined();
+		expect(Esm.ApiMonitoringUserService).toBeDefined();
 		expect(Esm.ApiMonitoringService).toBeDefined();
 		expect(Esm.ApiMetricsService).toBeDefined();
 		expect(Esm.ApiMonitoringController).toBeDefined();

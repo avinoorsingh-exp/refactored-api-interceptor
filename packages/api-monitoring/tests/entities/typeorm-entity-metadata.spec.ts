@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { getMetadataArgsStorage } from 'typeorm';
 import { ApiActorEntity } from '../../src/entities/api-actor.entity.js';
+import { ApiMonitoringUserEntity } from '../../src/entities/api-monitoring-user.entity.js';
 import { ApiRequestLogEntity } from '../../src/entities/api-request-log.entity.js';
 import { ApiRouteStatsEntity } from '../../src/entities/api-route-stats.entity.js';
 import { HttpMethod, TimeBucket } from '../../src/domain/api-monitoring.types.js';
@@ -16,9 +17,11 @@ function tableFor(target: unknown) {
 }
 
 describe('API monitoring TypeORM entities (core schema)', () => {
-	it('registers three table metadata entries for the monitoring entities', () => {
-		const t = [ApiActorEntity, ApiRequestLogEntity, ApiRouteStatsEntity].map((C) => tableFor(C));
-		expect(t.filter(Boolean).length).toBe(3);
+	it('registers four table metadata entries for the monitoring entities', () => {
+		const t = [ApiActorEntity, ApiRequestLogEntity, ApiRouteStatsEntity, ApiMonitoringUserEntity].map((C) =>
+			tableFor(C),
+		);
+		expect(t.filter(Boolean).length).toBe(4);
 	});
 
 	it('api_actor: table core.api_actor and identity index on type + identifier', () => {
@@ -47,8 +50,15 @@ describe('API monitoring TypeORM entities (core schema)', () => {
 				'idx_api_request_log_timestamp',
 				'idx_api_request_log_correlation',
 				'idx_api_request_log_error',
+				'idx_api_request_log_monitoring_user',
 			]),
 		);
+	});
+
+	it('api_monitoring_user: table core.api_monitoring_user', () => {
+		const row = tableFor(ApiMonitoringUserEntity);
+		expect(row?.name).toBe('api_monitoring_user');
+		expect(row?.schema).toBe('core');
 	});
 
 	it('api_request_log: request_body_snapshot column mapped for optional body capture', () => {

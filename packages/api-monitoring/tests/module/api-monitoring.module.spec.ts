@@ -7,10 +7,12 @@ import { DEFAULT_API_MONITORING_ENTITIES, API_MONITORING_TYPEORM_ENTITIES } from
 import { ApiRequestLogEntity } from '../../src/entities/api-request-log.entity.js';
 import { ApiRouteStatsEntity } from '../../src/entities/api-route-stats.entity.js';
 import { ApiActorEntity } from '../../src/entities/api-actor.entity.js';
+import { ApiMonitoringUserEntity } from '../../src/entities/api-monitoring-user.entity.js';
 import {
 	API_MONITORING_ACTOR_REPO,
 	API_MONITORING_REQUEST_LOG_REPO,
 	API_MONITORING_ROUTE_STATS_REPO,
+	API_MONITORING_USER_REPO,
 } from '../../src/tokens/repository.tokens.js';
 import { API_MONITORING_ENTITY_CLASSES } from '../../src/tokens/entity-classes.token.js';
 import { ApiMonitoringController } from '../../src/api-monitoring.controller.js';
@@ -66,6 +68,8 @@ describe('ApiMonitoringModule.forRoot', () => {
 		);
 		const actorRepo = findBySymbol(providers, API_MONITORING_ACTOR_REPO) as { inject: unknown[] };
 		expect(actorRepo.inject[0]).toBe(getRepositoryToken(DEFAULT_API_MONITORING_ENTITIES.ApiActorEntity));
+		const userRepo = findBySymbol(providers, API_MONITORING_USER_REPO) as { inject: unknown[] };
+		expect(userRepo.inject[0]).toBe(getRepositoryToken(DEFAULT_API_MONITORING_ENTITIES.ApiMonitoringUserEntity));
 	});
 
 	it('uses explicit entities when provided instead of defaults', () => {
@@ -73,6 +77,7 @@ describe('ApiMonitoringModule.forRoot', () => {
 			ApiRequestLogEntity: ApiRequestLogEntity,
 			ApiRouteStatsEntity: ApiRouteStatsEntity,
 			ApiActorEntity: ApiActorEntity,
+			ApiMonitoringUserEntity: ApiMonitoringUserEntity,
 		} as const;
 
 		const mod = ApiMonitoringModule.forRoot({
@@ -114,6 +119,10 @@ describe('ApiMonitoringModule.forRoot', () => {
 		);
 		const actorR = findBySymbol(providers, API_MONITORING_ACTOR_REPO) as { inject: unknown[] };
 		expect(actorR.inject[0]).toBe(getRepositoryToken(DEFAULT_API_MONITORING_ENTITIES.ApiActorEntity, conn));
+		const userR = findBySymbol(providers, API_MONITORING_USER_REPO) as { inject: unknown[] };
+		expect(userR.inject[0]).toBe(
+			getRepositoryToken(DEFAULT_API_MONITORING_ENTITIES.ApiMonitoringUserEntity, conn),
+		);
 	});
 
 	it('clamps requestBodyMaxBytes and enables capture when configured', () => {
@@ -145,15 +154,17 @@ describe('ApiMonitoringModule.forRoot', () => {
 		const names = (ex as (string | object)[]).map((c) => (typeof c === 'function' && c.name ? c.name : String(c)));
 		expect(names.some((n) => n.includes('ApiMonitoringService'))).toBe(true);
 		expect(names.some((n) => n.includes('ApiMetricsService'))).toBe(true);
+		expect(names.some((n) => n.includes('ApiMonitoringUserService'))).toBe(true);
 	});
 });
 
 describe('default entity bundle', () => {
-	it('API_MONITORING_TYPEORM_ENTITIES lists all three class constructors', () => {
+	it('API_MONITORING_TYPEORM_ENTITIES lists all four class constructors', () => {
 		expect([...API_MONITORING_TYPEORM_ENTITIES]).toEqual([
 			ApiRequestLogEntity,
 			ApiRouteStatsEntity,
 			ApiActorEntity,
+			ApiMonitoringUserEntity,
 		]);
 	});
 
@@ -161,5 +172,6 @@ describe('default entity bundle', () => {
 		expect(DEFAULT_API_MONITORING_ENTITIES.ApiRequestLogEntity).toBe(ApiRequestLogEntity);
 		expect(DEFAULT_API_MONITORING_ENTITIES.ApiRouteStatsEntity).toBe(ApiRouteStatsEntity);
 		expect(DEFAULT_API_MONITORING_ENTITIES.ApiActorEntity).toBe(ApiActorEntity);
+		expect(DEFAULT_API_MONITORING_ENTITIES.ApiMonitoringUserEntity).toBe(ApiMonitoringUserEntity);
 	});
 });

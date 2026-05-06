@@ -23,6 +23,7 @@ import {
 @Index('idx_api_request_log_correlation', ['correlationId'])
 @Index('idx_api_request_log_status', ['statusCode', 'timestamp'])
 @Index('idx_api_request_log_error', ['hasError', 'timestamp'])
+@Index('idx_api_request_log_monitoring_user', ['monitoringUserId', 'timestamp'])
 export class ApiRequestLogEntity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string;
@@ -62,6 +63,10 @@ export class ApiRequestLogEntity {
 
 	@Column({ name: 'actor_type', type: 'text', nullable: true })
 	actorType?: ApiActorType;
+
+	/** Logical FK to {@link ApiMonitoringUserEntity} when the caller is a resolved USER profile. */
+	@Column({ name: 'monitoring_user_id', type: 'uuid', nullable: true })
+	monitoringUserId?: string;
 
 	@Column({ name: 'has_error', type: 'boolean', default: false })
 	hasError!: boolean;

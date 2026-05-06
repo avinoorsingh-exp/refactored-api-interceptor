@@ -4,3 +4,5 @@ export const API_MONITORING_REQUEST_LOG_REPO = Symbol('API_MONITORING_REQUEST_LO
 export const API_MONITORING_ROUTE_STATS_REPO = Symbol('API_MONITORING_ROUTE_STATS_REPO');
 /** Nest DI token for the API actor TypeORM repository. */
 export const API_MONITORING_ACTOR_REPO = Symbol('API_MONITORING_ACTOR_REPO');
+/** Nest DI token for the API monitoring user TypeORM repository. */
+export const API_MONITORING_USER_REPO = Symbol('API_MONITORING_USER_REPO');

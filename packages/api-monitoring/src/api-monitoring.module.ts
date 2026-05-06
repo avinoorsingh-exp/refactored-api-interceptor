@@ -8,6 +8,7 @@ import { ApiRequestContextService } from './services/api-request-context.service
 import { ApiActorService } from './services/api-actor.service.js';
 import { ApiMonitoringService } from './services/api-monitoring.service.js';
 import { ApiMetricsService } from './services/api-metrics.service.js';
+import { ApiMonitoringUserService } from './services/api-monitoring-user.service.js';
 import { ApiMonitoringController } from './api-monitoring.controller.js';
 import type { IApiMonitoringLogger } from './interfaces/logger.interface.js';
 import { API_MONITORING_LOGGER_TOKEN } from './interfaces/logger.interface.js';
@@ -19,6 +20,7 @@ import {
 	API_MONITORING_ACTOR_REPO,
 	API_MONITORING_REQUEST_LOG_REPO,
 	API_MONITORING_ROUTE_STATS_REPO,
+	API_MONITORING_USER_REPO,
 } from './tokens/repository.tokens.js';
 import {
 	API_MONITORING_MODULE_OPTIONS,
@@ -33,15 +35,21 @@ import {
 export class ApiMonitoringModule {
 	static forRoot(options: ApiMonitoringForRootOptions): DynamicModule {
 		const entities = options.entities ?? DEFAULT_API_MONITORING_ENTITIES;
-		const { ApiRequestLogEntity, ApiRouteStatsEntity, ApiActorEntity } = entities;
+		const { ApiRequestLogEntity, ApiRouteStatsEntity, ApiActorEntity, ApiMonitoringUserEntity } =
+			entities;
 		const connection = options.dataSourceName;
 
 		const forFeature = connection
 			? TypeOrmModule.forFeature(
-					[ApiRequestLogEntity, ApiRouteStatsEntity, ApiActorEntity],
+					[ApiRequestLogEntity, ApiRouteStatsEntity, ApiActorEntity, ApiMonitoringUserEntity],
 					connection,
 				)
-			: TypeOrmModule.forFeature([ApiRequestLogEntity, ApiRouteStatsEntity, ApiActorEntity]);
+			: TypeOrmModule.forFeature([
+					ApiRequestLogEntity,
+					ApiRouteStatsEntity,
+					ApiActorEntity,
+					ApiMonitoringUserEntity,
+				]);
 
 		const requestLogToken = connection
 			? getRepositoryToken(ApiRequestLogEntity, connection)
@@ -52,6 +60,9 @@ export class ApiMonitoringModule {
 		const actorToken = connection
 			? getRepositoryToken(ApiActorEntity, connection)
 			: getRepositoryToken(ApiActorEntity);
+		const monitoringUserToken = connection
+			? getRepositoryToken(ApiMonitoringUserEntity, connection)
+			: getRepositoryToken(ApiMonitoringUserEntity);
 
 		const maxBytesRaw = options.requestBodyMaxBytes ?? 16_384;
 		const runtimeOptions: ApiMonitoringModuleRuntimeOptions = {
@@ -92,8 +103,15 @@ export class ApiMonitoringModule {
 						repo,
 					inject: [actorToken],
 				},
+				{
+					provide: API_MONITORING_USER_REPO,
+					useFactory: (repo: Repository<Record<string, unknown>>): Repository<Record<string, unknown>> =>
+						repo,
+					inject: [monitoringUserToken],
+				},
 				ApiRequestContextService,
 				ApiActorService,
+				ApiMonitoringUserService,
 				ApiMonitoringService,
 				ApiMetricsService,
 				ApiActorMiddleware,
@@ -106,6 +124,7 @@ export class ApiMonitoringModule {
 			exports: [
 				ApiRequestContextService,
 				ApiActorService,
+				ApiMonitoringUserService,
 				ApiMonitoringService,
 				ApiMetricsService,
 				ApiActorMiddleware,

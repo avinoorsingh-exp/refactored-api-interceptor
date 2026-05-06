@@ -2,6 +2,7 @@ import { Inject, Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { ApiActorType } from '../domain/api-monitoring.types.js';
 import { ApiActorService } from '../services/api-actor.service.js';
+import { ApiMonitoringUserService } from '../services/api-monitoring-user.service.js';
 import { ApiRequestContextService } from '../services/api-request-context.service.js';
 import type { IApiMonitoringLogger } from '../interfaces/logger.interface.js';
 import { API_MONITORING_LOGGER_TOKEN } from '../interfaces/logger.interface.js';
@@ -36,6 +37,7 @@ export class ApiActorMiddleware implements NestMiddleware {
 
 	constructor(
 		private readonly actorService: ApiActorService,
+		private readonly monitoringUserService: ApiMonitoringUserService,
 		private readonly contextService: ApiRequestContextService,
 		@Inject(API_MONITORING_LOGGER_TOKEN)
 		logger: IApiMonitoringLogger,
@@ -69,6 +71,25 @@ export class ApiActorMiddleware implements NestMiddleware {
 
 				// Store in request context
 				this.contextService.updateActor(actor.id, actor.type);
+
+				if (actorInfo.type === ApiActorType.USER) {
+					const ext =
+						(typeof actorInfo.metadata?.userId === 'string' ? actorInfo.metadata.userId : undefined) ||
+						(typeof actorInfo.identifier === 'string' ? actorInfo.identifier : undefined);
+					const email =
+						(typeof actorInfo.metadata?.email === 'string' && actorInfo.metadata.email) ||
+						(req as RequestWithActorSources).user?.email;
+					if (ext) {
+						const profile = await this.monitoringUserService.upsertForUserActor({
+							externalId: ext,
+							email,
+							actorId: actor.id,
+						});
+						if (profile?.id) {
+							this.contextService.updateMonitoringUser(profile.id);
+						}
+					}
+				}
 			} else {
 				// Anonymous request
 				// Use constant identifier for anonymous requests to ensure stable identity
@@ -116,6 +137,7 @@ export class ApiActorMiddleware implements NestMiddleware {
 				metadata: {
 					userId: user.id,
 					username: user.username,
+					email: user.email,
 				},
 			};
 		}

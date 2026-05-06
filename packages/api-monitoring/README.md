@@ -1,8 +1,10 @@
 # `@exprealty/api-monitoring`
 
-**Package version (this line):** `0.2.1` — built for **NestJS 11** and **TypeORM 0.3** (`@nestjs/typeorm` 11). Bump `version` in `package.json` when you cut a release.
+**Package version (this line):** `0.2.2` — built for **NestJS 11** and **TypeORM 0.3** (`@nestjs/typeorm` 11). Bump `version` in `package.json` when you cut a release.
 
-NestJS module for HTTP API monitoring: request logging, actor attribution, metrics, and read-only admin endpoints. This package is **self-contained** (no other `@exprealty/*` dependencies) so it can be published to an **npm-compatible registry** or consumed via **workspace** from any application that already uses **PostgreSQL** and **TypeORM**.
+**Schema / ERD:** [docs/api-monitoring.md](./docs/api-monitoring.md) (Mermaid ERD and column reference).
+
+NestJS module for HTTP API monitoring: request logging, actor attribution, optional **end-user profile** rows (`api_monitoring_user`), metrics, and read-only admin endpoints. This package is **self-contained** (no other `@exprealty/*` dependencies) so it can be published to an **npm-compatible registry** or consumed via **workspace** from any application that already uses **PostgreSQL** and **TypeORM**.
 
 Use this document to **install the package**, **point it at your app’s existing database**, **register the bundled entities**, and **wire your HTTP API** so traffic is recorded.
 
@@ -79,13 +81,16 @@ pnpm install
 
 ## 2. Database setup (schema and migrations)
 
-The module expects three tables:
+The module expects **four** tables:
 
 | Entity | Table |
 |--------|--------|
 | `ApiActorEntity` | `core.api_actor` |
+| `ApiMonitoringUserEntity` | `core.api_monitoring_user` |
 | `ApiRequestLogEntity` | `core.api_request_log` |
 | `ApiRouteStatsEntity` | `core.api_route_stats` |
+
+For **`ApiMonitoringUserEntity`**: stores **`external_id`** (stable user key from your IdP), optional **`email`**, optional **`user_uuid`** when the key is UUID-shaped, and **`actor_id`** pointing at the USER’s `api_actor` row. **`ApiActorMiddleware`** upserts this row for `ApiActorType.USER` and sets **`monitoring_user_id`** on each request log via async context. See [docs/api-monitoring.md](./docs/api-monitoring.md).
 
 **You must apply the same schema to the database your app uses.** This package does **not** run migrations; it only ships **entity** classes.
 
@@ -112,7 +117,7 @@ pnpm --filter @exprealty/database migration:show
 
 ### If the consumer is an external app (no monorepo)
 
-- Export SQL from your migration tool, **or** copy the relevant statements from the monorepo migrations under `packages/database/src/migrations/` (files related to `api_monitoring`, `api_request_log`, `api_actor`, `api_route_stats`), then apply with **your** process, for example:
+- Export SQL from your migration tool, **or** copy the relevant statements from the monorepo migrations under `packages/database/src/migrations/` (files related to `api_monitoring_user`, `api_request_log`, `api_actor`, `api_route_stats`), then apply with **your** process, for example:
 
 ```bash
 # After writing schema to a file schema-api-monitoring.sql
@@ -192,7 +197,7 @@ export class AppModule {}
 |--------|----------|-------------|
 | `logger` | Yes | Class token implementing `IApiMonitoringLogger`. |
 | `asyncContext` | Yes | Class implementing `IApiMonitoringAsyncContext`. |
-| `entities` | No | Omit to use defaults from this package. |
+| `entities` | No | Omit to use defaults from this package (includes `ApiMonitoringUserEntity` and the other three monitoring entities). If you pass a custom bundle, you must supply **all four** class tokens. |
 | `dataSourceName` | No | Only for a **named** TypeORM connection. |
 | `captureRequestBody` | No | Default `false`. If `true`, stores a UTF-8 snapshot of parsed `req.body` in `core.api_request_log.request_body_snapshot` (requires a DB migration that adds this column). **PII/secrets risk** — enable only with policy/redaction. |
 | `requestBodyMaxBytes` | No | Max stored bytes for the snapshot (default `16384`, clamped between `256` and `1048576`). Longer payloads are cut with a `…[truncated]` suffix. |
@@ -249,6 +254,8 @@ You **do not** pass `actorId` into `ApiMonitoringModule.forRoot`.
 1. **`asyncContext`** — Your adapter (e.g. one backed by `AsyncLocalStorage` or `@exprealty/cache`’s `AsyncContextStorage`) must expose the **same** per-request store the app uses for correlation and monitoring metadata.
 2. **`ApiActorMiddleware`** — Register it in `AppModule.configure()` **after** middleware that creates that store (e.g. correlation ID). It resolves the caller (authenticated user, API key, etc.) or an anonymous actor, then calls `ApiRequestContextService.updateActor(actorId, actorType)`, which writes into that async store.
 3. **`ApiMonitoringService.logRequest`** — Reads `actorId` (and related fields) from context when the interceptor runs. If `actorId` is still missing, the request log row is **not** saved.
+
+4. **`monitoringUserId`** — For `ApiActorType.USER`, the middleware also calls `ApiMonitoringUserService.upsertForUserActor` and `ApiRequestContextService.updateMonitoringUser` so `api_request_log.monitoring_user_id` is filled when a profile row exists. You do not set this in `forRoot`.
 
 To change *how* an actor is derived from `req` (headers, `req.user`, JWT, etc.), adjust **`ApiActorMiddleware`** / your auth order—not `forRoot` options.
 
@@ -372,8 +379,9 @@ Publishing (registry URL, auth, and CI) is owned by your **monorepo / platform d
 | Piece | Role |
 |-------|------|
 | `ApiMonitoringInterceptor` | Global interceptor: latency, status, metadata → `api_request_log`; optional `request_body_snapshot` when `captureRequestBody` is true |
-| `ApiActorMiddleware` | Actors → `api_actor` |
-| `ApiMonitoringService` | Logging, classification, sampling |
+| `ApiActorMiddleware` | Actors → `api_actor`; for **USER**, upserts `api_monitoring_user` and sets context `monitoringUserId` |
+| `ApiMonitoringUserService` | Upserts `core.api_monitoring_user` (`external_id`, `email`, `actor_id`) |
+| `ApiMonitoringService` | Logging, classification, sampling; persists `monitoring_user_id` on `api_request_log` when present |
 | `ApiMetricsService` | Aggregations, top callers, trends, … |
 | `ApiMonitoringController` | Read-only / admin HTTP API |
 
@@ -384,8 +392,9 @@ Publishing (registry URL, auth, and CI) is owned by your **monorepo / platform d
 - Error sanitization; stack traces for server errors only.  
 - **Do not** expose `/v1/api-monitoring` without auth.  
 - Request bodies are **not** stored unless you set `captureRequestBody: true` (and run the DB migration for `request_body_snapshot`). Treat captured bodies as **sensitive** (PII/secrets).  
+- **`api_monitoring_user`** stores **email** and **external user id** for authenticated USER actors — treat as **PII**; restrict DB access and retention.
 
-For details, see `src/` and `tests/`.
+For details, see `src/`, `tests/`, and [docs/api-monitoring.md](./docs/api-monitoring.md).
 
 ---
 
@@ -397,6 +406,7 @@ For details, see `src/` and `tests/`.
 |-------|----------|
 | **Database** | Tables in `core` must exist (migrations). |
 | **`request_body_snapshot`** | Column only exists after the migration that adds it; enabling `captureRequestBody` before migrating can cause insert errors. |
+| **`api_monitoring_user` / `monitoring_user_id`** | Table and `api_request_log.monitoring_user_id` must exist (migration `CreateApiMonitoringUserTable`). Without them, USER upserts / inserts can fail. |
 | **`req.body`** | Snapshots use **parsed** body only. Raw streams, wrong middleware order, or skipped parsers mean little or nothing to capture. |
 | **Actor ID** | `ApiMonitoringService.logRequest` skips persistence when `actorId` is missing (see service behavior). |
 | **PII / compliance** | Storing bodies may violate policy unless redacted or allowed by legal/security. |
@@ -407,6 +417,7 @@ For details, see `src/` and `tests/`.
 |-------|----------------|
 | **Database / `core` schema** | Run your app’s TypeORM migrations against the same database as `TypeOrmModule.forRoot`. In this monorepo: `pnpm run migration:run` (or `migration:run:local`) from `agent-service/`. Ensure `CREATE SCHEMA IF NOT EXISTS core;` if your process requires it. |
 | **`request_body_snapshot` column** | Apply the migration that adds `request_body_snapshot` to `core.api_request_log` **before** setting `captureRequestBody: true` in `ApiMonitoringModule.forRoot`. If inserts fail, run pending migrations or turn off `captureRequestBody` until the column exists. |
+| **`api_monitoring_user`** | Run migrations that create `core.api_monitoring_user` and add `monitoring_user_id` to `api_request_log`. The middleware tolerates upsert failures (warns only), but missing columns will break inserts. |
 | **Empty or missing `req.body`** | Rely on Nest/Express body parsing so `req.body` is filled before the interceptor runs. Check `Content-Type`, body size limits, and route-specific parsers. Multipart/raw streams are not JSON snapshots unless you parse them into `req.body` yourself. |
 | **No rows / missing `actorId`** | Ensure correlation + `ApiActorMiddleware` run in the right order and that your auth/gateway provides headers (or logic) the middleware uses so async context includes `actorId`. If you need logs **without** an actor, that requires a **code/product change** (today the service skips save when `actorId` is absent). |
 | **PII / secrets in stored bodies** | Default is `captureRequestBody: false`. If enabled: lower `requestBodyMaxBytes`, redact in your own middleware before monitoring, define retention and access controls, and follow legal/security sign-off. |

@@ -51,6 +51,8 @@ export interface ApiRequestMetadata {
 	timestamp: Date;
 	actorId?: string;
 	actorType?: ApiActorType;
+	/** Logical link to `core.api_monitoring_user.id` when populated by middleware for USER actors. */
+	monitoringUserId?: string;
 	errorClassification?: ApiErrorClassification;
 	hasError: boolean;
 	errorMessage?: string;

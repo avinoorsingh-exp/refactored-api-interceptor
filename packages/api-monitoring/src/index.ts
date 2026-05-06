@@ -18,6 +18,7 @@ export {
 	API_MONITORING_TYPEORM_ENTITIES,
 } from './entities/default-entities.js';
 export { ApiActorEntity } from './entities/api-actor.entity.js';
+export { ApiMonitoringUserEntity } from './entities/api-monitoring-user.entity.js';
 export { ApiRequestLogEntity } from './entities/api-request-log.entity.js';
 export { ApiRouteStatsEntity } from './entities/api-route-stats.entity.js';
 
@@ -45,6 +46,7 @@ export {
 // Services
 export { ApiRequestContextService } from './services/api-request-context.service.js';
 export { ApiActorService } from './services/api-actor.service.js';
+export { ApiMonitoringUserService } from './services/api-monitoring-user.service.js';
 export { ApiMonitoringService } from './services/api-monitoring.service.js';
 export { ApiMetricsService } from './services/api-metrics.service.js';
 
@@ -100,4 +102,5 @@ export {
 	getWeekStart,
 	getWeekEnd,
 } from './utils/bucket-resolution.util.js';
+export { API_MONITORING_USER_REPO } from './tokens/repository.tokens.js';
 

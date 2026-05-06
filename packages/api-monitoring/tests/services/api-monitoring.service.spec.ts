@@ -120,6 +120,31 @@ describe('ApiMonitoringService', () => {
 			);
 		});
 
+		it('persists monitoringUserId when present on metadata', async () => {
+			const metadata: ApiRequestMetadata = {
+				route: '/v1/agents',
+				method: HttpMethod.GET,
+				statusCode: 200,
+				latencyMs: 1,
+				actorId: 'actor-123',
+				actorType: ApiActorType.USER,
+				correlationId: 'corr-123',
+				timestamp: new Date(),
+				hasError: false,
+				monitoringUserId: 'mu-uuid-1',
+			};
+
+			const mockLog = { id: 'log-789', ...metadata } as Record<string, unknown>;
+			requestLogRepo.create.mockReturnValue(mockLog);
+			requestLogRepo.save.mockResolvedValue(mockLog);
+
+			await service.logRequest(metadata);
+
+			expect(requestLogRepo.create).toHaveBeenCalledWith(
+				expect.objectContaining({ monitoringUserId: 'mu-uuid-1' }),
+			);
+		});
+
 		it('should skip logging when disabled', async () => {
 			process.env.API_MONITORING_ENABLED = 'false';
 
@@ -455,6 +480,24 @@ describe('ApiMonitoringService', () => {
 			);
 
 			expect(result.requestBodySnapshot).toBe('{"id":"x"}');
+		});
+
+		it('should include monitoringUserId from async context when set', () => {
+			contextService.getContext.mockReturnValue({
+				correlationId: 'corr-123',
+				actorId: 'actor-1',
+				actorType: ApiActorType.USER,
+				monitoringUserId: 'mu-99',
+			} as any);
+
+			const result = service.buildRequestMetadata(
+				'/v1/agents',
+				HttpMethod.GET,
+				200,
+				1,
+			);
+
+			expect(result.monitoringUserId).toBe('mu-99');
 		});
 	});
 });

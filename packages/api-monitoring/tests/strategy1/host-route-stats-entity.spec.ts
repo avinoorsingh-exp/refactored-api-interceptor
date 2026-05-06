@@ -19,6 +19,9 @@ class HostRequestLogEntity {}
 // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- minimal entity class token for repository wiring
 class HostActorEntity {}
 
+// eslint-disable-next-line @typescript-eslint/no-extraneous-class -- minimal entity class token for repository wiring
+class HostMonitoringUserEntity {}
+
 /**
  * Ensures ApiMetricsService builds route-stat rows using the host-supplied
  * ApiRouteStatsEntity class (Strategy 1), not a hard-coded workspace import.
@@ -79,6 +82,7 @@ describe('Host-provided ApiRouteStatsEntity (Strategy 1)', () => {
 						ApiRequestLogEntity: HostRequestLogEntity,
 						ApiRouteStatsEntity: HostRouteStatsEntity,
 						ApiActorEntity: HostActorEntity,
+						ApiMonitoringUserEntity: HostMonitoringUserEntity,
 					},
 				},
 			],
