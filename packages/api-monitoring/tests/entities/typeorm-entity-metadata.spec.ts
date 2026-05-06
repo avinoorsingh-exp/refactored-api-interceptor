@@ -82,6 +82,16 @@ describe('API monitoring TypeORM entities (core schema)', () => {
 		expect(col?.options.type).toBe('text');
 	});
 
+	it('api_request_log: retry_count column for x-retry-count', () => {
+		const storage = getMetadataArgsStorage() as {
+			filterColumns: (t: unknown) => { propertyName: string; options: { name?: string; type?: string } }[];
+		};
+		const cols = storage.filterColumns(ApiRequestLogEntity);
+		const col = cols.find((c) => c.propertyName === 'retryCount');
+		expect(col?.options.name).toBe('retry_count');
+		expect(col?.options.type).toBe('integer');
+	});
+
 	it('api_monitoring_user: last_source_application column', () => {
 		const storage = getMetadataArgsStorage() as {
 			filterColumns: (t: unknown) => { propertyName: string; options: { name?: string; type?: string } }[];

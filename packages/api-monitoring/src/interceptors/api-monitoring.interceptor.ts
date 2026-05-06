@@ -20,6 +20,7 @@ import {
 } from '../tokens/api-monitoring-module-options.token.js';
 import { serializeRequestBodySnapshot } from '../utils/serialize-request-body-snapshot.util.js';
 import { parseSourceApplicationHeader } from '../utils/parse-source-application-header.util.js';
+import { parseRetryCountHeader } from '../utils/parse-retry-count-header.util.js';
 
 /**
  * HTTP Interceptor for API request monitoring.
@@ -70,6 +71,7 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 				: undefined;
 
 		const sourceApplication = parseSourceApplicationHeader((name) => request.get(name));
+		const retryCount = parseRetryCountHeader((name) => request.get(name));
 
 		return next.handle().pipe(
 			tap({
@@ -95,6 +97,7 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 						responseSizeBytes,
 						requestBodySnapshot,
 						sourceApplication,
+						retryCount,
 					);
 
 					// Log asynchronously (non-blocking)
@@ -129,6 +132,7 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 					undefined, // response size not available on error
 					requestBodySnapshot,
 					sourceApplication,
+					retryCount,
 				);
 
 				// Log asynchronously (non-blocking)

@@ -61,6 +61,10 @@ export interface ApiRequestMetadata {
 	requestBodySnapshot?: string;
 	/** Normalized `x-source-app` when the caller sends it (e.g. `IMS`, `TRX`). */
 	sourceApplication?: string;
+	/**
+	 * Retry counter from `x-retry-count` for replayed requests: **0** = original attempt, **1** = first replay after failure, etc.
+	 */
+	retryCount?: number;
 }
 
 export interface TimeSeriesQuery {

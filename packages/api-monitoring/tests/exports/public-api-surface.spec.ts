@@ -26,5 +26,7 @@ describe('public package surface (index)', () => {
 		expect(Esm.API_MONITORING_ENTITY_CLASSES).toBeDefined();
 		expect(Esm.API_MONITORING_SOURCE_APP_HEADER).toBe('x-source-app');
 		expect(Esm.parseSourceApplicationHeader).toBeInstanceOf(Function);
+		expect(Esm.API_MONITORING_RETRY_COUNT_HEADER).toBe('x-retry-count');
+		expect(Esm.parseRetryCountHeader).toBeInstanceOf(Function);
 	});
 });

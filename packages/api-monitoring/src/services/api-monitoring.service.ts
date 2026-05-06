@@ -78,6 +78,7 @@ export class ApiMonitoringService {
 				requestBodySnapshot: metadata.requestBodySnapshot,
 				monitoringUserId: metadata.monitoringUserId,
 				sourceApplication: metadata.sourceApplication,
+				retryCount: metadata.retryCount ?? 0,
 			} as Record<string, unknown>);
 
 			await this.requestLogRepo.save(log).catch((err: unknown) => {
@@ -150,6 +151,7 @@ export class ApiMonitoringService {
 		responseSizeBytes?: number,
 		requestBodySnapshot?: string,
 		sourceApplication?: string,
+		retryCount = 0,
 	): ApiRequestMetadata {
 		const context = this.contextService.getContext();
 		const correlationId = context?.correlationId || 'unknown';
@@ -186,6 +188,7 @@ export class ApiMonitoringService {
 			stackTrace,
 			requestBodySnapshot,
 			sourceApplication,
+			retryCount,
 		};
 	}
 }

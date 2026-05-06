@@ -76,6 +76,12 @@ export class ApiRequestLogEntity {
 	@Column({ name: 'source_application', type: 'text', nullable: true })
 	sourceApplication?: string;
 
+	/**
+	 * How many times this logical call was retried before this attempt (`x-retry-count`): **0** = first try, **1** = first replay, etc.
+	 */
+	@Column({ name: 'retry_count', type: 'integer', default: 0 })
+	retryCount!: number;
+
 	@Column({ name: 'has_error', type: 'boolean', default: false })
 	hasError!: boolean;
 

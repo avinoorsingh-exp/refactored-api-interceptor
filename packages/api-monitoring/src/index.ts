@@ -101,6 +101,10 @@ export {
 	parseSourceApplicationHeader,
 } from './utils/parse-source-application-header.util.js';
 export {
+	API_MONITORING_RETRY_COUNT_HEADER,
+	parseRetryCountHeader,
+} from './utils/parse-retry-count-header.util.js';
+export {
 	resolveTrendBucketType,
 	calculateBucketCount,
 	getWeekStart,
