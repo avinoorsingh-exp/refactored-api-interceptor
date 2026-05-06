@@ -9,6 +9,23 @@ Entity definitions match **`@exprealty/api-monitoring`** TypeORM entities (v0.2.
 - **`core.api_request_log.monitoring_user_id`** references **`core.api_monitoring_user.id`** (logical). Set when `ApiActorType.USER` was resolved and `ApiMonitoringUserService` upserted a profile for that request.
 - **`core.api_route_stats`** is **aggregated** from request logs (route + method + time bucket). There is **no foreign key** to `api_request_log` or `api_actor`.
 
+### Association types (cardinality)
+
+There are **no many-to-many** relationships between these four monitoring tables: there is **no join table** linking pairs of entities (e.g. no `api_request_log` ↔ `api_actor` through an intersection table). Links are **scalar UUID columns** only.
+
+| From | To | Cardinality | Notes |
+|------|-----|-------------|--------|
+| `api_request_log` | `api_actor` | **Many-to-one** | Many log rows can share the same `actor_id` (same caller over time). |
+| `api_request_log` | `api_monitoring_user` | **Many-to-one** | Many log rows can share the same `monitoring_user_id` (same human over time). Nullable when the caller has no USER profile row. |
+| `api_monitoring_user` | `api_actor` | **Many-to-one** | Each profile has one `actor_id`. `actor_id` is not `UNIQUE`, so the DB could hold multiple profiles per actor only if data were inconsistent. |
+| `api_route_stats` | *(other monitoring tables)* | **None (no FK)** | Stats are **derived** aggregates; no row-level link in this schema. |
+
+**Intended pairing (not a separate many-to-many):** for `ApiActorType.USER`, the app normally maintains **one-to-one** between a human’s `api_actor` and their `api_monitoring_user` row (one stable `external_id` ↔ one profile ↔ one actor id from that flow). To **enforce** one profile per actor at the database level, add e.g. `UNIQUE (actor_id)` on `core.api_monitoring_user` in your own migration.
+
+**TypeORM:** Entities use **plain `@Column` UUIDs**, not `@ManyToOne` / `@OneToMany` / `@ManyToMany` in the published package.
+
+**PostgreSQL:** Relationships are **logical** unless your team adds `FOREIGN KEY` constraints.
+
 ---
 
 ## Diagram (Mermaid)
