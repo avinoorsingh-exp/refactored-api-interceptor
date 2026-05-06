@@ -472,7 +472,7 @@ export class ApiMetricsService {
 		try {
 			// STEP 1: Normalize filters to arrays (support comma-separated query params)
 			const normalizedRoutes = normalizeStringArray(routes);
-			const normalizedMethods = normalizeStringArray(methods as string | string[] | undefined) as HttpMethod[];
+			const normalizedMethods = normalizeStringArray(methods) as HttpMethod[];
 			const normalizedStatusCodes = normalizeStatusCodes(statusCodes);
 
 			// Determine mode: inspection mode if route filter is present
@@ -1153,7 +1153,7 @@ export class ApiMetricsService {
 			// (e.g. statusCode=400,401) work when Nest does not transform the DTO.
 			const normalizedRoutes = normalizeStringArray(query.route);
 			const normalizedStatusCodes = normalizeStatusCodes(query.statusCode);
-			const normalizedClassifications = normalizeStringArray(query.classification as string | string[] | undefined);
+			const normalizedClassifications = normalizeStringArray(query.classification);
 			
 			if (query.debug) {
 				this.logger.debug('Error samples - filters', {
@@ -1798,7 +1798,7 @@ export class ApiMetricsService {
 		const expectedBucketCount = calculateBucketCount(range, bucketType);
 
 		// Normalize filters (support comma-separated query params)
-		const normalizedRoutes = normalizeStringArray(routes as string | string[] | undefined);
+		const normalizedRoutes = normalizeStringArray(routes);
 		const normalizedStatusCodes = normalizeStatusCodes(statusCodes);
 
 		this.logger.debug('Fetching trends metrics', {

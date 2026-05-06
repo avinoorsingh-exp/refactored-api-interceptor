@@ -1,13 +1,13 @@
 {
 	"extends": "./tsconfig.json",
 	"compilerOptions": {
-		"noEmit": true
+		"noEmit": true,
+		"skipLibCheck": true
 	},
 	"include": [
-		"packages/**/*.ts",
-		"services/**/*.ts",
-		"test/**/*.ts",
-		"eslint.config.mts"
-	],
-	"exclude": ["node_modules", "**/dist/**"]
+		"packages/api-monitoring/src/**/*.ts",
+		"packages/api-monitoring/tests/**/*.ts",
+		"packages/api-monitoring/tsup.config.ts",
+		"eslint.config.mjs"
+	]
 }

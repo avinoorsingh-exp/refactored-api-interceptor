@@ -51,12 +51,20 @@ export interface ApiRequestMetadata {
 	timestamp: Date;
 	actorId?: string;
 	actorType?: ApiActorType;
+	/** Logical link to `core.api_monitoring_user.id` when populated by middleware for USER actors. */
+	monitoringUserId?: string;
 	errorClassification?: ApiErrorClassification;
 	hasError: boolean;
 	errorMessage?: string;
 	stackTrace?: string;
 	/** Snapshot of parsed request body when `captureRequestBody` is enabled in `ApiMonitoringModule.forRoot`. */
 	requestBodySnapshot?: string;
+	/** Normalized `x-source-app` when the caller sends it (e.g. `IMS`, `TRX`). */
+	sourceApplication?: string;
+	/**
+	 * Retry counter from `x-retry-count` for replayed requests: **0** = original attempt, **1** = first replay after failure, etc.
+	 */
+	retryCount?: number;
 }
 
 export interface TimeSeriesQuery {

@@ -17,7 +17,7 @@ describe('should-log-api-request.util', () => {
 		mockRequest = {
 			get: jest.fn(),
 			ip: '203.0.113.1',
-			socket: { remoteAddress: '203.0.113.1' } as any,
+			socket: { remoteAddress: '203.0.113.1' },
 		};
 	});
 

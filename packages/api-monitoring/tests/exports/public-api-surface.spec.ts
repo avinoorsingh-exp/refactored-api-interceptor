@@ -14,6 +14,8 @@ describe('public package surface (index)', () => {
 		expect(Esm.ApiRequestLogEntity).toBeDefined();
 		expect(Esm.ApiRouteStatsEntity).toBeDefined();
 		expect(Esm.ApiActorEntity).toBeDefined();
+		expect(Esm.ApiMonitoringUserEntity).toBeDefined();
+		expect(Esm.ApiMonitoringUserService).toBeDefined();
 		expect(Esm.ApiMonitoringService).toBeDefined();
 		expect(Esm.ApiMetricsService).toBeDefined();
 		expect(Esm.ApiMonitoringController).toBeDefined();
@@ -22,5 +24,9 @@ describe('public package surface (index)', () => {
 		expect(Esm.API_MONITORING_LOGGER_TOKEN).toBeDefined();
 		expect(Esm.API_MONITORING_ASYNC_CONTEXT).toBeDefined();
 		expect(Esm.API_MONITORING_ENTITY_CLASSES).toBeDefined();
+		expect(Esm.API_MONITORING_SOURCE_APP_HEADER).toBe('x-source-app');
+		expect(Esm.parseSourceApplicationHeader).toBeInstanceOf(Function);
+		expect(Esm.API_MONITORING_RETRY_COUNT_HEADER).toBe('x-retry-count');
+		expect(Esm.parseRetryCountHeader).toBeInstanceOf(Function);
 	});
 });

@@ -120,6 +120,101 @@ describe('ApiMonitoringService', () => {
 			);
 		});
 
+		it('persists monitoringUserId when present on metadata', async () => {
+			const metadata: ApiRequestMetadata = {
+				route: '/v1/agents',
+				method: HttpMethod.GET,
+				statusCode: 200,
+				latencyMs: 1,
+				actorId: 'actor-123',
+				actorType: ApiActorType.USER,
+				correlationId: 'corr-123',
+				timestamp: new Date(),
+				hasError: false,
+				monitoringUserId: 'mu-uuid-1',
+			};
+
+			const mockLog = { id: 'log-789', ...metadata } as Record<string, unknown>;
+			requestLogRepo.create.mockReturnValue(mockLog);
+			requestLogRepo.save.mockResolvedValue(mockLog);
+
+			await service.logRequest(metadata);
+
+			expect(requestLogRepo.create).toHaveBeenCalledWith(
+				expect.objectContaining({ monitoringUserId: 'mu-uuid-1' }),
+			);
+		});
+
+		it('persists sourceApplication when present on metadata', async () => {
+			const metadata: ApiRequestMetadata = {
+				route: '/v1/agents',
+				method: HttpMethod.POST,
+				statusCode: 201,
+				latencyMs: 2,
+				actorId: 'actor-123',
+				actorType: ApiActorType.USER,
+				correlationId: 'corr-123',
+				timestamp: new Date(),
+				hasError: false,
+				sourceApplication: 'IMS',
+			};
+
+			const mockLog = { id: 'log-src', ...metadata } as Record<string, unknown>;
+			requestLogRepo.create.mockReturnValue(mockLog);
+			requestLogRepo.save.mockResolvedValue(mockLog);
+
+			await service.logRequest(metadata);
+
+			expect(requestLogRepo.create).toHaveBeenCalledWith(
+				expect.objectContaining({ sourceApplication: 'IMS' }),
+			);
+		});
+
+		it('persists retryCount when present on metadata', async () => {
+			const metadata: ApiRequestMetadata = {
+				route: '/v1/agents',
+				method: HttpMethod.POST,
+				statusCode: 200,
+				latencyMs: 3,
+				actorId: 'actor-123',
+				actorType: ApiActorType.USER,
+				correlationId: 'corr-123',
+				timestamp: new Date(),
+				hasError: false,
+				retryCount: 2,
+			};
+
+			const mockLog = { id: 'log-retry', ...metadata } as Record<string, unknown>;
+			requestLogRepo.create.mockReturnValue(mockLog);
+			requestLogRepo.save.mockResolvedValue(mockLog);
+
+			await service.logRequest(metadata);
+
+			expect(requestLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({ retryCount: 2 }));
+		});
+
+		it('defaults retryCount to 0 when omitted on metadata', async () => {
+			const metadata: ApiRequestMetadata = {
+				route: '/v1/agents',
+				method: HttpMethod.GET,
+				statusCode: 200,
+				latencyMs: 1,
+				actorId: 'actor-123',
+				actorType: ApiActorType.USER,
+				correlationId: 'corr-123',
+				timestamp: new Date(),
+				hasError: false,
+			};
+
+			const mockLog = { id: 'log-def', ...metadata } as Record<string, unknown>;
+			requestLogRepo.create.mockReturnValue(mockLog);
+			requestLogRepo.save.mockResolvedValue(mockLog);
+
+			await service.logRequest(metadata);
+
+			expect(requestLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({ retryCount: 0 }));
+		});
+
 		it('should skip logging when disabled', async () => {
 			process.env.API_MONITORING_ENABLED = 'false';
 
@@ -354,6 +449,7 @@ describe('ApiMonitoringService', () => {
 			expect(result.actorId).toBe('actor-123');
 			expect(result.actorType).toBe(ApiActorType.USER);
 			expect(result.hasError).toBe(false);
+			expect(result.retryCount).toBe(0);
 		});
 
 		it('should classify errors correctly', () => {
@@ -455,6 +551,73 @@ describe('ApiMonitoringService', () => {
 			);
 
 			expect(result.requestBodySnapshot).toBe('{"id":"x"}');
+		});
+
+		it('should include monitoringUserId from async context when set', () => {
+			contextService.getContext.mockReturnValue({
+				correlationId: 'corr-123',
+				actorId: 'actor-1',
+				actorType: ApiActorType.USER,
+				monitoringUserId: 'mu-99',
+			} as any);
+
+			const result = service.buildRequestMetadata(
+				'/v1/agents',
+				HttpMethod.GET,
+				200,
+				1,
+			);
+
+			expect(result.monitoringUserId).toBe('mu-99');
+		});
+
+		it('should include sourceApplication when provided', () => {
+			contextService.getContext.mockReturnValue({
+				correlationId: 'corr-123',
+				actorId: 'actor-1',
+				actorType: ApiActorType.USER,
+			} as any);
+
+			const result = service.buildRequestMetadata(
+				'/v1/agents',
+				HttpMethod.GET,
+				200,
+				1,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				'TRX',
+			);
+
+			expect(result.sourceApplication).toBe('TRX');
+		});
+
+		it('should include retryCount when provided', () => {
+			contextService.getContext.mockReturnValue({
+				correlationId: 'corr-123',
+				actorId: 'actor-1',
+				actorType: ApiActorType.USER,
+			} as any);
+
+			const result = service.buildRequestMetadata(
+				'/v1/agents',
+				HttpMethod.POST,
+				503,
+				50,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				undefined,
+				3,
+			);
+
+			expect(result.retryCount).toBe(3);
 		});
 	});
 });

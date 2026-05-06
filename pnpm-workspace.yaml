@@ -1,7 +1,2 @@
 packages:
-  - "packages/*"
-  - "services/*"
-  - "apps/*"
-  
-onlyBuiltDependencies:
-  - nx
+  - "packages/api-monitoring"

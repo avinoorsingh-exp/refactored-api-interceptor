@@ -1,5 +1,6 @@
 import type { ApiMonitoringEntityClasses } from '../tokens/entity-classes.token.js';
 import { ApiActorEntity } from './api-actor.entity.js';
+import { ApiMonitoringUserEntity } from './api-monitoring-user.entity.js';
 import { ApiRequestLogEntity } from './api-request-log.entity.js';
 import { ApiRouteStatsEntity } from './api-route-stats.entity.js';
 
@@ -11,6 +12,7 @@ export const DEFAULT_API_MONITORING_ENTITIES: ApiMonitoringEntityClasses = {
 	ApiRequestLogEntity,
 	ApiRouteStatsEntity,
 	ApiActorEntity,
+	ApiMonitoringUserEntity,
 };
 
 /**
@@ -22,4 +24,5 @@ export const API_MONITORING_TYPEORM_ENTITIES = [
 	ApiRequestLogEntity,
 	ApiRouteStatsEntity,
 	ApiActorEntity,
+	ApiMonitoringUserEntity,
 ] as const;

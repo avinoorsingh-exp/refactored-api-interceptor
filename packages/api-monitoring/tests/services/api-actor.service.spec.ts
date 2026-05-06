@@ -244,8 +244,10 @@ describe('ApiActorService', () => {
 				.mockResolvedValueOnce(null) // First find (not found)
 				.mockResolvedValueOnce({
 					id: 'actor-123',
+					type: ApiActorType.USER,
+					displayName: 'user@example.com',
 					active: true,
-				} as ApiActorRow); // Second find after error (active so no extra find)
+				}); // Second find after error (active so no extra find)
 
 			actorRepo.save.mockRejectedValue(new Error('Unique constraint violation'));
 

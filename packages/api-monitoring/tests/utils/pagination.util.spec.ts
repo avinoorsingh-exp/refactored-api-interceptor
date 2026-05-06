@@ -71,7 +71,7 @@ describe('Pagination Utilities', () => {
 		});
 
 		it('should return default limit when limit is null', () => {
-			const result = normalizeLimit(null as any, 50, 200);
+			const result = normalizeLimit(null, 50, 200);
 			expect(result).toBe(50);
 		});
 

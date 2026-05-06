@@ -26,7 +26,17 @@ export function serializeRequestBodySnapshot(body: unknown, maxBytes: number): s
 		}
 	}
 
-	return truncateUtf8(String(body), maxBytes);
+	if (typeof body === 'number' || typeof body === 'boolean' || typeof body === 'bigint') {
+		return truncateUtf8(String(body), maxBytes);
+	}
+	if (typeof body === 'symbol') {
+		return truncateUtf8(body.description ?? body.toString(), maxBytes);
+	}
+	if (typeof body === 'function') {
+		return truncateUtf8(`[Function ${body.name || 'anonymous'}]`, maxBytes);
+	}
+
+	return truncateUtf8('[unknown]', maxBytes);
 }
 
 function truncateUtf8(s: string, maxBytes: number): string {

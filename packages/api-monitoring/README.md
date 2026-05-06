@@ -1,8 +1,10 @@
 # `@exprealty/api-monitoring`
 
-**Package version (this line):** `0.2.1` — built for **NestJS 11** and **TypeORM 0.3** (`@nestjs/typeorm` 11). Bump `version` in `package.json` when you cut a release.
+**Package version (this line):** `0.2.2` — built for **NestJS 11** and **TypeORM 0.3** (`@nestjs/typeorm` 11). Bump `version` in `package.json` when you cut a release.
 
-NestJS module for HTTP API monitoring: request logging, actor attribution, metrics, and read-only admin endpoints. This package is **self-contained** (no other `@exprealty/*` dependencies) so it can be published to an **npm-compatible registry** or consumed via **workspace** from any application that already uses **PostgreSQL** and **TypeORM**.
+**Schema / ERD:** [docs/api-monitoring.md](./docs/api-monitoring.md) (Mermaid ERD and column reference).
+
+NestJS module for HTTP API monitoring: request logging, actor attribution, optional **end-user profile** rows (`api_monitoring_user`), metrics, and read-only admin endpoints. This package is **self-contained** (no other `@exprealty/*` dependencies) so it can be published to an **npm-compatible registry** or consumed via **workspace** from any application that already uses **PostgreSQL** and **TypeORM**.
 
 Use this document to **install the package**, **point it at your app’s existing database**, **register the bundled entities**, and **wire your HTTP API** so traffic is recorded.
 
@@ -79,13 +81,35 @@ pnpm install
 
 ## 2. Database setup (schema and migrations)
 
-The module expects three tables:
+The module expects **four** tables:
 
 | Entity | Table |
 |--------|--------|
 | `ApiActorEntity` | `core.api_actor` |
+| `ApiMonitoringUserEntity` | `core.api_monitoring_user` |
 | `ApiRequestLogEntity` | `core.api_request_log` |
 | `ApiRouteStatsEntity` | `core.api_route_stats` |
+
+### ERD and attributes (summary)
+
+The full **Mermaid ERD** (same attribute set as the entities) and per-column tables live in **[docs/api-monitoring.md](./docs/api-monitoring.md)**.
+
+| Table | Role | Main attributes |
+|--------|------|-----------------|
+| **`core.api_actor`** | Caller identity (`user`, `api_key`, …) | `id`, `type`, `identifier` (unique with `type`), `display_name`, `metadata`, `active`, timestamps |
+| **`core.api_monitoring_user`** | Human profile for USER actors | `id`, **`actor_id` (unique)** — at most one profile per actor, `external_id` (unique), `user_uuid`, `email`, `last_source_application`, timestamps |
+| **`core.api_request_log`** | One row per HTTP request | `route`, `method`, `status_code`, `latency_ms`, sizes, `ip_address`, `user_agent`, `correlation_id`, `timestamp`, `actor_id`, `actor_type`, `monitoring_user_id`, **`source_application`**, **`retry_count`**, error fields, optional `request_body_snapshot`, `created_at` |
+| **`core.api_route_stats`** | Pre-aggregated metrics | `route`, `method`, `time_bucket`, `bucket_start`, counts, latency stats, `status_code_counts`, timestamps |
+
+### Associations (note)
+
+- Links are **logical UUID columns** only (no TypeORM relations, no required DB foreign keys in the published package). **`api_request_log.actor_id`** → **`api_actor.id`**; **`api_request_log.monitoring_user_id`** → **`api_monitoring_user.id`**; **`api_monitoring_user.actor_id`** → **`api_actor.id`** (**UNIQUE** on `actor_id`: **at most one** monitoring profile per actor; not every actor has a profile).
+- **Many-to-one:** many **`api_request_log`** rows can share the same **`actor_id`** or **`monitoring_user_id`** (same person, many calls). **`api_route_stats`** has **no FK** to logs.
+- **`api_actor` ↔ `api_monitoring_user`:** with **`UNIQUE(actor_id)`**, each USER actor can have **0 or 1** profile row; two profiles cannot point at the same actor. See migration **`UniqueApiMonitoringUserActorId`** in `packages/database` (dedupe `actor_id` before applying if upgrading an old DB).
+- **`source_application`** (e.g. `IMS`) is **not** a separate entity: many users can share the same label on different log rows; identity is still **`actor_id`** / **`external_id`**.
+- Intended shape for humans: one **`api_actor`** (USER) per distinct **`identifier`**, one **`api_monitoring_user`** per **`external_id`**, and **one profile per actor** when both exist; see [docs/api-monitoring.md](./docs/api-monitoring.md) for retries and notes.
+
+**Runtime wiring:** **`ApiActorMiddleware`** resolves the actor and upserts **`api_monitoring_user`** for USERs; **`ApiMonitoringInterceptor`** appends each call to **`api_request_log`** (including headers above). Details: [docs/api-monitoring.md](./docs/api-monitoring.md).
 
 **You must apply the same schema to the database your app uses.** This package does **not** run migrations; it only ships **entity** classes.
 
@@ -112,7 +136,7 @@ pnpm --filter @exprealty/database migration:show
 
 ### If the consumer is an external app (no monorepo)
 
-- Export SQL from your migration tool, **or** copy the relevant statements from the monorepo migrations under `packages/database/src/migrations/` (files related to `api_monitoring`, `api_request_log`, `api_actor`, `api_route_stats`), then apply with **your** process, for example:
+- Export SQL from your migration tool, **or** copy the relevant statements from the monorepo migrations under `packages/database/src/migrations/` (files related to `api_monitoring_user` including **`UniqueApiMonitoringUserActorId`** for unique `actor_id`, `api_request_log`, `api_actor`, `api_route_stats`), then apply with **your** process, for example:
 
 ```bash
 # After writing schema to a file schema-api-monitoring.sql
@@ -192,7 +216,7 @@ export class AppModule {}
 |--------|----------|-------------|
 | `logger` | Yes | Class token implementing `IApiMonitoringLogger`. |
 | `asyncContext` | Yes | Class implementing `IApiMonitoringAsyncContext`. |
-| `entities` | No | Omit to use defaults from this package. |
+| `entities` | No | Omit to use defaults from this package (includes `ApiMonitoringUserEntity` and the other three monitoring entities). If you pass a custom bundle, you must supply **all four** class tokens. |
 | `dataSourceName` | No | Only for a **named** TypeORM connection. |
 | `captureRequestBody` | No | Default `false`. If `true`, stores a UTF-8 snapshot of parsed `req.body` in `core.api_request_log.request_body_snapshot` (requires a DB migration that adds this column). **PII/secrets risk** — enable only with policy/redaction. |
 | `requestBodyMaxBytes` | No | Max stored bytes for the snapshot (default `16384`, clamped between `256` and `1048576`). Longer payloads are cut with a `…[truncated]` suffix. |
@@ -242,6 +266,68 @@ ApiMonitoringModule.forRoot({
 - `logRequest` **still skips** persisting a row when **`actorId`** is missing in context (see [Where `actorId` is set](#where-actorid-is-set-not-in-forroot)).
 - Treat stored bodies as **sensitive** (PII/secrets); use policy, redaction, and retention as required.
 
+### Source application header (`x-source-app`)
+
+When a **calling product** (IMS, TRX, an internal portal, etc.) invokes your API—directly or via a gateway—send a short, stable label on **`x-source-app`**. The package:
+
+- Persists **`source_application`** on each **`api_request_log`** row (with **`monitoring_user_id`** / **`actor_id`** when auth + middleware ran).
+- Passes the same value into **`ApiMonitoringUserService.upsertForUserActor`**, which updates **`last_source_application`** on **`api_monitoring_user`** (optional convenience; **per-request** truth is always the log row).
+
+Apply the database migration that adds **`source_application`** and **`last_source_application`** (see `packages/database/src/migrations/*AddSourceApplicationToApiMonitoring*.ts` in the monorepo).
+
+**Dummy request (HTTP)** — replace host, path, and auth; correlation header name must match how your app sets async context:
+
+```http
+POST /v1/example/resource HTTP/1.1
+Host: localhost:3000
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
+x-source-app: IMS
+x-retry-count: 0
+X-Correlation-Id: 550e8400-e29b-41d4-a716-446655440000
+
+{
+  "intent": "syncListing",
+  "listingId": "MLS-123456",
+  "metadata": { "region": "US-WEST" }
+}
+```
+
+**Minimal JSON body only** (headers as above):
+
+```json
+{
+  "intent": "syncListing",
+  "listingId": "MLS-123456",
+  "metadata": { "region": "US-WEST" }
+}
+```
+
+Exported helpers: **`API_MONITORING_SOURCE_APP_HEADER`** (`x-source-app`) and **`parseSourceApplicationHeader`**.
+
+### Retry count header (`x-retry-count`)
+
+When you **replay** a failed API call (manual rerun, job worker, or gateway retry), send **`x-retry-count`** so each new log row records how many retries preceded this attempt:
+
+| Value | Meaning |
+|-------|--------|
+| Omit or **`0`** | Original / first attempt |
+| **`1`** | First replay after failure |
+| **`2`** | Second replay, etc. |
+
+The interceptor persists **`retry_count`** on **`core.api_request_log`**. Replays create **separate** rows; use the same **correlation id** (or your own trace id) across attempts if you need to stitch them in reporting.
+
+Apply the migration that adds **`retry_count`** (see `packages/database/src/migrations/*AddRetryCountToApiRequestLog*.ts`).
+
+**Example headers** (with source app):
+
+```http
+x-source-app: IMS
+x-retry-count: 1
+```
+
+Exported helpers: **`API_MONITORING_RETRY_COUNT_HEADER`** and **`parseRetryCountHeader`**.
+
 ### Where `actorId` is set (not in `forRoot`)
 
 You **do not** pass `actorId` into `ApiMonitoringModule.forRoot`.
@@ -249,6 +335,8 @@ You **do not** pass `actorId` into `ApiMonitoringModule.forRoot`.
 1. **`asyncContext`** — Your adapter (e.g. one backed by `AsyncLocalStorage` or `@exprealty/cache`’s `AsyncContextStorage`) must expose the **same** per-request store the app uses for correlation and monitoring metadata.
 2. **`ApiActorMiddleware`** — Register it in `AppModule.configure()` **after** middleware that creates that store (e.g. correlation ID). It resolves the caller (authenticated user, API key, etc.) or an anonymous actor, then calls `ApiRequestContextService.updateActor(actorId, actorType)`, which writes into that async store.
 3. **`ApiMonitoringService.logRequest`** — Reads `actorId` (and related fields) from context when the interceptor runs. If `actorId` is still missing, the request log row is **not** saved.
+
+4. **`monitoringUserId`** — For `ApiActorType.USER`, the middleware also calls `ApiMonitoringUserService.upsertForUserActor` and `ApiRequestContextService.updateMonitoringUser` so `api_request_log.monitoring_user_id` is filled when a profile row exists. You do not set this in `forRoot`.
 
 To change *how* an actor is derived from `req` (headers, `req.user`, JWT, etc.), adjust **`ApiActorMiddleware`** / your auth order—not `forRoot` options.
 
@@ -271,6 +359,15 @@ To change *how* an actor is derived from `req` (headers, `req.user`, JWT, etc.),
 # replace port with your app
 curl -i http://localhost:3000/health
 ```
+
+### `setupProxy.js` (Create React App) — not part of this package
+
+**`setupProxy.js` is not part of `@exprealty/api-monitoring` and is not required for the module to work.** It is an optional **Create React App** convention used in some repos only to:
+
+- Proxy **`/v1`** (or other paths) from the CRA **dev server** to your **Nest** backend, and  
+- Set **`X-Forwarded-For`** (or similar) so requests that originate in the browser are **not** seen by Nest as plain **localhost** only.
+
+That matters because **`ApiMonitoringInterceptor`** skips monitoring for **localhost / internal** client IPs by default; without a forwarded client IP, browser-driven dev traffic can be excluded from logs. A dev proxy is a **host-app** concern, not something this package ships or depends on.
 
 ---
 
@@ -372,8 +469,9 @@ Publishing (registry URL, auth, and CI) is owned by your **monorepo / platform d
 | Piece | Role |
 |-------|------|
 | `ApiMonitoringInterceptor` | Global interceptor: latency, status, metadata → `api_request_log`; optional `request_body_snapshot` when `captureRequestBody` is true |
-| `ApiActorMiddleware` | Actors → `api_actor` |
-| `ApiMonitoringService` | Logging, classification, sampling |
+| `ApiActorMiddleware` | Actors → `api_actor`; for **USER**, upserts `api_monitoring_user` and sets context `monitoringUserId` |
+| `ApiMonitoringUserService` | Upserts `core.api_monitoring_user` (`external_id`, `email`, `actor_id`, optional `last_source_application` from `x-source-app`) |
+| `ApiMonitoringService` | Logging, classification, sampling; persists `monitoring_user_id`, `source_application`, and `retry_count` on `api_request_log` when present |
 | `ApiMetricsService` | Aggregations, top callers, trends, … |
 | `ApiMonitoringController` | Read-only / admin HTTP API |
 
@@ -384,8 +482,9 @@ Publishing (registry URL, auth, and CI) is owned by your **monorepo / platform d
 - Error sanitization; stack traces for server errors only.  
 - **Do not** expose `/v1/api-monitoring` without auth.  
 - Request bodies are **not** stored unless you set `captureRequestBody: true` (and run the DB migration for `request_body_snapshot`). Treat captured bodies as **sensitive** (PII/secrets).  
+- **`api_monitoring_user`** stores **email** and **external user id** for authenticated USER actors — treat as **PII**; restrict DB access and retention.
 
-For details, see `src/` and `tests/`.
+For details, see `src/`, `tests/`, and [docs/api-monitoring.md](./docs/api-monitoring.md).
 
 ---
 
@@ -397,6 +496,7 @@ For details, see `src/` and `tests/`.
 |-------|----------|
 | **Database** | Tables in `core` must exist (migrations). |
 | **`request_body_snapshot`** | Column only exists after the migration that adds it; enabling `captureRequestBody` before migrating can cause insert errors. |
+| **`api_monitoring_user` / `monitoring_user_id`** | Table and `api_request_log.monitoring_user_id` must exist (migration `CreateApiMonitoringUserTable`). **`actor_id`** must be **unique** on `api_monitoring_user` (migration `UniqueApiMonitoringUserActorId`); dedupe rows before migrating. Without them, USER upserts / inserts can fail. |
 | **`req.body`** | Snapshots use **parsed** body only. Raw streams, wrong middleware order, or skipped parsers mean little or nothing to capture. |
 | **Actor ID** | `ApiMonitoringService.logRequest` skips persistence when `actorId` is missing (see service behavior). |
 | **PII / compliance** | Storing bodies may violate policy unless redacted or allowed by legal/security. |
@@ -407,6 +507,7 @@ For details, see `src/` and `tests/`.
 |-------|----------------|
 | **Database / `core` schema** | Run your app’s TypeORM migrations against the same database as `TypeOrmModule.forRoot`. In this monorepo: `pnpm run migration:run` (or `migration:run:local`) from `agent-service/`. Ensure `CREATE SCHEMA IF NOT EXISTS core;` if your process requires it. |
 | **`request_body_snapshot` column** | Apply the migration that adds `request_body_snapshot` to `core.api_request_log` **before** setting `captureRequestBody: true` in `ApiMonitoringModule.forRoot`. If inserts fail, run pending migrations or turn off `captureRequestBody` until the column exists. |
+| **`api_monitoring_user`** | Run migrations that create `core.api_monitoring_user`, add **`UNIQUE(actor_id)`** (`UniqueApiMonitoringUserActorId`), and add `monitoring_user_id` to `api_request_log`. The middleware tolerates upsert failures (warns only), but missing columns or unique violations will break inserts. |
 | **Empty or missing `req.body`** | Rely on Nest/Express body parsing so `req.body` is filled before the interceptor runs. Check `Content-Type`, body size limits, and route-specific parsers. Multipart/raw streams are not JSON snapshots unless you parse them into `req.body` yourself. |
 | **No rows / missing `actorId`** | Ensure correlation + `ApiActorMiddleware` run in the right order and that your auth/gateway provides headers (or logic) the middleware uses so async context includes `actorId`. If you need logs **without** an actor, that requires a **code/product change** (today the service skips save when `actorId` is absent). |
 | **PII / secrets in stored bodies** | Default is `captureRequestBody: false`. If enabled: lower `requestBodyMaxBytes`, redact in your own middleware before monitoring, define retention and access controls, and follow legal/security sign-off. |

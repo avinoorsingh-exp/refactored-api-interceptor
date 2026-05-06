@@ -28,11 +28,7 @@ import { TrendsQueryDto, TrendsRange } from './dto/trends-query.dto.js';
 import { TrendsResponseDto } from './dto/trends-response.dto.js';
 import { AvailableRoutesQueryDto } from './dto/available-routes-query.dto.js';
 import { AvailableRoutesResponseDto } from './dto/available-routes-response.dto.js';
-import {
-	TimeBucket,
-	ApiErrorClassification,
-	type TimeSeriesQuery,
-} from './domain/api-monitoring.types.js';
+import { TimeBucket } from './domain/api-monitoring.types.js';
 import type { IApiMonitoringLogger } from './interfaces/logger.interface.js';
 import { API_MONITORING_LOGGER_TOKEN } from './interfaces/logger.interface.js';
 import type { PaginatedResponse } from './utils/pagination.util.js';
@@ -102,10 +98,10 @@ export class ApiMonitoringController {
 		// Convert string dates to Date objects if needed (query params come as strings)
 		const startTime = query.startTime instanceof Date 
 			? query.startTime 
-			: new Date(query.startTime as string);
+			: new Date(query.startTime);
 		const endTime = query.endTime instanceof Date 
 			? query.endTime 
-			: new Date(query.endTime as string);
+			: new Date(query.endTime);
 
 		// Validate dates are valid
 		if (isNaN(startTime.getTime())) {
@@ -130,7 +126,7 @@ export class ApiMonitoringController {
 			timeBucket: query.timeBucket,
 			actorId: query.actorId,
 			statusCode: query.statusCode,
-		} as TimeSeriesQuery);
+		});
 	}
 
 	/**
@@ -340,8 +336,8 @@ export class ApiMonitoringController {
 		return this.metricsService.getErrorSamples({
 			startTime: query.startTime,
 			endTime: query.endTime,
-			classification: query.classification as ApiErrorClassification | ApiErrorClassification[] | undefined,
-			route: query.route as string | string[] | undefined,
+			classification: query.classification,
+			route: query.route,
 			limit: paginationLimitFromQuery(query) ?? 50,
 			cursor: query.cursor,
 			statusCode: query.statusCode,
@@ -486,12 +482,12 @@ export class ApiMonitoringController {
 		if (typeof rangeValue === 'string') {
 			const num = parseInt(rangeValue.replace('d', ''), 10);
 			if (num === 30 || num === 60 || num === 90) {
-				range = num as TrendsRange;
+				range = num;
 			} else {
 				throw new Error(`Invalid range: ${rangeValue}. Must be 30d, 60d, 90d, 30, 60, or 90`);
 			}
 		} else if (typeof rangeValue === 'number') {
-			range = rangeValue as TrendsRange;
+			range = rangeValue;
 		} else {
 			throw new Error(`Invalid range type: ${typeof rangeValue}`);
 		}

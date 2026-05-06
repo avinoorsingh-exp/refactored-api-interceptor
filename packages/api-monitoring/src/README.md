@@ -43,11 +43,15 @@ Enterprise-grade API monitoring and observability system for tracking all inboun
 - Created on-demand when first seen
 - Used for request attribution and security monitoring
 
+#### ApiMonitoringUserEntity
+- One row per human **`external_id`**; **`actor_id` is UNIQUE** (at most one profile per `api_actor`)
+
 #### ApiRequestLogEntity
 - High-volume, append-only request log
 - Indexed for time-range queries
 - Optimized for aggregation queries
 - Supports retention policies (hot vs cold data)
+- Optional **`source_application`** (`x-source-app`) and **`retry_count`** (`x-retry-count`) for client/replay attribution
 
 #### ApiRouteStatsEntity
 - Pre-aggregated statistics by route, method, and time bucket

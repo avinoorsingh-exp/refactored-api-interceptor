@@ -12,6 +12,7 @@ import {
 interface ApiRequestContext extends ApiMonitoringRequestStore {
 	actorId?: string;
 	actorType?: ApiActorType;
+	monitoringUserId?: string;
 	startTime?: number;
 }
 
@@ -27,7 +28,7 @@ export class ApiRequestContextService {
 	) {}
 
 	getContext(): ApiRequestContext | undefined {
-		return this.asyncContext.getStore() as ApiRequestContext | undefined;
+		return this.asyncContext.getStore();
 	}
 
 	getCorrelationId(): string | undefined {
@@ -47,6 +48,13 @@ export class ApiRequestContextService {
 		if (context) {
 			context.actorId = actorId;
 			context.actorType = actorType;
+		}
+	}
+
+	updateMonitoringUser(monitoringUserId: string): void {
+		const context = this.getContext();
+		if (context) {
+			context.monitoringUserId = monitoringUserId;
 		}
 	}
 

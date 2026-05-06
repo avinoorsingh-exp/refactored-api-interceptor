@@ -14,7 +14,7 @@ describe('@exprealty/api-monitoring publish isolation (manifest and bundler conf
 		const pkg = parseJson(pg) as { dependencies: Record<string, string> };
 		for (const [name, spec] of Object.entries(pkg.dependencies ?? {})) {
 			if (name.startsWith('@exprealty/') || (typeof spec === 'string' && spec.startsWith('workspace:'))) {
-				throw new Error(`Disallowed for standalone publish: ${name} = ${String(spec)}`);
+				throw new Error(`Disallowed for standalone publish: ${name} = ${spec}`);
 			}
 		}
 		expect(true).toBe(true);

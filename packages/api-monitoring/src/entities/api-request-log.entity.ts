@@ -23,6 +23,8 @@ import {
 @Index('idx_api_request_log_correlation', ['correlationId'])
 @Index('idx_api_request_log_status', ['statusCode', 'timestamp'])
 @Index('idx_api_request_log_error', ['hasError', 'timestamp'])
+@Index('idx_api_request_log_monitoring_user', ['monitoringUserId', 'timestamp'])
+@Index('idx_api_request_log_source_app', ['sourceApplication', 'timestamp'])
 export class ApiRequestLogEntity {
 	@PrimaryGeneratedColumn('uuid')
 	id!: string;
@@ -62,6 +64,23 @@ export class ApiRequestLogEntity {
 
 	@Column({ name: 'actor_type', type: 'text', nullable: true })
 	actorType?: ApiActorType;
+
+	/** Logical FK to {@link ApiMonitoringUserEntity} when the caller is a resolved USER profile. */
+	@Column({ name: 'monitoring_user_id', type: 'uuid', nullable: true })
+	monitoringUserId?: string;
+
+	/**
+	 * Upstream client id from `x-source-app` (e.g. `IMS`, `TRX`). Nullable when the header is omitted.
+	 * Many users and many apps: each request row stores one user (`monitoring_user_id`) and one app label.
+	 */
+	@Column({ name: 'source_application', type: 'text', nullable: true })
+	sourceApplication?: string;
+
+	/**
+	 * How many times this logical call was retried before this attempt (`x-retry-count`): **0** = first try, **1** = first replay, etc.
+	 */
+	@Column({ name: 'retry_count', type: 'integer', default: 0 })
+	retryCount!: number;
 
 	@Column({ name: 'has_error', type: 'boolean', default: false })
 	hasError!: boolean;

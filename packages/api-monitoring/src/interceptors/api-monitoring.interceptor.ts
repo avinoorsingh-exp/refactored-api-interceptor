@@ -19,6 +19,8 @@ import {
 	type ApiMonitoringModuleRuntimeOptions,
 } from '../tokens/api-monitoring-module-options.token.js';
 import { serializeRequestBodySnapshot } from '../utils/serialize-request-body-snapshot.util.js';
+import { parseSourceApplicationHeader } from '../utils/parse-source-application-header.util.js';
+import { parseRetryCountHeader } from '../utils/parse-retry-count-header.util.js';
 
 /**
  * HTTP Interceptor for API request monitoring.
@@ -64,9 +66,12 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 		const requestSizeBytes = this.calculateRequestSize(request);
 
 		const requestBodySnapshot =
-			this.moduleOptions.captureRequestBody === true
+			this.moduleOptions.captureRequestBody
 				? serializeRequestBodySnapshot(request.body, this.moduleOptions.requestBodyMaxBytes)
 				: undefined;
+
+		const sourceApplication = parseSourceApplicationHeader((name) => request.get(name));
+		const retryCount = parseRetryCountHeader((name) => request.get(name));
 
 		return next.handle().pipe(
 			tap({
@@ -91,6 +96,8 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 						requestSizeBytes,
 						responseSizeBytes,
 						requestBodySnapshot,
+						sourceApplication,
+						retryCount,
 					);
 
 					// Log asynchronously (non-blocking)
@@ -124,6 +131,8 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 					requestSizeBytes,
 					undefined, // response size not available on error
 					requestBodySnapshot,
+					sourceApplication,
+					retryCount,
 				);
 
 				// Log asynchronously (non-blocking)
@@ -141,7 +150,7 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 		const layer: unknown = request.route;
 		const pathCandidate =
 			layer && typeof layer === 'object' && 'path' in layer
-				? (layer as { path: unknown }).path
+				? (layer).path
 				: undefined;
 		if (typeof pathCandidate === 'string' && pathCandidate.length > 0) {
 			return pathCandidate;

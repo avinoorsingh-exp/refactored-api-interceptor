@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { Request, Response, NextFunction } from 'express';
 import { ApiActorMiddleware } from '../../src/middleware/api-actor.middleware.js';
 import { ApiActorService } from '../../src/services/api-actor.service.js';
+import { ApiMonitoringUserService } from '../../src/services/api-monitoring-user.service.js';
 import { ApiRequestContextService } from '../../src/services/api-request-context.service.js';
 import { ApiActorType } from '../../src/domain/api-monitoring.types.js';
 import { API_MONITORING_LOGGER_TOKEN } from '../../src/interfaces/logger.interface.js';
@@ -17,6 +18,7 @@ type MockActorRequest = Partial<Request> & {
 describe('ApiActorMiddleware', () => {
 	let middleware: ApiActorMiddleware;
 	let actorService: jest.Mocked<ApiActorService>;
+	let monitoringUserService: jest.Mocked<Pick<ApiMonitoringUserService, 'upsertForUserActor'>>;
 	let contextService: jest.Mocked<ApiRequestContextService>;
 	let logger: jest.Mocked<IApiMonitoringLogger>;
 	let mockRequest: MockActorRequest;
@@ -36,8 +38,13 @@ describe('ApiActorMiddleware', () => {
 			getOrCreateActor: jest.fn(),
 		} as any;
 
+		monitoringUserService = {
+			upsertForUserActor: jest.fn().mockResolvedValue({ id: 'monitoring-user-uuid-1' }),
+		};
+
 		contextService = {
 			updateActor: jest.fn(),
+			updateMonitoringUser: jest.fn(),
 		} as any;
 
 		mockRequest = {
@@ -55,6 +62,10 @@ describe('ApiActorMiddleware', () => {
 				{
 					provide: ApiActorService,
 					useValue: actorService,
+				},
+				{
+					provide: ApiMonitoringUserService,
+					useValue: monitoringUserService,
 				},
 				{
 					provide: ApiRequestContextService,
@@ -93,9 +104,16 @@ describe('ApiActorMiddleware', () => {
 				expect.objectContaining({
 					userId: 'user-123',
 					username: 'user',
+					email: 'user@example.com',
 				}),
 			);
 			expect(contextService.updateActor).toHaveBeenCalledWith('actor-123', ApiActorType.USER);
+			expect(monitoringUserService.upsertForUserActor).toHaveBeenCalledWith({
+				externalId: 'user-123',
+				email: 'user@example.com',
+				actorId: 'actor-123',
+			});
+			expect(contextService.updateMonitoringUser).toHaveBeenCalledWith('monitoring-user-uuid-1');
 			expect(mockNext).toHaveBeenCalled();
 		});
 
@@ -113,6 +131,8 @@ describe('ApiActorMiddleware', () => {
 			};
 
 			await middleware.use(mockRequest as Request, mockResponse as Response, mockNext);
+
+			expect(monitoringUserService.upsertForUserActor).not.toHaveBeenCalled();
 
 			expect(actorService.getOrCreateActor).toHaveBeenCalledWith(
 				ApiActorType.API_KEY,
@@ -141,6 +161,8 @@ describe('ApiActorMiddleware', () => {
 
 			await middleware.use(mockRequest as Request, mockResponse as Response, mockNext);
 
+			expect(monitoringUserService.upsertForUserActor).not.toHaveBeenCalled();
+
 			expect(actorService.getOrCreateActor).toHaveBeenCalledWith(
 				ApiActorType.SERVICE_ACCOUNT,
 				'My Service',
@@ -168,6 +190,7 @@ describe('ApiActorMiddleware', () => {
 				{ ip: '192.168.1.1' },
 			);
 			expect(contextService.updateActor).toHaveBeenCalledWith('actor-anon', ApiActorType.ANONYMOUS);
+			expect(monitoringUserService.upsertForUserActor).not.toHaveBeenCalled();
 			expect(mockNext).toHaveBeenCalled();
 		});
 
@@ -204,6 +227,8 @@ describe('ApiActorMiddleware', () => {
 				expect.any(Object),
 			);
 			expect(actorService.getOrCreateActor).toHaveBeenCalledTimes(1);
+			expect(monitoringUserService.upsertForUserActor).toHaveBeenCalled();
+			expect(contextService.updateMonitoringUser).toHaveBeenCalledWith('monitoring-user-uuid-1');
 		});
 	});
 });

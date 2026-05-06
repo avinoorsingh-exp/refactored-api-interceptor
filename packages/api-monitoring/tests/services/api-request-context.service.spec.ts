@@ -3,6 +3,7 @@ import { ApiRequestContextService } from '../../src/services/api-request-context
 import { ApiActorType } from '../../src/domain/api-monitoring.types.js';
 import {
 	API_MONITORING_ASYNC_CONTEXT,
+	type ApiMonitoringRequestStore,
 	type IApiMonitoringAsyncContext,
 } from '../../src/interfaces/async-context.port.js';
 
@@ -123,12 +124,12 @@ describe('ApiRequestContextService', () => {
 
 	describe('updateActor', () => {
 		it('should update actor in context', () => {
-			const mockContext: Record<string, unknown> = {
+			const mockContext: ApiMonitoringRequestStore = {
 				correlationId: 'corr-123',
 				timestamp: 1,
 			};
 
-			mockAsyncContext.getStore.mockReturnValue(mockContext as never);
+			mockAsyncContext.getStore.mockReturnValue(mockContext);
 
 			service.updateActor('actor-123', ApiActorType.USER);
 
@@ -147,12 +148,12 @@ describe('ApiRequestContextService', () => {
 
 	describe('setStartTime', () => {
 		it('should set start time in context', () => {
-			const mockContext: Record<string, unknown> = {
+			const mockContext: ApiMonitoringRequestStore = {
 				correlationId: 'corr-123',
 				timestamp: 1,
 			};
 
-			mockAsyncContext.getStore.mockReturnValue(mockContext as never);
+			mockAsyncContext.getStore.mockReturnValue(mockContext);
 
 			service.setStartTime();
 

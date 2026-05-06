@@ -2,6 +2,7 @@ import {
 	API_MONITORING_ACTOR_REPO,
 	API_MONITORING_REQUEST_LOG_REPO,
 	API_MONITORING_ROUTE_STATS_REPO,
+	API_MONITORING_USER_REPO,
 } from '../../src/tokens/repository.tokens.js';
 import { API_MONITORING_ENTITY_CLASSES } from '../../src/tokens/entity-classes.token.js';
 import { API_MONITORING_ASYNC_CONTEXT } from '../../src/interfaces/async-context.port.js';
@@ -12,8 +13,9 @@ describe('API monitoring DI tokens (Strategy 1)', () => {
 			API_MONITORING_REQUEST_LOG_REPO,
 			API_MONITORING_ROUTE_STATS_REPO,
 			API_MONITORING_ACTOR_REPO,
+			API_MONITORING_USER_REPO,
 		]);
-		expect(tokens.size).toBe(3);
+		expect(tokens.size).toBe(4);
 	});
 
 	it('uses a distinct symbol for entity class bundle', () => {
