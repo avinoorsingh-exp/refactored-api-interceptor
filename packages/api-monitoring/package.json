@@ -1,6 +1,6 @@
 {
 	"name": "@exprealty/api-monitoring",
-	"version": "0.2.2",
+	"version": "0.2.3",
 	"description": "NestJS API monitoring: HTTP logging, actor attribution, TypeORM metrics, and read-only admin routes (PostgreSQL).",
 	"type": "module",
 	"private": false,
