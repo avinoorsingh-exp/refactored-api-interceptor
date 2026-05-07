@@ -13,12 +13,9 @@
 		"emitDecoratorMetadata": true,
 		"baseUrl": ".",
 		"paths": {
-			"@exprealty/api-monitoring": ["packages/api-monitoring/src/index.ts"]
+			"@exprealty/api-interceptor": ["packages/api-interceptor/src/index.ts"]
 		}
 	},
-	"include": [
-		"packages/api-monitoring/src/**/*.ts",
-		"packages/api-monitoring/tests/**/*.ts"
-	],
+	"include": ["packages/api-interceptor/src/**/*.ts"],
 	"exclude": ["**/node_modules", "**/dist"]
 }

@@ -1,14 +1,14 @@
 import { DynamicModule, Global } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
-import { ApiMonitoringInterceptor } from './interceptors/api-monitoring.interceptor.js';
+import { ApiInterceptor } from './interceptors/api-interceptor.interceptor.js';
 import { ApiRequestContextService } from './services/api-request-context.service.js';
-import type { ApiMonitoringForRootOptions } from './options/api-monitoring-for-root.options.js';
-import { API_MONITORING_ASYNC_CONTEXT } from './interfaces/async-context.port.js';
+import type { ApiInterceptorForRootOptions } from './options/api-interceptor-for-root.options.js';
+import { API_INTERCEPTOR_ASYNC_CONTEXT } from './interfaces/async-context.port.js';
 import {
-	API_MONITORING_MODULE_OPTIONS,
-	type ApiMonitoringModuleRuntimeOptions,
-} from './tokens/api-monitoring-module-options.token.js';
-import { API_MONITORING_ON_EXCHANGE } from './tokens/api-monitoring-on-exchange.token.js';
+	API_INTERCEPTOR_MODULE_OPTIONS,
+	type ApiInterceptorModuleRuntimeOptions,
+} from './tokens/api-interceptor-module-options.token.js';
+import { API_INTERCEPTOR_ON_EXCHANGE } from './tokens/api-interceptor-on-exchange.token.js';
 
 /**
  * Registers the global HTTP interceptor and async request context for API exchange observation.
@@ -16,34 +16,34 @@ import { API_MONITORING_ON_EXCHANGE } from './tokens/api-monitoring-on-exchange.
  * @public
  */
 @Global()
-export class ApiMonitoringModule {
-	static forRoot(options: ApiMonitoringForRootOptions): DynamicModule {
+export class ApiInterceptorModule {
+	static forRoot(options: ApiInterceptorForRootOptions): DynamicModule {
 		if (typeof options.onApiExchange !== 'function') {
-			throw new Error('ApiMonitoringModule.forRoot requires a function `onApiExchange`.');
+			throw new Error('ApiInterceptorModule.forRoot requires a function `onApiExchange`.');
 		}
 
 		const maxBytesRaw = options.exchangePayloadMaxBytes ?? 16_384;
 		const exchangePayloadMaxBytes = Math.min(1_048_576, Math.max(256, maxBytesRaw));
-		const runtimeOptions: ApiMonitoringModuleRuntimeOptions = {
+		const runtimeOptions: ApiInterceptorModuleRuntimeOptions = {
 			exchangePayloadMaxBytes,
 			captureExchangeRequestPayload: options.captureExchangeRequestPayload !== false,
 			captureExchangeResponsePayload: options.captureExchangeResponsePayload !== false,
 		};
 
 		return {
-			module: ApiMonitoringModule,
+			module: ApiInterceptorModule,
 			imports: [],
 			providers: [
-				{ provide: API_MONITORING_MODULE_OPTIONS, useValue: runtimeOptions },
-				{ provide: API_MONITORING_ON_EXCHANGE, useValue: options.onApiExchange },
+				{ provide: API_INTERCEPTOR_MODULE_OPTIONS, useValue: runtimeOptions },
+				{ provide: API_INTERCEPTOR_ON_EXCHANGE, useValue: options.onApiExchange },
 				{
-					provide: API_MONITORING_ASYNC_CONTEXT,
+					provide: API_INTERCEPTOR_ASYNC_CONTEXT,
 					useClass: options.asyncContext,
 				},
 				ApiRequestContextService,
 				{
 					provide: APP_INTERCEPTOR,
-					useClass: ApiMonitoringInterceptor,
+					useClass: ApiInterceptor,
 				},
 			],
 			controllers: [],

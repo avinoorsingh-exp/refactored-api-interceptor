@@ -1,14 +1,14 @@
 import type { Type } from '@nestjs/common';
 import type { ApiExchangeEvent } from '../domain/api-exchange.event.js';
-import type { IApiMonitoringAsyncContext } from '../interfaces/async-context.port.js';
+import type { IApiInterceptorAsyncContext } from '../interfaces/async-context.port.js';
 
 /**
- * Options for {@link ApiMonitoringModule.forRoot}.
+ * Options for {@link ApiInterceptorModule.forRoot}.
  * @public
  */
-export interface ApiMonitoringForRootOptions {
+export interface ApiInterceptorForRootOptions {
 	/** Adapter that bridges your async context (e.g. ALS) for correlation and optional actor fields. */
-	asyncContext: Type<IApiMonitoringAsyncContext>;
+	asyncContext: Type<IApiInterceptorAsyncContext>;
 
 	/**
 	 * Called for every observed HTTP exchange (and skipped internal traffic when applicable).

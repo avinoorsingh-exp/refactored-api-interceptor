@@ -18,7 +18,7 @@ export default [
         },
     },
     {
-        files: ['packages/api-monitoring/src/**/*.ts', 'packages/api-monitoring/tests/**/*.ts'],
+        files: ['packages/api-interceptor/src/**/*.ts', 'packages/api-interceptor/tests/**/*.ts'],
         rules: {
             '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
             '@typescript-eslint/restrict-template-expressions': [
@@ -26,21 +26,6 @@ export default [
                 { allowNumber: true, allowBoolean: true },
             ],
             '@typescript-eslint/no-extraneous-class': ['error', { allowWithDecorator: true }],
-        },
-    },
-    {
-        files: ['packages/api-monitoring/src/services/api-metrics.service.ts'],
-        rules: {
-            '@typescript-eslint/no-unsafe-assignment': 'off',
-            '@typescript-eslint/no-unsafe-return': 'off',
-            '@typescript-eslint/no-unsafe-call': 'off',
-            '@typescript-eslint/no-unsafe-member-access': 'off',
-            '@typescript-eslint/no-unsafe-argument': 'off',
-            '@typescript-eslint/no-base-to-string': 'off',
-            '@typescript-eslint/no-non-null-assertion': 'off',
-            '@typescript-eslint/no-unnecessary-condition': 'off',
-            '@typescript-eslint/return-await': 'off',
-            '@typescript-eslint/restrict-template-expressions': 'off',
         },
     },
     {
@@ -74,6 +59,8 @@ export default [
             'packages/*/src/**/*.d.ts',
             '!packages/*/src/**/index.ts',
             '**/jest.config.cjs',
+            'packages/api-interceptor/scripts/**/*.cjs',
+            'packages/api-interceptor/tests/jest-setup.cjs',
         ],
     },
     {

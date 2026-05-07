@@ -4,7 +4,7 @@
  *
  * @public
  */
-export const API_MONITORING_RETRY_COUNT_HEADER = 'x-retry-count';
+export const API_INTERCEPTOR_RETRY_COUNT_HEADER = 'x-retry-count';
 
 const MAX_RETRY_COUNT = 10_000;
 
@@ -15,7 +15,7 @@ const MAX_RETRY_COUNT = 10_000;
  * @public
  */
 export function parseRetryCountHeader(getHeader: (name: string) => string | undefined): number {
-	const raw = getHeader(API_MONITORING_RETRY_COUNT_HEADER);
+	const raw = getHeader(API_INTERCEPTOR_RETRY_COUNT_HEADER);
 	if (raw === undefined) {
 		return 0;
 	}

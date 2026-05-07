@@ -1,10 +1,10 @@
-import type { ApiActorType } from '../domain/api-monitoring.types.js';
+import type { ApiActorType } from '../domain/api-interceptor.types.js';
 
 /**
- * Async-local request store shape used by API monitoring (host may map from its own ALS).
+ * Async-local request store shape used by the interceptor (host may map from its own ALS).
  * @public
  */
-export interface ApiMonitoringRequestStore {
+export interface ApiInterceptorRequestStore {
 	correlationId: string;
 	userId?: string;
 	requestPath?: string;
@@ -22,12 +22,12 @@ export interface ApiMonitoringRequestStore {
  * Port for reading correlation / request context without depending on a specific cache package.
  * @public
  */
-export interface IApiMonitoringAsyncContext {
-	/** Active request bag (ALS); monitoring reads actor/correlation from here. */
-	getStore(): ApiMonitoringRequestStore | undefined;
+export interface IApiInterceptorAsyncContext {
+	/** Active request bag (ALS); the interceptor reads actor/correlation from here. */
+	getStore(): ApiInterceptorRequestStore | undefined;
 	/** Shortcut when correlation lives outside the store shape. */
 	getCorrelationId(): string | undefined;
 }
 
-/** Nest DI token for {@link IApiMonitoringAsyncContext}. */
-export const API_MONITORING_ASYNC_CONTEXT = Symbol('API_MONITORING_ASYNC_CONTEXT');
+/** Nest DI token for {@link IApiInterceptorAsyncContext}. */
+export const API_INTERCEPTOR_ASYNC_CONTEXT = Symbol('API_INTERCEPTOR_ASYNC_CONTEXT');

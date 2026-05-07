@@ -1,10 +1,10 @@
 /**
  * HTTP header used by upstream clients (e.g. IMS, TRX) to identify which application
- * initiated the proxied API call. Read by {@link ApiMonitoringInterceptor}.
+ * initiated the proxied API call. Read by {@link ApiInterceptor}.
  *
  * @public
  */
-export const API_MONITORING_SOURCE_APP_HEADER = 'x-source-app';
+export const API_INTERCEPTOR_SOURCE_APP_HEADER = 'x-source-app';
 
 const MAX_SOURCE_APPLICATION_LENGTH = 64;
 
@@ -17,7 +17,7 @@ const MAX_SOURCE_APPLICATION_LENGTH = 64;
 export function parseSourceApplicationHeader(
 	getHeader: (name: string) => string | undefined,
 ): string | undefined {
-	const raw = getHeader(API_MONITORING_SOURCE_APP_HEADER);
+	const raw = getHeader(API_INTERCEPTOR_SOURCE_APP_HEADER);
 	if (raw === undefined) {
 		return undefined;
 	}

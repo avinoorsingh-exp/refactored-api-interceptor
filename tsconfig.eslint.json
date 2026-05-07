@@ -5,9 +5,10 @@
 		"skipLibCheck": true
 	},
 	"include": [
-		"packages/api-monitoring/src/**/*.ts",
-		"packages/api-monitoring/tests/**/*.ts",
-		"packages/api-monitoring/tsup.config.ts",
+		"packages/api-interceptor/src/**/*.ts",
+		"packages/api-interceptor/tests/**/*.ts",
+		"packages/api-interceptor/types/**/*.d.ts",
+		"packages/api-interceptor/tsup.config.ts",
 		"eslint.config.mjs"
 	]
 }

@@ -11,16 +11,16 @@ import { Request } from 'express';
 
 type HttpRequest = Request & { route?: { path?: string } };
 
-import { HttpMethod } from '../domain/api-monitoring.types.js';
+import { HttpMethod } from '../domain/api-interceptor.types.js';
 import { ApiRequestContextService } from '../services/api-request-context.service.js';
 import {
-	API_MONITORING_MODULE_OPTIONS,
-	type ApiMonitoringModuleRuntimeOptions,
-} from '../tokens/api-monitoring-module-options.token.js';
+	API_INTERCEPTOR_MODULE_OPTIONS,
+	type ApiInterceptorModuleRuntimeOptions,
+} from '../tokens/api-interceptor-module-options.token.js';
 import {
-	API_MONITORING_ON_EXCHANGE,
+	API_INTERCEPTOR_ON_EXCHANGE,
 	type ApiExchangeHandler,
-} from '../tokens/api-monitoring-on-exchange.token.js';
+} from '../tokens/api-interceptor-on-exchange.token.js';
 import { parseSourceApplicationHeader } from '../utils/parse-source-application-header.util.js';
 import { parseRetryCountHeader } from '../utils/parse-retry-count-header.util.js';
 import { captureUnknownPayload } from '../utils/capture-unknown-payload.util.js';
@@ -37,12 +37,12 @@ import type {
  * @public
  */
 @Injectable()
-export class ApiMonitoringInterceptor implements NestInterceptor {
+export class ApiInterceptor implements NestInterceptor {
 	constructor(
 		private readonly contextService: ApiRequestContextService,
-		@Inject(API_MONITORING_MODULE_OPTIONS)
-		private readonly moduleOptions: ApiMonitoringModuleRuntimeOptions,
-		@Inject(API_MONITORING_ON_EXCHANGE)
+		@Inject(API_INTERCEPTOR_MODULE_OPTIONS)
+		private readonly moduleOptions: ApiInterceptorModuleRuntimeOptions,
+		@Inject(API_INTERCEPTOR_ON_EXCHANGE)
 		private readonly onExchange: ApiExchangeHandler,
 	) {}
 
@@ -51,7 +51,7 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 		const response = context.switchToHttp().getResponse<{ statusCode?: number }>();
 		const startedAtMs = Date.now();
 
-		if (this.shouldSkipMonitoring(request)) {
+		if (this.shouldSkipIntercept(request)) {
 			const skipBodyCapture =
 				this.moduleOptions.captureExchangeRequestPayload
 					? captureUnknownPayload(request.body, this.moduleOptions.exchangePayloadMaxBytes)
@@ -253,7 +253,7 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 			: HttpMethod.GET;
 	}
 
-	private shouldSkipMonitoring(request: Request): boolean {
+	private shouldSkipIntercept(request: Request): boolean {
 		const ipAddress = this.extractIpAddress(request);
 		if (ipAddress && this.isLocalhostOrInternal(ipAddress)) {
 			return true;
@@ -283,7 +283,7 @@ export class ApiMonitoringInterceptor implements NestInterceptor {
 	}
 
 	private getExcludedOrigins(): string[] {
-		const excluded = process.env.API_MONITORING_EXCLUDE_ORIGINS;
+		const excluded = process.env.API_INTERCEPTOR_EXCLUDE_ORIGINS;
 		if (!excluded) {
 			return [];
 		}

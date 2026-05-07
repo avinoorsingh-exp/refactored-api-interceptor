@@ -1,15 +1,15 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { ApiActorType } from '../domain/api-monitoring.types.js';
-import type { ApiMonitoringRequestStore } from '../interfaces/async-context.port.js';
+import type { ApiActorType } from '../domain/api-interceptor.types.js';
+import type { ApiInterceptorRequestStore } from '../interfaces/async-context.port.js';
 import {
-	API_MONITORING_ASYNC_CONTEXT,
-	type IApiMonitoringAsyncContext,
+	API_INTERCEPTOR_ASYNC_CONTEXT,
+	type IApiInterceptorAsyncContext,
 } from '../interfaces/async-context.port.js';
 
 /**
- * Extended request context for API monitoring.
+ * Extended request context for the interceptor.
  */
-interface ApiRequestContext extends ApiMonitoringRequestStore {
+interface ApiRequestContext extends ApiInterceptorRequestStore {
 	actorId?: string;
 	actorType?: ApiActorType;
 	monitoringUserId?: string;
@@ -23,8 +23,8 @@ interface ApiRequestContext extends ApiMonitoringRequestStore {
 @Injectable()
 export class ApiRequestContextService {
 	constructor(
-		@Inject(API_MONITORING_ASYNC_CONTEXT)
-		private readonly asyncContext: IApiMonitoringAsyncContext,
+		@Inject(API_INTERCEPTOR_ASYNC_CONTEXT)
+		private readonly asyncContext: IApiInterceptorAsyncContext,
 	) {}
 
 	/** Current ALS/request store for this HTTP call, if any. */
@@ -56,7 +56,7 @@ export class ApiRequestContextService {
 		}
 	}
 
-	/** Links `api_monitoring_user.id` on the store for USER actors with a profile. */
+	/** Links an optional user/profile id on the store (host-defined). */
 	updateMonitoringUser(monitoringUserId: string): void {
 		const context = this.getContext();
 		if (context) {

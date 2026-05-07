@@ -1,5 +1,5 @@
 import {
-	API_MONITORING_RETRY_COUNT_HEADER,
+	API_INTERCEPTOR_RETRY_COUNT_HEADER,
 	parseRetryCountHeader,
 } from '../../src/utils/parse-retry-count-header.util.js';
 
@@ -11,7 +11,7 @@ describe('parseRetryCountHeader', () => {
 	it('parses integer string', () => {
 		expect(
 			parseRetryCountHeader((name) =>
-				name === API_MONITORING_RETRY_COUNT_HEADER ? '2' : undefined,
+				name === API_INTERCEPTOR_RETRY_COUNT_HEADER ? '2' : undefined,
 			),
 		).toBe(2);
 	});

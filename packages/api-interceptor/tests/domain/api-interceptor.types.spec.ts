@@ -1,6 +1,6 @@
-import { HttpMethod, ApiActorType, ApiErrorClassification } from '../../src/domain/api-monitoring.types.js';
+import { HttpMethod, ApiActorType, ApiErrorClassification } from '../../src/domain/api-interceptor.types.js';
 
-describe('api-monitoring domain types', () => {
+describe('api-interceptor domain types', () => {
 	describe('HttpMethod', () => {
 		it('uses uppercase HTTP verbs as values', () => {
 			expect(HttpMethod.GET).toBe('GET');

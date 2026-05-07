@@ -1,14 +1,16 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, it, expect } from '@jest/globals';
 
-const pkgDir = join(__dirname, '../..');
+const pkgDir = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const readUtf = (path: string) => readFileSync(path, 'utf8');
 
 function parseJson(path: string): Record<string, unknown> {
 	return JSON.parse(readUtf(path)) as Record<string, unknown>;
 }
 
-describe('@exprealty/api-monitoring publish isolation (manifest and bundler config)', () => {
+describe('publish isolation (manifest and bundler config)', () => {
 	it('declares only public npm dependencies (no workspace or @exprealty packages in dependencies)', () => {
 		const pg = join(pkgDir, 'package.json');
 		const pkg = parseJson(pg) as { dependencies: Record<string, string> };

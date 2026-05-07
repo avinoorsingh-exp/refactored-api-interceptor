@@ -1,13 +1,14 @@
-import { Test } from '@nestjs/testing';
+import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { ExecutionContext, CallHandler } from '@nestjs/common';
 import { of, throwError, firstValueFrom } from 'rxjs';
 import { Request, Response } from 'express';
-import { ApiMonitoringInterceptor } from '../../src/interceptors/api-monitoring.interceptor.js';
+import { ApiInterceptor } from '../../src/interceptors/api-interceptor.interceptor.js';
 import { ApiRequestContextService } from '../../src/services/api-request-context.service.js';
-import { HttpMethod, ApiActorType, ApiErrorClassification } from '../../src/domain/api-monitoring.types.js';
-import { API_MONITORING_MODULE_OPTIONS } from '../../src/tokens/api-monitoring-module-options.token.js';
-import { API_MONITORING_ON_EXCHANGE } from '../../src/tokens/api-monitoring-on-exchange.token.js';
-import { API_MONITORING_ASYNC_CONTEXT } from '../../src/interfaces/async-context.port.js';
+import { HttpMethod, ApiActorType, ApiErrorClassification } from '../../src/domain/api-interceptor.types.js';
+import { API_INTERCEPTOR_MODULE_OPTIONS } from '../../src/tokens/api-interceptor-module-options.token.js';
+import { API_INTERCEPTOR_ON_EXCHANGE } from '../../src/tokens/api-interceptor-on-exchange.token.js';
+import { API_INTERCEPTOR_ASYNC_CONTEXT } from '../../src/interfaces/async-context.port.js';
 
 const defaultModuleOpts = {
 	exchangePayloadMaxBytes: 16_384,
@@ -19,8 +20,9 @@ async function flushMicrotasks(): Promise<void> {
 	await new Promise<void>((r) => setImmediate(r));
 }
 
-describe('ApiMonitoringInterceptor', () => {
-	let interceptor: ApiMonitoringInterceptor;
+describe('ApiInterceptor', () => {
+	let moduleRef: TestingModule | undefined;
+	let interceptor: ApiInterceptor;
 	let onExchange: jest.Mock;
 	let mockAsyncContext: { getStore: jest.Mock; getCorrelationId: jest.Mock };
 	let mockExecutionContext: ExecutionContext;
@@ -63,17 +65,21 @@ describe('ApiMonitoringInterceptor', () => {
 			handle: jest.fn().mockReturnValue(of({ data: 'test' })),
 		} as any;
 
-		const module = await Test.createTestingModule({
+		moduleRef = await Test.createTestingModule({
 			providers: [
-				ApiMonitoringInterceptor,
+				ApiInterceptor,
 				ApiRequestContextService,
-				{ provide: API_MONITORING_ASYNC_CONTEXT, useValue: mockAsyncContext },
-				{ provide: API_MONITORING_MODULE_OPTIONS, useValue: { ...defaultModuleOpts } },
-				{ provide: API_MONITORING_ON_EXCHANGE, useValue: onExchange },
+				{ provide: API_INTERCEPTOR_ASYNC_CONTEXT, useValue: mockAsyncContext },
+				{ provide: API_INTERCEPTOR_MODULE_OPTIONS, useValue: { ...defaultModuleOpts } },
+				{ provide: API_INTERCEPTOR_ON_EXCHANGE, useValue: onExchange },
 			],
 		}).compile();
 
-		interceptor = module.get(ApiMonitoringInterceptor);
+		interceptor = moduleRef.get(ApiInterceptor);
+	});
+
+	afterEach(async () => {
+		await moduleRef?.close();
 	});
 
 	describe('successful exchange (phase completed)', () => {
@@ -96,19 +102,20 @@ describe('ApiMonitoringInterceptor', () => {
 		});
 
 		it('omits response.body when captureExchangeResponsePayload is false', async () => {
-			const module = await Test.createTestingModule({
+			await moduleRef?.close();
+			moduleRef = await Test.createTestingModule({
 				providers: [
-					ApiMonitoringInterceptor,
+					ApiInterceptor,
 					ApiRequestContextService,
-					{ provide: API_MONITORING_ASYNC_CONTEXT, useValue: mockAsyncContext },
+					{ provide: API_INTERCEPTOR_ASYNC_CONTEXT, useValue: mockAsyncContext },
 					{
-						provide: API_MONITORING_MODULE_OPTIONS,
+						provide: API_INTERCEPTOR_MODULE_OPTIONS,
 						useValue: { ...defaultModuleOpts, captureExchangeResponsePayload: false },
 					},
-					{ provide: API_MONITORING_ON_EXCHANGE, useValue: onExchange },
+					{ provide: API_INTERCEPTOR_ON_EXCHANGE, useValue: onExchange },
 				],
 			}).compile();
-			interceptor = module.get(ApiMonitoringInterceptor);
+			interceptor = moduleRef.get(ApiInterceptor);
 			(mockRequest.get as jest.Mock).mockReturnValue(undefined);
 			onExchange.mockClear();
 
@@ -122,19 +129,20 @@ describe('ApiMonitoringInterceptor', () => {
 		});
 
 		it('omits request.body when captureExchangeRequestPayload is false', async () => {
-			const module = await Test.createTestingModule({
+			await moduleRef?.close();
+			moduleRef = await Test.createTestingModule({
 				providers: [
-					ApiMonitoringInterceptor,
+					ApiInterceptor,
 					ApiRequestContextService,
-					{ provide: API_MONITORING_ASYNC_CONTEXT, useValue: mockAsyncContext },
+					{ provide: API_INTERCEPTOR_ASYNC_CONTEXT, useValue: mockAsyncContext },
 					{
-						provide: API_MONITORING_MODULE_OPTIONS,
+						provide: API_INTERCEPTOR_MODULE_OPTIONS,
 						useValue: { ...defaultModuleOpts, captureExchangeRequestPayload: false },
 					},
-					{ provide: API_MONITORING_ON_EXCHANGE, useValue: onExchange },
+					{ provide: API_INTERCEPTOR_ON_EXCHANGE, useValue: onExchange },
 				],
 			}).compile();
-			interceptor = module.get(ApiMonitoringInterceptor);
+			interceptor = moduleRef.get(ApiInterceptor);
 			mockRequest.method = 'POST';
 			mockRequest.body = { a: 1 };
 			(mockRequest.get as jest.Mock).mockReturnValue(undefined);
@@ -162,12 +170,24 @@ describe('ApiMonitoringInterceptor', () => {
 			await flushMicrotasks();
 
 			const ev = onExchange.mock.calls[0][0];
-			expect(ev.summary.correlationId).toBe('corr-from-shortcut');
+			expect(ev.summary.correlationId).toBe('corr-on-store');
 			expect(ev.summary.actorId).toBe('actor-99');
 			expect(ev.summary.actorType).toBe(ApiActorType.USER);
 			expect(ev.summary.monitoringUserId).toBe('mu-1');
 			expect(ev.context.actorId).toBe('actor-99');
 			expect(ev.context.monitoringUserId).toBe('mu-1');
+		});
+
+		it('uses getCorrelationId when store is missing', async () => {
+			mockAsyncContext.getStore.mockReturnValue(undefined);
+			mockAsyncContext.getCorrelationId.mockReturnValue('only-shortcut');
+			(mockRequest.get as jest.Mock).mockReturnValue(undefined);
+			onExchange.mockClear();
+
+			await firstValueFrom(interceptor.intercept(mockExecutionContext, mockCallHandler));
+			await flushMicrotasks();
+
+			expect(onExchange.mock.calls[0][0].summary.correlationId).toBe('only-shortcut');
 		});
 
 		it('uses store correlation when getCorrelationId returns undefined', async () => {
@@ -318,9 +338,9 @@ describe('ApiMonitoringInterceptor', () => {
 			expect(onExchange.mock.calls[0][0].summary.statusCode).toBe(0);
 		});
 
-		it('skips when Origin matches API_MONITORING_EXCLUDE_ORIGINS', async () => {
-			const prev = process.env.API_MONITORING_EXCLUDE_ORIGINS;
-			process.env.API_MONITORING_EXCLUDE_ORIGINS = 'evil.example.com';
+		it('skips when Origin matches API_INTERCEPTOR_EXCLUDE_ORIGINS', async () => {
+			const prev = process.env.API_INTERCEPTOR_EXCLUDE_ORIGINS;
+			process.env.API_INTERCEPTOR_EXCLUDE_ORIGINS = 'evil.example.com';
 			try {
 				(mockRequest.get as jest.Mock).mockImplementation((h: string) => {
 					if (h === 'origin') return 'https://app.evil.example.com';
@@ -334,9 +354,9 @@ describe('ApiMonitoringInterceptor', () => {
 				expect(onExchange.mock.calls[0][0].phase).toBe('skipped');
 			} finally {
 				if (prev === undefined) {
-					delete process.env.API_MONITORING_EXCLUDE_ORIGINS;
+					delete process.env.API_INTERCEPTOR_EXCLUDE_ORIGINS;
 				} else {
-					process.env.API_MONITORING_EXCLUDE_ORIGINS = prev;
+					process.env.API_INTERCEPTOR_EXCLUDE_ORIGINS = prev;
 				}
 			}
 		});
@@ -355,16 +375,17 @@ describe('ApiMonitoringInterceptor', () => {
 
 	describe('request body capture (structured)', () => {
 		beforeEach(async () => {
-			const module = await Test.createTestingModule({
+			await moduleRef?.close();
+			moduleRef = await Test.createTestingModule({
 				providers: [
-					ApiMonitoringInterceptor,
+					ApiInterceptor,
 					ApiRequestContextService,
-					{ provide: API_MONITORING_ASYNC_CONTEXT, useValue: mockAsyncContext },
-					{ provide: API_MONITORING_MODULE_OPTIONS, useValue: { ...defaultModuleOpts } },
-					{ provide: API_MONITORING_ON_EXCHANGE, useValue: onExchange },
+					{ provide: API_INTERCEPTOR_ASYNC_CONTEXT, useValue: mockAsyncContext },
+					{ provide: API_INTERCEPTOR_MODULE_OPTIONS, useValue: { ...defaultModuleOpts } },
+					{ provide: API_INTERCEPTOR_ON_EXCHANGE, useValue: onExchange },
 				],
 			}).compile();
-			interceptor = module.get(ApiMonitoringInterceptor);
+			interceptor = moduleRef.get(ApiInterceptor);
 		});
 
 		it('includes JSON body on request snapshot', async () => {

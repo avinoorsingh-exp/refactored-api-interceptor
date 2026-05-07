@@ -1,5 +1,5 @@
 import type { ApiRequestContextService } from '../services/api-request-context.service.js';
-import { HttpMethod, ApiErrorClassification } from '../domain/api-monitoring.types.js';
+import { HttpMethod, ApiErrorClassification } from '../domain/api-interceptor.types.js';
 import type { ApiExchangeSummary } from '../domain/api-exchange.event.js';
 
 function classifyError(statusCode: number, error?: Error): ApiErrorClassification {
@@ -58,7 +58,10 @@ export function buildApiExchangeSummary(
 ): ApiExchangeSummary {
 	const context = contextService.getContext();
 	const correlationId = context?.correlationId || contextService.getCorrelationId() || 'unknown';
-	const timestamp = context?.timestamp ? new Date(context.timestamp) : new Date();
+	const timestamp =
+		typeof context?.timestamp === 'number' && Number.isFinite(context.timestamp)
+			? new Date(context.timestamp)
+			: new Date();
 
 	const hasError = params.statusCode >= 400;
 	const errorClassification = hasError

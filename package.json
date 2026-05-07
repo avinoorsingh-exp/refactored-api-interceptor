@@ -3,15 +3,15 @@
 	"private": true,
 	"repository": "https://bitbucket.org/exp-realty/agent-service",
 	"license": "MIT",
-	"description": "Workspace for @exprealty/api-monitoring only.",
+	"description": "Workspace for @exprealty/api-interceptor only.",
 	"scripts": {
 		"preinstall": "npx only-allow pnpm",
-		"build": "pnpm --filter @exprealty/api-monitoring run build",
-		"check": "pnpm --filter @exprealty/api-monitoring run check",
-		"lint": "pnpm --filter @exprealty/api-monitoring run lint",
-		"test": "pnpm --filter @exprealty/api-monitoring run test",
-		"test:full": "pnpm --filter @exprealty/api-monitoring run test:full",
-		"publish:api-monitoring": "pnpm --filter @exprealty/api-monitoring run build && pnpm --filter @exprealty/api-monitoring publish --no-git-checks"
+		"build": "pnpm --filter @exprealty/api-interceptor run build",
+		"check": "pnpm --filter @exprealty/api-interceptor run check",
+		"lint": "pnpm --filter @exprealty/api-interceptor run lint",
+		"test": "pnpm --filter @exprealty/api-interceptor run test",
+		"test:full": "pnpm --filter @exprealty/api-interceptor run test:full",
+		"publish:api-interceptor": "pnpm --filter @exprealty/api-interceptor run build && pnpm --filter @exprealty/api-interceptor publish --no-git-checks"
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.28.0",

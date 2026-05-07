@@ -1,43 +1,31 @@
-const unitPreset = require('../../jest.preset.unit.cjs');
-
+/** @type {import('jest').Config} */
 module.exports = {
-  ...unitPreset,
-  displayName: 'api-monitoring-unit',
-  rootDir: '.',
-  testMatch: [
-    '<rootDir>/tests/**/*.spec.ts',
-  ],
-  moduleNameMapper: {
-    ...unitPreset.moduleNameMapper,
-  },
-  setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
-  collectCoverageFrom: [
-    'src/utils/pagination.util.ts',
-    'src/services/api-metrics.service.ts',
-    'src/api-monitoring.controller.ts',
-    'src/dto/pagination-query.dto.ts',
-    'src/dto/error-sample-query.dto.ts',
-    
-    'src/dto/actor-activity-query.dto.ts',
-    'src/dto/page-info.dto.ts',
-    'src/dto/paginated-*.dto.ts',
-    'src/dto/summary-response.dto.ts',
-    'src/dto/top-caller-response.dto.ts',
-    'src/dto/route-breakdown-query.dto.ts',
-    'src/dto/trends-query.dto.ts',
-    'src/dto/trends-response.dto.ts',
-    'src/dto/available-routes-query.dto.ts',
-    'src/dto/available-routes-response.dto.ts',
-    'src/dto/aggregation-response.dto.ts',
-  ],
-  // Thresholds match the current collectCoverageFrom set (includes large api-metrics.service + DTOs).
-  coverageThreshold: {
-    global: {
-      lines: 50,
-      statements: 48,
-      branches: 37,
-      functions: 30,
-    },
-  },
+	displayName: 'api-interceptor-unit',
+	testEnvironment: 'node',
+	rootDir: '.',
+	injectGlobals: true,
+	extensionsToTreatAsEsm: ['.ts'],
+	moduleNameMapper: {
+		'^(\\.{1,2}/.*)\\.js$': '$1',
+	},
+	transform: {
+		'^.+\\.tsx?$': [
+			'ts-jest',
+			{
+				useESM: true,
+				tsconfig: '<rootDir>/tsconfig.json',
+			},
+		],
+	},
+	testMatch: ['<rootDir>/tests/**/*.spec.ts'],
+	setupFilesAfterEnv: ['<rootDir>/tests/jest-setup.cjs'],
+	collectCoverageFrom: ['src/**/*.ts', '!src/index.ts'],
+	coverageThreshold: {
+		global: {
+			lines: 50,
+			statements: 48,
+			branches: 37,
+			functions: 30,
+		},
+	},
 };
-

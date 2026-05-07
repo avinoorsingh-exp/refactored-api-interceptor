@@ -1,5 +1,5 @@
 import {
-	API_MONITORING_SOURCE_APP_HEADER,
+	API_INTERCEPTOR_SOURCE_APP_HEADER,
 	parseSourceApplicationHeader,
 } from '../../src/utils/parse-source-application-header.util.js';
 
@@ -11,7 +11,7 @@ describe('parseSourceApplicationHeader', () => {
 	it('trims and returns value', () => {
 		expect(
 			parseSourceApplicationHeader((name) =>
-				name === API_MONITORING_SOURCE_APP_HEADER ? '  IMS  ' : undefined,
+				name === API_INTERCEPTOR_SOURCE_APP_HEADER ? '  IMS  ' : undefined,
 			),
 		).toBe('IMS');
 	});

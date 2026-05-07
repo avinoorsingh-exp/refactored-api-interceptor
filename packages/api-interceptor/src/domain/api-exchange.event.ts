@@ -1,10 +1,10 @@
 /**
- * HTTP exchange snapshot delivered to the host via `onApiExchange` in {@link ApiMonitoringModule.forRoot}.
+ * HTTP exchange snapshot delivered to the host via `onApiExchange` in {@link ApiInterceptorModule.forRoot}.
  * @public
  */
 
 import type { Request } from 'express';
-import type { ApiActorType, ApiErrorClassification, HttpMethod } from './api-monitoring.types.js';
+import type { ApiActorType, ApiErrorClassification, HttpMethod } from './api-interceptor.types.js';
 
 /** Structural capture of any JavaScript value (request/response bodies, errors). */
 export type ApiCapturedPayload =

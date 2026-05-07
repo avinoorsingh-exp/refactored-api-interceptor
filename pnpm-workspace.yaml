@@ -1,2 +1,2 @@
 packages:
-  - "packages/api-monitoring"
+  - "packages/api-interceptor"

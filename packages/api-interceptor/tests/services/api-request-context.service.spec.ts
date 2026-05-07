@@ -1,15 +1,17 @@
-import { Test } from '@nestjs/testing';
+import { jest, beforeEach, afterEach, describe, it, expect } from '@jest/globals';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { ApiRequestContextService } from '../../src/services/api-request-context.service.js';
-import { ApiActorType } from '../../src/domain/api-monitoring.types.js';
+import { ApiActorType } from '../../src/domain/api-interceptor.types.js';
 import {
-	API_MONITORING_ASYNC_CONTEXT,
-	type ApiMonitoringRequestStore,
-	type IApiMonitoringAsyncContext,
+	API_INTERCEPTOR_ASYNC_CONTEXT,
+	type ApiInterceptorRequestStore,
+	type IApiInterceptorAsyncContext,
 } from '../../src/interfaces/async-context.port.js';
 
 describe('ApiRequestContextService', () => {
+	let moduleRef: TestingModule | undefined;
 	let service: ApiRequestContextService;
-	let mockAsyncContext: jest.Mocked<IApiMonitoringAsyncContext>;
+	let mockAsyncContext: jest.Mocked<IApiInterceptorAsyncContext>;
 
 	beforeEach(async () => {
 		mockAsyncContext = {
@@ -17,14 +19,18 @@ describe('ApiRequestContextService', () => {
 			getCorrelationId: jest.fn(),
 		};
 
-		const module = await Test.createTestingModule({
+		moduleRef = await Test.createTestingModule({
 			providers: [
-				{ provide: API_MONITORING_ASYNC_CONTEXT, useValue: mockAsyncContext },
+				{ provide: API_INTERCEPTOR_ASYNC_CONTEXT, useValue: mockAsyncContext },
 				ApiRequestContextService,
 			],
 		}).compile();
 
-		service = module.get<ApiRequestContextService>(ApiRequestContextService);
+		service = moduleRef.get<ApiRequestContextService>(ApiRequestContextService);
+	});
+
+	afterEach(async () => {
+		await moduleRef?.close();
 	});
 
 	describe('getContext', () => {
@@ -124,7 +130,7 @@ describe('ApiRequestContextService', () => {
 
 	describe('updateActor', () => {
 		it('should update actor in context', () => {
-			const mockContext: ApiMonitoringRequestStore = {
+			const mockContext: ApiInterceptorRequestStore = {
 				correlationId: 'corr-123',
 				timestamp: 1,
 			};
@@ -148,7 +154,7 @@ describe('ApiRequestContextService', () => {
 
 	describe('setStartTime', () => {
 		it('should set start time in context', () => {
-			const mockContext: ApiMonitoringRequestStore = {
+			const mockContext: ApiInterceptorRequestStore = {
 				correlationId: 'corr-123',
 				timestamp: 1,
 			};
