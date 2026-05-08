@@ -10,11 +10,11 @@ import * as Esm from '../../src/index.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 describe('public package surface (index)', () => {
-	it('uses package version 0.0.1 in manifest', () => {
+	it('uses package version 0.0.3 in manifest', () => {
 		const pkg = JSON.parse(
 			readFileSync(join(__dirname, '../../package.json'), 'utf8'),
 		) as { version: string };
-		expect(pkg.version).toBe('0.0.1');
+		expect(pkg.version).toBe('0.0.3');
 	});
 
 	it('exports the module, interceptor, context, and exchange types', () => {
