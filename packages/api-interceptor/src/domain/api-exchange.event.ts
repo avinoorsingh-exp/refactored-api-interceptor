@@ -115,8 +115,22 @@ export interface ApiExchangeEvent {
 	finishedAtMs: number;
 	latencyMs: number;
 	request: ApiExchangeRequestSnapshot;
-	context: ApiExchangeContextSnapshot;
+	context: ApiExchangeContextSnapshot;	//Stuff from your async store (e.g. correlation id, actor)
 	response?: ApiExchangeResponseSnapshot;
 	error?: ApiCapturedPayload;
 	summary: ApiExchangeSummary;
 }
+// phase
+// Did it finish OK, error out, or get skipped?
+// timing
+// When it started/ended and how long it took
+// request
+// Method, path, headers, optional body snapshot
+// response
+// Status code, optional body snapshot (if there was a normal response)
+// error
+// If something threw, a structured snapshot of that error
+// context
+// Stuff from your async store (e.g. correlation id, actor)
+// summary
+// A shorter “dashboard row” version of the same story (good for logs/metrics)
