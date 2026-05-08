@@ -1,6 +1,6 @@
 {
 	"name": "@exprealty/api-interceptor",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"description": "NestJS HTTP API interception: structured request/response capture and host callback (no persistence).",
 	"type": "module",
 	"private": false,
