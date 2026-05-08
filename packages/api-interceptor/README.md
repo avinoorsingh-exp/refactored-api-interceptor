@@ -30,9 +30,35 @@ pnpm add @exprealty/api-interceptor
 
 ## Quick start
 
-1. Implement **`IApiInterceptorAsyncContext`** (typically wrapping `AsyncLocalStorage`) so the interceptor can read **`correlationId`**, optional **actor** fields, and **`monitoringUserId`** from your per-request store.
+### Prerequisites (host application)
 
-2. Register **`ApiInterceptorModule.forRoot`** with **`asyncContext`** and **`onApiExchange`**.
+To get useful events (correlation id, actor/user, etc.) the **host application** must provide:
+
+1. **Node + NestJS**
+   - Node 20+ (recommended)
+   - NestJS app using the HTTP platform (Express-compatible request/response objects)
+
+2. **`reflect-metadata` enabled**
+   - Ensure your host app imports it once at startup (usually in `main.ts`):
+
+```ts
+import 'reflect-metadata';
+```
+
+3. **Per-request async context store**
+   - You must implement **`IApiInterceptorAsyncContext`** (commonly backed by `AsyncLocalStorage`) and run a store for every incoming request.
+   - At minimum, populate `ApiInterceptorRequestStore` with:
+     - `correlationId` (string)
+     - `timestamp` (number, e.g. `Date.now()`)
+   - Optionally include:
+     - `actorId`, `actorType`, `monitoringUserId`
+
+4. **A safe `onApiExchange` handler**
+   - The callback must **not throw** (the interceptor intentionally swallows callback errors to avoid breaking requests).
+
+### Register the module
+
+Register **`ApiInterceptorModule.forRoot`** with **`asyncContext`** and **`onApiExchange`**.
 
 ```typescript
 import { Module } from '@nestjs/common';
@@ -54,7 +80,11 @@ import {
 export class AppModule {}
 ```
 
-3. Optional module options: **`exchangePayloadMaxBytes`**, **`captureExchangeRequestPayload`**, **`captureExchangeResponsePayload`**.
+### Optional capture configuration
+
+- `exchangePayloadMaxBytes` (default `16384`, clamped `256`–`1_048_576`)
+- `captureExchangeRequestPayload` (default `true`; set `false` to omit `event.request.body`)
+- `captureExchangeResponsePayload` (default `true`; set `false` to omit `event.response.body`)
 
 ---
 
